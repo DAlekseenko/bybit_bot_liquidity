@@ -1,0 +1,41 @@
+# Настройки подключения к Bybit. Для MVP используется Testnet.
+exchange:
+  # true включает тестовую среду Bybit и защищает от торговли на реальном счете.
+  testnet: true
+  # REST API URL для получения свечей, open interest и отправки ордеров.
+  base_url: https://api-testnet.bybit.com
+  # WebSocket URL для публичных потоков, включая ликвидации.
+  websocket_url: wss://stream-testnet.bybit.com/v5/public/linear
+
+# Торговый инструмент. MVP работает только с одним символом.
+symbol: BTCUSDT
+
+# Параметры генерации торгового сигнала.
+strategy:
+  # Минимальный рост open interest в процентах относительно предыдущего значения.
+  oi_growth_percent: 3
+  # Множитель к SMA20 объема: текущая свеча должна быть больше SMA20 * multiplier.
+  volume_multiplier: 2
+  # Минимальная сумма ликвидаций за последние 5 минут в USD.
+  liquidation_threshold: 100000
+
+# Фиксированный риск на сделку и уровни выхода.
+risk:
+  # Доля баланса, которой бот рискует в одной сделке.
+  risk_per_trade_percent: 1
+  # Расстояние stop loss от цены входа в процентах.
+  stop_loss_percent: 0.8
+  # Расстояние take profit от цены входа в процентах.
+  take_profit_percent: 1.6
+
+# Хранилище сделок, сигналов и статистики.
+storage:
+  # Имя SQL-драйвера. Конкретный SQLite-драйвер подключается отдельной зависимостью.
+  driver: sqlite
+  # Путь к локальной SQLite базе данных.
+  dsn: data/trades.db
+
+# Настройки логирования через slog.
+logging:
+  # Допустимые уровни: debug, info, warn, error.
+  level: info

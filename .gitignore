@@ -1,0 +1,13 @@
+.DS_Store
+
+# Build artifacts
+/bin/
+/dist/
+/.gocache/
+
+# Runtime data
+/data/*.db
+/data/*.db-*
+
+# Local configuration
+/.env
