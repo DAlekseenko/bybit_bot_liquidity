@@ -185,29 +185,45 @@ func applyValue(cfg *Config, section, key, value string) error {
 			cfg.Exchange.WebsocketURL = value
 		}
 	case "strategy":
-		parsed, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return err
-		}
 		switch key {
 		case "oi_growth_percent":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Strategy.OIGrowthPercent = parsed
 		case "volume_multiplier":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Strategy.VolumeMultiplier = parsed
 		case "liquidation_threshold":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Strategy.LiquidationThreshold = parsed
 		}
 	case "risk":
-		parsed, err := strconv.ParseFloat(value, 64)
-		if err != nil {
-			return err
-		}
 		switch key {
 		case "risk_per_trade_percent":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Risk.RiskPerTradePercent = parsed
 		case "stop_loss_percent":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Risk.StopLossPercent = parsed
 		case "take_profit_percent":
+			parsed, err := parseFloatConfig(value, section, key)
+			if err != nil {
+				return err
+			}
 			cfg.Risk.TakeProfitPercent = parsed
 		}
 	case "storage":
@@ -224,4 +240,13 @@ func applyValue(cfg *Config, section, key, value string) error {
 	}
 
 	return nil
+}
+
+func parseFloatConfig(value, section, key string) (float64, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s.%s must be a number: %w", section, key, err)
+	}
+
+	return parsed, nil
 }
