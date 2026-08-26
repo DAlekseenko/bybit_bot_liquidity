@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -88,7 +89,7 @@ func Load(path string) (Config, error) {
 		}
 
 		isRootLine := !strings.HasPrefix(rawLine, " ") && !strings.HasPrefix(rawLine, "\t")
-		if isRootLine && strings.HasSuffix(line, ":") {
+		if isRootLine && strings.HasSuffix(line, ":") && line != "symbol:" {
 			section = strings.TrimSuffix(line, ":")
 			continue
 		}
@@ -144,22 +145,22 @@ func Validate(cfg Config) error {
 	if cfg.Symbol == "" {
 		return errors.New("symbol is required")
 	}
-	if cfg.Strategy.OIGrowthPercent <= 0 {
+	if !isFinitePositive(cfg.Strategy.OIGrowthPercent) {
 		return errors.New("strategy.oi_growth_percent must be positive")
 	}
-	if cfg.Strategy.VolumeMultiplier <= 0 {
+	if !isFinitePositive(cfg.Strategy.VolumeMultiplier) {
 		return errors.New("strategy.volume_multiplier must be positive")
 	}
-	if cfg.Strategy.LiquidationThreshold <= 0 {
+	if !isFinitePositive(cfg.Strategy.LiquidationThreshold) {
 		return errors.New("strategy.liquidation_threshold must be positive")
 	}
-	if cfg.Risk.RiskPerTradePercent <= 0 {
+	if !isFinitePositive(cfg.Risk.RiskPerTradePercent) {
 		return errors.New("risk.risk_per_trade_percent must be positive")
 	}
-	if cfg.Risk.StopLossPercent <= 0 {
+	if !isFinitePositive(cfg.Risk.StopLossPercent) {
 		return errors.New("risk.stop_loss_percent must be positive")
 	}
-	if cfg.Risk.TakeProfitPercent <= 0 {
+	if !isFinitePositive(cfg.Risk.TakeProfitPercent) {
 		return errors.New("risk.take_profit_percent must be positive")
 	}
 	return nil
@@ -249,4 +250,8 @@ func parseFloatConfig(value, section, key string) (float64, error) {
 	}
 
 	return parsed, nil
+}
+
+func isFinitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }

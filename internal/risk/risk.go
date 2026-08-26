@@ -2,6 +2,7 @@ package risk
 
 import (
 	"errors"
+	"math"
 
 	"bybit_bot_liquidity/internal/exchange"
 )
@@ -39,30 +40,43 @@ func New(cfg Config) *Manager {
 }
 
 func (m *Manager) Plan(balance, entryPrice float64, side exchange.Side) (Plan, error) {
-	if balance <= 0 || entryPrice <= 0 || m.cfg.RiskPerTradePercent <= 0 || m.cfg.StopLossPercent <= 0 || m.cfg.TakeProfitPercent <= 0 {
+	if !isFinitePositive(balance) ||
+		!isFinitePositive(entryPrice) ||
+		!isFinitePositive(m.cfg.RiskPerTradePercent) ||
+		!isFinitePositive(m.cfg.StopLossPercent) ||
+		!isFinitePositive(m.cfg.TakeProfitPercent) {
 		return Plan{}, ErrInvalidInput
 	}
 
 	riskUSD := balance * m.cfg.RiskPerTradePercent / 100
 	priceRisk := entryPrice * m.cfg.StopLossPercent / 100
 	qty := riskUSD / priceRisk
+	plan := Plan{
+		Qty:     qty,
+		RiskUSD: riskUSD,
+	}
 
 	switch side {
 	case exchange.SideLong:
-		return Plan{
-			Qty:        qty,
-			StopLoss:   entryPrice * (1 - m.cfg.StopLossPercent/100),
-			TakeProfit: entryPrice * (1 + m.cfg.TakeProfitPercent/100),
-			RiskUSD:    riskUSD,
-		}, nil
+		plan.StopLoss = entryPrice * (1 - m.cfg.StopLossPercent/100)
+		plan.TakeProfit = entryPrice * (1 + m.cfg.TakeProfitPercent/100)
 	case exchange.SideShort:
-		return Plan{
-			Qty:        qty,
-			StopLoss:   entryPrice * (1 + m.cfg.StopLossPercent/100),
-			TakeProfit: entryPrice * (1 - m.cfg.TakeProfitPercent/100),
-			RiskUSD:    riskUSD,
-		}, nil
+		plan.StopLoss = entryPrice * (1 + m.cfg.StopLossPercent/100)
+		plan.TakeProfit = entryPrice * (1 - m.cfg.TakeProfitPercent/100)
 	default:
 		return Plan{}, ErrInvalidInput
 	}
+
+	if !isFinitePositive(plan.Qty) ||
+		!isFinitePositive(plan.StopLoss) ||
+		!isFinitePositive(plan.TakeProfit) ||
+		!isFinitePositive(plan.RiskUSD) {
+		return Plan{}, ErrInvalidInput
+	}
+
+	return plan, nil
+}
+
+func isFinitePositive(value float64) bool {
+	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }

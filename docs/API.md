@@ -75,11 +75,16 @@ TakeProfit, RiskUSD}` либо `risk.ErrInvalidInput`.
 3. проверяет cooldown и позицию;
 4. строит risk plan и вызывает `PlaceOrder`.
 
+Попытки исполнения сериализуются. После успешного `PlaceOrder` executor локально
+блокирует новые заявки до `MarkPositionClosed`, чтобы не зависеть от задержки
+появления позиции в ответе биржи.
+
 Ожидаемые ошибки: `ErrUnsupportedSignal`, `ErrCooldownActive` и
 `ErrPositionAlreadyOpen`. Ошибки store, risk manager и exchange передаются вверх.
 
-`MarkPositionClosed(time)` и `SetNow(func() time.Time)` изменяют внутреннее
-состояние executor; второй метод предназначен для детерминированных тестов.
+`MarkPositionClosed(time)` атомарно снимает локальную блокировку позиции и
+запускает cooldown. `SetNow(func() time.Time)` меняет источник времени и
+предназначен для детерминированных тестов.
 
 ### Хранилище
 

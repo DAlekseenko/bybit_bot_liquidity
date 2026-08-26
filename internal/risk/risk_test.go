@@ -43,20 +43,37 @@ func TestPlanShort(t *testing.T) {
 }
 
 func TestPlanRejectsInvalidInput(t *testing.T) {
-	manager := New(Config{
-		RiskPerTradePercent: 1,
-		StopLossPercent:     0.8,
-		TakeProfitPercent:   1.6,
-	})
+	validConfig := Config{RiskPerTradePercent: 1, StopLossPercent: 0.8, TakeProfitPercent: 1.6}
+	tests := []struct {
+		name       string
+		cfg        Config
+		balance    float64
+		entryPrice float64
+		side       exchange.Side
+	}{
+		{name: "zero balance", cfg: validConfig, balance: 0, entryPrice: 50000, side: exchange.SideLong},
+		{name: "NaN balance", cfg: validConfig, balance: math.NaN(), entryPrice: 50000, side: exchange.SideLong},
+		{name: "NaN entry price", cfg: validConfig, balance: 10000, entryPrice: math.NaN(), side: exchange.SideLong},
+		{name: "infinite entry price", cfg: validConfig, balance: 10000, entryPrice: math.Inf(1), side: exchange.SideLong},
+		{name: "NaN config", cfg: Config{RiskPerTradePercent: math.NaN(), StopLossPercent: 0.8, TakeProfitPercent: 1.6}, balance: 10000, entryPrice: 50000, side: exchange.SideLong},
+		{name: "overflowing result", cfg: Config{RiskPerTradePercent: math.MaxFloat64, StopLossPercent: 0.8, TakeProfitPercent: 1.6}, balance: math.MaxFloat64, entryPrice: 50000, side: exchange.SideLong},
+		{name: "non-positive long stop loss", cfg: Config{RiskPerTradePercent: 1, StopLossPercent: 100, TakeProfitPercent: 1.6}, balance: 10000, entryPrice: 50000, side: exchange.SideLong},
+		{name: "non-positive short take profit", cfg: Config{RiskPerTradePercent: 1, StopLossPercent: 0.8, TakeProfitPercent: 100}, balance: 10000, entryPrice: 50000, side: exchange.SideShort},
+	}
 
-	if _, err := manager.Plan(0, 50000, exchange.SideLong); err == nil {
-		t.Fatal("expected error")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := New(test.cfg)
+			if _, err := manager.Plan(test.balance, test.entryPrice, test.side); err == nil {
+				t.Fatal("expected error")
+			}
+		})
 	}
 }
 
 func assertClose(t *testing.T, got, want float64) {
 	t.Helper()
-	if math.Abs(got-want) > 0.000001 {
+	if math.IsNaN(got) || math.IsInf(got, 0) || math.Abs(got-want) > 0.000001 {
 		t.Fatalf("got %f, want %f", got, want)
 	}
 }

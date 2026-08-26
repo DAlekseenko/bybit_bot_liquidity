@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"bybit_bot_liquidity/internal/exchange"
@@ -31,13 +32,15 @@ type SignalStore interface {
 
 // Executor применяет торговые ограничения и отправляет ордера на биржу.
 type Executor struct {
-	exchange    Exchange
-	riskManager *risk.Manager
-	store       SignalStore
-	log         *slog.Logger
-	cooldown    time.Duration
-	now         func() time.Time
-	lastClosed  time.Time
+	exchange     Exchange
+	riskManager  *risk.Manager
+	store        SignalStore
+	log          *slog.Logger
+	cooldown     time.Duration
+	now          func() time.Time
+	mu           sync.Mutex
+	lastClosed   time.Time
+	positionOpen bool
 }
 
 func New(exchange Exchange, riskManager *risk.Manager, store SignalStore, log *slog.Logger, cooldown time.Duration) *Executor {
@@ -68,6 +71,13 @@ func (e *Executor) Execute(ctx context.Context, signal strategy.Signal, balance,
 	case strategy.SignalLong, strategy.SignalShort:
 	default:
 		return exchange.Order{}, ErrUnsupportedSignal
+	}
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if e.positionOpen {
+		return exchange.Order{}, ErrPositionAlreadyOpen
 	}
 
 	if !e.lastClosed.IsZero() && e.now().Sub(e.lastClosed) < e.cooldown {
@@ -102,15 +112,23 @@ func (e *Executor) Execute(ctx context.Context, signal strategy.Signal, balance,
 	if err != nil {
 		return exchange.Order{}, err
 	}
+	e.positionOpen = true
 
 	e.log.Info("position opened", "symbol", signal.Symbol, "side", side, "qty", plan.Qty)
 	return order, nil
 }
 
 func (e *Executor) MarkPositionClosed(at time.Time) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.positionOpen = false
 	e.lastClosed = at
 }
 
 func (e *Executor) SetNow(now func() time.Time) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	e.now = now
 }

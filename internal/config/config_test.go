@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +95,61 @@ strategy:
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsEmptySymbol(t *testing.T) {
+	path := writeConfig(t, `
+symbol:
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestLoadRejectsNonFiniteNumericValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		section string
+		key     string
+		value   string
+	}{
+		{name: "strategy NaN", section: "strategy", key: "oi_growth_percent", value: "NaN"},
+		{name: "risk positive infinity", section: "risk", key: "risk_per_trade_percent", value: "+Inf"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeConfig(t, "\n"+test.section+":\n  "+test.key+": "+test.value+"\n")
+			if _, err := Load(path); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestValidateRejectsNonFiniteNumbers(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{name: "strategy OI growth", mutate: func(cfg *Config) { cfg.Strategy.OIGrowthPercent = math.NaN() }},
+		{name: "strategy volume", mutate: func(cfg *Config) { cfg.Strategy.VolumeMultiplier = math.Inf(1) }},
+		{name: "strategy liquidations", mutate: func(cfg *Config) { cfg.Strategy.LiquidationThreshold = math.NaN() }},
+		{name: "risk per trade", mutate: func(cfg *Config) { cfg.Risk.RiskPerTradePercent = math.Inf(1) }},
+		{name: "risk stop loss", mutate: func(cfg *Config) { cfg.Risk.StopLossPercent = math.NaN() }},
+		{name: "risk take profit", mutate: func(cfg *Config) { cfg.Risk.TakeProfitPercent = math.Inf(1) }},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := Default()
+			test.mutate(&cfg)
+			if err := Validate(cfg); err == nil {
+				t.Fatal("expected error")
+			}
+		})
 	}
 }
 

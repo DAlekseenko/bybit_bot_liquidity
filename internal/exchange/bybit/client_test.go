@@ -285,6 +285,75 @@ func TestGetCandlesRejectsMalformedItem(t *testing.T) {
 	}
 }
 
+func TestGetCandlesRejectsEmptyResult(t *testing.T) {
+	client := clientForResponse(t, http.StatusOK, `{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {"category": "linear", "symbol": "BTCUSDT", "list": []},
+  "time": 180100
+}`)
+
+	_, err := client.GetCandles(context.Background(), "BTCUSDT", 1)
+	if !errors.Is(err, ErrEmptyResult) {
+		t.Fatalf("error = %v, want ErrEmptyResult", err)
+	}
+}
+
+func TestGetCandlesRejectsInvalidKlineData(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name: "invalid server time",
+			body: `{
+  "retCode": 0,
+  "result": {"category": "linear", "symbol": "BTCUSDT", "list": [["60000", "100", "103", "99", "102", "1.5", "151.5"]]},
+  "time": 0
+}`,
+			wantErr: "invalid server time",
+		},
+		{
+			name: "unexpected category",
+			body: `{
+  "retCode": 0,
+  "result": {"category": "inverse", "symbol": "BTCUSDT", "list": [["60000", "100", "103", "99", "102", "1.5", "151.5"]]},
+  "time": 180100
+}`,
+			wantErr: "unexpected category",
+		},
+		{
+			name: "non-positive price",
+			body: `{
+  "retCode": 0,
+  "result": {"category": "linear", "symbol": "BTCUSDT", "list": [["60000", "0", "103", "99", "102", "1.5", "151.5"]]},
+  "time": 180100
+}`,
+			wantErr: "invalid open",
+		},
+		{
+			name: "negative volume",
+			body: `{
+  "retCode": 0,
+  "result": {"category": "linear", "symbol": "BTCUSDT", "list": [["60000", "100", "103", "99", "102", "-1", "151.5"]]},
+  "time": 180100
+}`,
+			wantErr: "invalid volume",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := clientForResponse(t, http.StatusOK, test.body)
+			_, err := client.GetCandles(context.Background(), "BTCUSDT", 1)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestClientRejectsOversizedResponse(t *testing.T) {
 	client := clientForResponse(t, http.StatusOK, strings.Repeat("x", maxResponseBytes+1))
 

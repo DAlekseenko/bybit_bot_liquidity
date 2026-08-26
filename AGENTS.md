@@ -108,8 +108,9 @@ test -z "$(gofmt -l cmd internal)"
 ```
 
 Docker-команды и оговорки среды приведены в
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). Специализированный линтер, Makefile и
-CI в репозитории отсутствуют — не утверждайте обратное.
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). GitHub Actions выполняет тот же набор
+проверок на каждом push и pull request. Специализированный линтер и Makefile в
+репозитории отсутствуют.
 
 ## Готовность изменения
 
