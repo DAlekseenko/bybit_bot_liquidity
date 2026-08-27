@@ -64,8 +64,10 @@ func (e *HTTPError) Error() string {
 
 // Client отвечает только за низкоуровневое взаимодействие с Bybit V5 API.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	parsedBaseURL *url.URL
+	parseError    error
+	httpClient    *http.Client
 }
 
 func NewClient(baseURL string, httpClient *http.Client) *Client {
@@ -73,10 +75,23 @@ func NewClient(baseURL string, httpClient *http.Client) *Client {
 		httpClient = &http.Client{Timeout: 10 * time.Second}
 	}
 
-	return &Client{
+	c := &Client{
 		baseURL:    strings.TrimSpace(baseURL),
 		httpClient: httpClient,
 	}
+
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		c.parseError = fmt.Errorf("%w: parse base URL: %v", ErrInvalidArgument, err)
+	} else if (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
+		c.parseError = fmt.Errorf("%w: base URL must be an absolute HTTP(S) URL", ErrInvalidArgument)
+	} else if base.User != nil {
+		c.parseError = fmt.Errorf("%w: base URL must not contain credentials", ErrInvalidArgument)
+	} else {
+		c.parsedBaseURL = base
+	}
+
+	return c
 }
 
 // GetCandles получает linear-свечи 1m и возвращает их по возрастанию OpenTime.
@@ -250,17 +265,11 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, result 
 }
 
 func (c *Client) endpoint(path string, query url.Values) (string, error) {
-	base, err := url.Parse(c.baseURL)
-	if err != nil {
-		return "", fmt.Errorf("%w: parse base URL: %v", ErrInvalidArgument, err)
-	}
-	if (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
-		return "", fmt.Errorf("%w: base URL must be an absolute HTTP(S) URL", ErrInvalidArgument)
-	}
-	if base.User != nil {
-		return "", fmt.Errorf("%w: base URL must not contain credentials", ErrInvalidArgument)
+	if c.parseError != nil {
+		return "", c.parseError
 	}
 
+	base := *c.parsedBaseURL
 	base.Path = strings.TrimRight(base.Path, "/") + path
 	base.RawPath = ""
 	base.RawQuery = query.Encode()
