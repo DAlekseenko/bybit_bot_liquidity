@@ -79,7 +79,7 @@ func isRetryable(err error) bool {
 		return classified.Retryable()
 	}
 	var networkErr net.Error
-	return errors.As(err, &networkErr) && (networkErr.Timeout() || networkErr.Temporary())
+	return errors.As(err, &networkErr) && networkErr.Timeout()
 }
 
 func sleepWithContext(ctx context.Context, delay time.Duration) error {
