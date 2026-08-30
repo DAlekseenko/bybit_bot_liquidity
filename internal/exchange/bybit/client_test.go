@@ -106,7 +106,7 @@ func TestGetOpenInterest(t *testing.T) {
 	})}
 
 	client := newClient(t, "https://api.example.test", httpClient)
-	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1023,10 +1023,31 @@ func newClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
 	return client
 }
 
+func newAuthenticatedClient(t *testing.T, baseURL, apiKey, apiSecret string, httpClient *http.Client) *Client {
+	t.Helper()
+
+	client, err := NewAuthenticatedClient(baseURL, apiKey, apiSecret, httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 func clientForResponse(t *testing.T, status int, body string) *Client {
 	t.Helper()
 
 	return newClient(t, "https://api.example.test", &http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return httpResponse(status, body), nil
+		}),
+	})
+
+}
+
+func authenticatedClientForResponse(t *testing.T, status int, body string) *Client {
+	t.Helper()
+
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(status, body), nil
 		}),

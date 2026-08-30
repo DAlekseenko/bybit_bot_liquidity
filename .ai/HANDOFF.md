@@ -728,3 +728,19 @@ WebSocket `bad handshake`; поэтому после миграции новый
 - `BenchmarkEndpoint` — 557.6 ns/op, 408 B/op, 11 allocs/op на Apple M1.
 
 Pull request: [#4 Make Bybit client URL validation fail fast](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/4).
+
+## Дополнение 2026-08-30: исправление после merge-конфликта
+
+После merge-конфликта в `client.go` были удалены настройки signed read-only
+клиента (`recvWindow`, `now`, `NewAuthenticatedClient` и безопасное
+форматирование). В `client_test.go` отсутствовали соответствующие helpers, а
+один вызов `GetOpenInterest` потерял обязательный параметр окна OI. Восстановлен
+согласованный контракт runtime-клиента и его test helpers.
+
+Проверки после исправления:
+
+- `go test ./...` — успешно;
+- `go test -race ./...` — успешно;
+- `go vet ./...` — успешно;
+- `go build ./...` — успешно;
+- `test -z "$(gofmt -l cmd internal)"` и `git diff --check` — успешно.

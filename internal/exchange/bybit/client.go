@@ -90,7 +90,28 @@ func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	return &Client{
 		baseURL:    parsedBaseURL,
 		httpClient: httpClient,
+		recvWindow: defaultReceiveWindow,
+		now:        time.Now,
 	}, nil
+}
+
+// NewAuthenticatedClient creates a ready-to-use client for signed read-only requests.
+func NewAuthenticatedClient(baseURL, apiKey, apiSecret string, httpClient *http.Client) (*Client, error) {
+	client, err := NewClient(baseURL, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	client.apiKey = strings.TrimSpace(apiKey)
+	client.apiSecret = strings.TrimSpace(apiSecret)
+	return client, nil
+}
+
+func (c *Client) String() string {
+	return fmt.Sprintf("{baseURL:%q authenticated:%t}", c.baseURL.String(), c.apiKey != "" && c.apiSecret != "")
+}
+
+func (c *Client) GoString() string {
+	return c.String()
 }
 
 // GetCandles получает linear-свечи 1m и возвращает их по возрастанию OpenTime.
