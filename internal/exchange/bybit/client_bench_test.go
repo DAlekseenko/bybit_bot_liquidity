@@ -6,7 +6,10 @@ import (
 )
 
 func BenchmarkEndpoint(b *testing.B) {
-	client := NewClient("https://api.example.test", nil)
+	client, err := NewClient("https://api.example.test", nil)
+	if err != nil {
+		b.Fatal(err)
+	}
 	query := url.Values{
 		"category": {"linear"},
 		"symbol":   {"BTCUSDT"},

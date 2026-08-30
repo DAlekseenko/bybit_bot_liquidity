@@ -64,34 +64,24 @@ func (e *HTTPError) Error() string {
 
 // Client отвечает только за низкоуровневое взаимодействие с Bybit V5 API.
 type Client struct {
-	baseURL       string
-	parsedBaseURL *url.URL
-	parseError    error
-	httpClient    *http.Client
+	baseURL    url.URL
+	httpClient *http.Client
 }
 
-func NewClient(baseURL string, httpClient *http.Client) *Client {
+// NewClient creates a ready-to-use public Bybit REST client.
+func NewClient(baseURL string, httpClient *http.Client) (*Client, error) {
+	parsedBaseURL, err := parseBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 10 * time.Second}
 	}
 
-	c := &Client{
-		baseURL:    strings.TrimSpace(baseURL),
+	return &Client{
+		baseURL:    parsedBaseURL,
 		httpClient: httpClient,
-	}
-
-	base, err := url.Parse(c.baseURL)
-	if err != nil {
-		c.parseError = fmt.Errorf("%w: parse base URL: %v", ErrInvalidArgument, err)
-	} else if (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
-		c.parseError = fmt.Errorf("%w: base URL must be an absolute HTTP(S) URL", ErrInvalidArgument)
-	} else if base.User != nil {
-		c.parseError = fmt.Errorf("%w: base URL must not contain credentials", ErrInvalidArgument)
-	} else {
-		c.parsedBaseURL = base
-	}
-
-	return c
+	}, nil
 }
 
 // GetCandles получает linear-свечи 1m и возвращает их по возрастанию OpenTime.
@@ -265,17 +255,28 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, result 
 }
 
 func (c *Client) endpoint(path string, query url.Values) (string, error) {
-	if c.parseError != nil {
-		return "", c.parseError
-	}
-
-	base := *c.parsedBaseURL
+	base := c.baseURL
 	base.Path = strings.TrimRight(base.Path, "/") + path
 	base.RawPath = ""
 	base.RawQuery = query.Encode()
 	base.Fragment = ""
 
 	return base.String(), nil
+}
+
+func parseBaseURL(rawURL string) (url.URL, error) {
+	base, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return url.URL{}, fmt.Errorf("%w: parse base URL: %v", ErrInvalidArgument, err)
+	}
+	if (base.Scheme != "http" && base.Scheme != "https") || base.Host == "" {
+		return url.URL{}, fmt.Errorf("%w: base URL must be an absolute HTTP(S) URL", ErrInvalidArgument)
+	}
+	if base.User != nil {
+		return url.URL{}, fmt.Errorf("%w: base URL must not contain credentials", ErrInvalidArgument)
+	}
+
+	return *base, nil
 }
 
 func validateSymbol(symbol string) error {
