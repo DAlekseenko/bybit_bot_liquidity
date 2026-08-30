@@ -440,6 +440,52 @@ func TestStoreStats(t *testing.T) {
 	}
 }
 
+func TestStoreVirtualStatsSeparatesCompletedOpenAndSkippedSignals(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+	for index, pnl := range []float64{10, -4, 6, -8} {
+		_, err := store.db.ExecContext(ctx, `
+INSERT INTO signals (symbol, signal_type, reason, created_at, hypothetical_entry, virtual_pnl, virtual_closed_at)
+VALUES (?, 'LONG', 'paper', ?, 100, ?, ?)`,
+			"BTCUSDT",
+			base.Add(time.Duration(index)*time.Minute).Format(time.RFC3339Nano),
+			pnl,
+			base.Add(time.Duration(index+1)*time.Minute).Format(time.RFC3339Nano),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO signals (symbol, signal_type, reason, created_at, hypothetical_entry)
+VALUES ('BTCUSDT', 'LONG', 'paper', ?, 100)`, base.Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+INSERT INTO signals (symbol, signal_type, reason, created_at, exit_reason)
+VALUES ('BTCUSDT', 'LONG', 'paper', ?, 'SKIPPED_COOLDOWN')`, base.Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.VirtualStats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.ClosedTrades != 4 || stats.OpenTrades != 1 || stats.SkippedSignals != 1 ||
+		stats.WinRate != 50 || stats.TotalPnL != 4 || stats.AverageTrade != 1 || stats.MaxDrawdown != 8 {
+		t.Fatalf("VirtualStats() = %#v", stats)
+	}
+	if math.Abs(stats.ProfitFactor-16.0/12.0) > 1e-12 {
+		t.Fatalf("ProfitFactor = %v, want %v", stats.ProfitFactor, 16.0/12.0)
+	}
+}
+
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 

@@ -267,6 +267,16 @@ BYBIT_TESTNET_CONTRACT_TESTS=1 go test -tags=integration ./internal/exchange/byb
 `Testnet contract tests` запускается вручную и использует environment
 `testnet-contract`; секреты должны быть заданы именно в нём.
 
+### Paper-trade аналитика
+
+`storage.VirtualStats` агрегирует только завершённые virtual-позиции из
+`signals`; таблица `trades` не участвует и зарезервирована для будущего
+биржевого жизненного цикла. Незакрытая virtual-позиция после рестарта остаётся
+видимой как open signal, но не восстанавливается автоматически и не влияет на
+PnL: до задачи восстановления это явный предмет ручного разбора, а не фиктивное
+закрытие. Воспроизводимые выборки находятся в
+[`docs/sql/paper-trading-report.sql`](sql/paper-trading-report.sql).
+
 Полный локальный набор:
 
 ```bash
@@ -291,8 +301,9 @@ fake source/checker, без сокетов и реальных сетевых з
 go test -cover ./...
 ```
 
-Отдельный линтер и порог покрытия не настроены (`TODO`). `go vet` — единственная
-репозиторно подтверждённая статическая проверка сверх компилятора.
+CI дополнительно проверяет суммарное покрытие не ниже 70%, `govulncheck` и
+`golangci-lint`; эти проверки требуют сетевого доступа только в GitHub Actions
+для загрузки инструментов.
 
 Workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) выполняет
 форматирование, unit-тесты, race detector, `go vet` и сборку на каждом push и

@@ -84,6 +84,20 @@ type Stats struct {
 	MaxDrawdown float64
 }
 
+// VirtualStats is analytics for paper-trade rows in signals. It intentionally
+// does not read the real-trade table, so paper results cannot be reported as
+// exchange execution.
+type VirtualStats struct {
+	ClosedTrades   int
+	OpenTrades     int
+	SkippedSignals int
+	WinRate        float64
+	ProfitFactor   float64
+	TotalPnL       float64
+	AverageTrade   float64
+	MaxDrawdown    float64
+}
+
 // Store инкапсулирует доступ к SQLite через database/sql.
 type Store struct {
 	db *sql.DB
@@ -580,5 +594,64 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		stats.ProfitFactor = grossProfit / grossLoss
 	}
 
+	return stats, nil
+}
+
+// VirtualStats returns aggregates for completed virtual signals only. Open
+// virtual signals are reported separately and do not affect PnL statistics.
+func (s *Store) VirtualStats(ctx context.Context) (VirtualStats, error) {
+	var stats VirtualStats
+	if err := s.db.QueryRowContext(ctx, `
+SELECT
+  COALESCE(SUM(CASE WHEN hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN hypothetical_entry IS NULL AND exit_reason LIKE 'SKIPPED_%' THEN 1 ELSE 0 END), 0)
+FROM signals`).Scan(&stats.OpenTrades, &stats.SkippedSignals); err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats counts: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT virtual_pnl
+FROM signals
+WHERE virtual_closed_at IS NOT NULL AND virtual_pnl IS NOT NULL
+ORDER BY virtual_closed_at ASC, id ASC`)
+	if err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats rows: %w", err)
+	}
+	defer rows.Close()
+
+	var grossProfit, grossLoss, equity, peak float64
+	var wins int
+	for rows.Next() {
+		var pnl float64
+		if err := rows.Scan(&pnl); err != nil {
+			return VirtualStats{}, fmt.Errorf("virtual stats scan: %w", err)
+		}
+		stats.ClosedTrades++
+		stats.TotalPnL += pnl
+		if pnl > 0 {
+			wins++
+			grossProfit += pnl
+		} else if pnl < 0 {
+			grossLoss -= pnl
+		}
+		equity += pnl
+		if equity > peak {
+			peak = equity
+		}
+		if drawdown := peak - equity; drawdown > stats.MaxDrawdown {
+			stats.MaxDrawdown = drawdown
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats rows: %w", err)
+	}
+	if stats.ClosedTrades == 0 {
+		return stats, nil
+	}
+	stats.AverageTrade = stats.TotalPnL / float64(stats.ClosedTrades)
+	stats.WinRate = float64(wins) / float64(stats.ClosedTrades) * 100
+	if grossLoss > 0 {
+		stats.ProfitFactor = grossProfit / grossLoss
+	}
 	return stats, nil
 }
