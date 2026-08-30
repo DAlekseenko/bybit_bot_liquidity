@@ -136,3 +136,5 @@ unit-тесты, race detector, `go vet` и сборку на push и pull reque
 - `go build ./...` — успешно;
 - `test -z "$(gofmt -l cmd internal)"` и `git diff --check` — успешно;
 - `BenchmarkEndpoint` — 557.6 ns/op, 408 B/op, 11 allocs/op на Apple M1.
+
+Pull request: [#4 Make Bybit client URL validation fail fast](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/4).
