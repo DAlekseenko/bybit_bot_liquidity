@@ -12,12 +12,17 @@ type executionReadinessChecker interface {
 	Check(ctx context.Context, symbol string) (execution.ExecutionReadiness, error)
 }
 
+type readinessMetrics interface {
+	SetReadiness(bool)
+}
+
 func reportExecutionReadiness(
 	ctx context.Context,
 	log *slog.Logger,
 	enabled bool,
 	checker executionReadinessChecker,
 	symbol string,
+	metrics readinessMetrics,
 ) {
 	if !enabled {
 		return
@@ -26,6 +31,9 @@ func reportExecutionReadiness(
 		log = slog.Default()
 	}
 	if checker == nil {
+		if metrics != nil {
+			metrics.SetReadiness(false)
+		}
 		log.Warn(
 			"execution readiness failed",
 			"symbol", symbol,
@@ -35,12 +43,18 @@ func reportExecutionReadiness(
 	}
 
 	if _, err := checker.Check(ctx, symbol); err != nil {
+		if metrics != nil {
+			metrics.SetReadiness(false)
+		}
 		log.Warn(
 			"execution readiness failed",
 			"symbol", symbol,
 			"reason", classifyExecutionReadinessError(err),
 		)
 		return
+	}
+	if metrics != nil {
+		metrics.SetReadiness(true)
 	}
 	log.Info("execution readiness confirmed", "symbol", symbol)
 }

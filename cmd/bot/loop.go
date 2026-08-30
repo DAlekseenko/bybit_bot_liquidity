@@ -29,6 +29,18 @@ type liquidationSource interface {
 	Recent(now time.Time) []exchange.Liquidation
 }
 
+type runnerMetrics interface {
+	MarkMarketDataSuccess(time.Time)
+	MarkMarketDataFailure()
+	ObserveStorageWrite(time.Duration, error)
+}
+
+type noOpRunnerMetrics struct{}
+
+func (noOpRunnerMetrics) MarkMarketDataSuccess(time.Time)          {}
+func (noOpRunnerMetrics) MarkMarketDataFailure()                   {}
+func (noOpRunnerMetrics) ObserveStorageWrite(time.Duration, error) {}
+
 type readOnlyRunner struct {
 	log                  *slog.Logger
 	symbol               string
@@ -40,6 +52,7 @@ type readOnlyRunner struct {
 	candleLimit          int
 	now                  func() time.Time
 	previousOpenInterest *exchange.OpenInterest
+	metrics              runnerMetrics
 }
 
 func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollector, evaluator signalEvaluator, store signalStore, paper *papertrade.Engine, liquidations liquidationSource, candleLimit int) *readOnlyRunner {
@@ -57,6 +70,13 @@ func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollec
 		liquidations: liquidations,
 		candleLimit:  candleLimit,
 		now:          time.Now,
+		metrics:      noOpRunnerMetrics{},
+	}
+}
+
+func (r *readOnlyRunner) setMetrics(metrics runnerMetrics) {
+	if metrics != nil {
+		r.metrics = metrics
 	}
 }
 
@@ -96,9 +116,11 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 	now := r.now().UTC()
 	snapshot, err := r.collector.Snapshot(ctx, r.candleLimit, r.liquidations.Recent(now))
 	if err != nil {
+		r.metrics.MarkMarketDataFailure()
 		r.log.Error("market snapshot failed", "symbol", r.symbol, "error", err)
 		return
 	}
+	r.metrics.MarkMarketDataSuccess(snapshot.CollectedAt)
 
 	r.advanceVirtualTrade(ctx, snapshot.Candles)
 
@@ -190,7 +212,9 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 		}
 	}
 
+	storageStartedAt := time.Now()
 	signalID, err := r.store.SaveSignalRecord(ctx, record)
+	r.metrics.ObserveStorageWrite(time.Since(storageStartedAt), err)
 	if err != nil {
 		r.log.Error("save signal failed", "symbol", signal.Symbol, "type", signal.Type, "error", err)
 		return
@@ -223,12 +247,14 @@ func (r *readOnlyRunner) advanceVirtualTrade(ctx context.Context, candles []exch
 	if outcome == nil {
 		return
 	}
+	storageStartedAt := time.Now()
 	err := r.store.CloseVirtualSignal(ctx, outcome.SignalID, storage.VirtualOutcome{
 		ExitPrice:  outcome.ExitPrice,
 		ExitReason: outcome.Reason,
 		PnL:        outcome.PnL,
 		ClosedAt:   outcome.ClosedAt,
 	})
+	r.metrics.ObserveStorageWrite(time.Since(storageStartedAt), err)
 	if err != nil {
 		r.log.Error("close virtual signal failed", "signal_id", outcome.SignalID, "error", err)
 		return

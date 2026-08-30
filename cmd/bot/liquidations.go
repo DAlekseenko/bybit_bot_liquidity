@@ -13,6 +13,10 @@ type liquidationStreamer interface {
 	Stream(ctx context.Context, symbol string, output chan<- exchange.Liquidation) error
 }
 
+type websocketMetrics interface {
+	MarkWebsocketReconnect()
+}
+
 type reconnectPolicy struct {
 	InitialDelay  time.Duration
 	MaxDelay      time.Duration
@@ -20,11 +24,7 @@ type reconnectPolicy struct {
 }
 
 func defaultReconnectPolicy() reconnectPolicy {
-	return reconnectPolicy{
-		InitialDelay:  5 * time.Second,
-		MaxDelay:      time.Minute,
-		JitterPercent: 0.2,
-	}
+	return reconnectPolicy{InitialDelay: 5 * time.Second, MaxDelay: time.Minute, JitterPercent: 0.2}
 }
 
 func (p reconnectPolicy) delay(attempt int, random func() float64) time.Duration {
@@ -41,32 +41,15 @@ func (p reconnectPolicy) delay(attempt int, random func() float64) time.Duration
 	return time.Duration(float64(delay) * (1 - p.JitterPercent + 2*p.JitterPercent*random()))
 }
 
-func runLiquidationStream(
-	ctx context.Context,
-	log *slog.Logger,
-	streamer liquidationStreamer,
-	symbol string,
-	output chan<- exchange.Liquidation,
-	retryDelay time.Duration,
-) {
+func runLiquidationStream(ctx context.Context, log *slog.Logger, streamer liquidationStreamer, symbol string, output chan<- exchange.Liquidation, retryDelay time.Duration) {
 	policy := defaultReconnectPolicy()
 	policy.InitialDelay = retryDelay
-	runLiquidationStreamWithPolicy(ctx, log, streamer, symbol, output, policy, nil, rand.Float64)
+	runLiquidationStreamWithPolicy(ctx, log, streamer, symbol, output, policy, nil, nil, rand.Float64)
 }
 
 // runLiquidationStreamWithPolicy reconnects a public data stream with bounded
-// exponential backoff. recovery is called after each unexpected disconnect so
-// callers can invalidate state whose completeness cannot be reconstructed.
-func runLiquidationStreamWithPolicy(
-	ctx context.Context,
-	log *slog.Logger,
-	streamer liquidationStreamer,
-	symbol string,
-	output chan<- exchange.Liquidation,
-	policy reconnectPolicy,
-	recovery func(),
-	random func() float64,
-) {
+// exponential backoff. recovery invalidates state that cannot be replayed.
+func runLiquidationStreamWithPolicy(ctx context.Context, log *slog.Logger, streamer liquidationStreamer, symbol string, output chan<- exchange.Liquidation, policy reconnectPolicy, recovery func(), metrics websocketMetrics, random func() float64) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -88,6 +71,9 @@ func runLiquidationStreamWithPolicy(
 		delay := policy.delay(attempt, random)
 		if recovery != nil {
 			recovery()
+		}
+		if metrics != nil {
+			metrics.MarkWebsocketReconnect()
 		}
 		log.Warn("liquidation websocket disconnected; liquidation window reset", "symbol", symbol, "error", err, "attempt", attempt, "retry_in", delay)
 

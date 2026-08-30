@@ -1,0 +1,11 @@
+# Production-like Testnet deployment overlay. Apply with:
+# docker compose -f docker-compose.yml -f ops/docker-compose.server.yml up -d --build
+services:
+  bot:
+    volumes:
+      - ${BOT_DATA_DIR:?set an absolute persistent data directory}:/app/data
+    environment:
+      BYBIT_API_KEY: ${BYBIT_API_KEY:-}
+      BYBIT_API_SECRET: ${BYBIT_API_SECRET:-}
+    # No ports are published. /metrics is available only inside the container
+    # network (for docker exec or a separately approved local collector).

@@ -22,6 +22,7 @@ func TestReportExecutionReadinessSkipsWithoutCredentials(t *testing.T) {
 		false,
 		nil,
 		"BTCUSDT",
+		nil,
 	)
 	if output.Len() != 0 {
 		t.Fatalf("log = %q, want empty", output.String())
@@ -47,6 +48,7 @@ func TestReportExecutionReadinessLogsSuccessWithoutAccountValues(t *testing.T) {
 		true,
 		checker,
 		"BTCUSDT",
+		nil,
 	)
 
 	logged := output.String()
@@ -74,6 +76,7 @@ func TestReportExecutionReadinessLogsFailureAndContinues(t *testing.T) {
 		true,
 		checker,
 		"BTCUSDT",
+		nil,
 	)
 
 	logged := output.String()
@@ -100,6 +103,7 @@ func TestReportExecutionReadinessHandlesMissingChecker(t *testing.T) {
 		true,
 		nil,
 		"BTCUSDT",
+		nil,
 	)
 	if logged := output.String(); !strings.Contains(logged, "reason=source_required") {
 		t.Fatalf("log = %q", logged)

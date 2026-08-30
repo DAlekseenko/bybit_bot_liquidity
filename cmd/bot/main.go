@@ -16,6 +16,7 @@ import (
 	"bybit_bot_liquidity/internal/execution"
 	applogger "bybit_bot_liquidity/internal/logger"
 	"bybit_bot_liquidity/internal/marketdata"
+	"bybit_bot_liquidity/internal/observability"
 	"bybit_bot_liquidity/internal/papertrade"
 	"bybit_bot_liquidity/internal/risk"
 	"bybit_bot_liquidity/internal/storage"
@@ -30,6 +31,7 @@ const (
 func main() {
 	configPath := flag.String("config", "configs/config.yaml", "path to YAML config")
 	checkStorage := flag.Bool("check-storage", false, "run SQLite quick_check and exit")
+	metricsAddress := flag.String("metrics-address", ":8080", "metrics listen address; no Docker port is published by default")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -40,6 +42,7 @@ func main() {
 
 	log := applogger.New(os.Stdout, cfg.Logging.Level)
 	log.Info("bot initialized", "symbol", cfg.Symbol, "testnet", cfg.Exchange.Testnet)
+	metrics := observability.NewRegistry()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -93,6 +96,7 @@ func main() {
 		cfg.Exchange.Credentials.Configured(),
 		execution.NewExecutionReadinessPreflight(exchangeClient),
 		cfg.Symbol,
+		metrics,
 	)
 	collector := marketdata.NewCollector(exchangeClient, cfg.Symbol, cfg.Strategy.OIWindowMinutes)
 	liquidationClient := bybit.NewLiquidationClient(cfg.Exchange.WebsocketURL, nil)
@@ -105,7 +109,7 @@ func main() {
 		defer background.Done()
 		policy := defaultReconnectPolicy()
 		policy.InitialDelay = websocketRetryDelay
-		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.Reset, nil)
+		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.Reset, metrics, nil)
 	}()
 	go func() {
 		defer background.Done()
@@ -138,6 +142,12 @@ func main() {
 
 	candleLimit := cfg.Strategy.VolumeSMAPeriod + 2
 	runner := newReadOnlyRunner(log, cfg.Symbol, collector, signalStrategy, store, paper, liquidations, candleLimit)
+	runner.setMetrics(metrics)
+	background.Add(1)
+	go func() {
+		defer background.Done()
+		runMetricsServer(ctx, log, *metricsAddress, metrics)
+	}()
 
 	runReadOnlyLoop(ctx, log, runner, readOnlyPollInterval)
 	background.Wait()
