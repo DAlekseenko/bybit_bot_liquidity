@@ -72,14 +72,20 @@ func main() {
 	}
 	log.Info("storage initialized", "driver", cfg.Storage.Driver)
 
-	exchangeClient := bybit.NewClient(cfg.Exchange.BaseURL, nil)
+	var exchangeClient *bybit.Client
 	if cfg.Exchange.Credentials.Configured() {
-		exchangeClient = bybit.NewAuthenticatedClient(
+		exchangeClient, err = bybit.NewAuthenticatedClient(
 			cfg.Exchange.BaseURL,
 			cfg.Exchange.Credentials.APIKey(),
 			cfg.Exchange.Credentials.APISecret(),
 			nil,
 		)
+	} else {
+		exchangeClient, err = bybit.NewClient(cfg.Exchange.BaseURL, nil)
+	}
+	if err != nil {
+		log.Error("failed to create Bybit client", "error", err)
+		return
 	}
 	reportExecutionReadiness(
 		ctx,

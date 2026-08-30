@@ -730,3 +730,24 @@ target leverage, единый fail-closed trading gate, восстановлен
 
 Remote perf-ветка `origin/perf/bybit-url-parsing-15411217204785901013` также
 получена, но не объединена, поскольку не входит в историю основной ветки.
+
+## Дополнение 2026-08-30: fail-fast конструкторы Bybit-клиента
+
+`bybit.NewClient` и `bybit.NewAuthenticatedClient` теперь возвращают
+`(*Client, error)`. Оба конструктора проверяют base URL до создания клиента;
+внутри `Client` хранится уже разобранный `url.URL`, а сборка endpoint использует
+его копию. Поэтому невалидный URL не может привести к ошибке, отложенной до
+первого HTTP-запроса.
+
+`cmd/bot` обрабатывает ошибку при composition root, а unit-тесты проверяют оба
+конструктора на невалидном URL. Обновлён контракт в `docs/API.md`.
+
+Проверки:
+
+- `go mod verify` — успешно;
+- `go test ./...` — успешно;
+- `go test -race ./...` — успешно;
+- `go vet ./...` — успешно;
+- `go build ./...` — успешно;
+- `test -z "$(gofmt -l cmd internal)"`, `docker compose config --quiet` и
+  `git diff --check` — успешно.

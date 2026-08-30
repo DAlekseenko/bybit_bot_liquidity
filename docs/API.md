@@ -24,9 +24,11 @@
 | `ClosePosition(ctx, symbol)` | закрыть позицию | `ErrNotImplemented` |
 
 Все методы принимают `context.Context`. `bybit.NewClient` принимает base URL и
-необязательный `*http.Client`; при `nil` создаётся клиент с timeout 10 секунд.
-`NewAuthenticatedClient` дополнительно принимает API key/secret и маскирует их
-при форматировании структуры.
+необязательный `*http.Client` и возвращает `(*Client, error)`: base URL
+проверяется сразу, поэтому невалидный клиент не создаётся. При `nil` создаётся
+HTTP-клиент с timeout 10 секунд. `NewAuthenticatedClient` также возвращает
+`(*Client, error)`, дополнительно принимает API key/secret и маскирует их при
+форматировании структуры.
 
 REST-контракт намеренно фиксирован под MVP:
 

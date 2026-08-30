@@ -46,7 +46,7 @@ func TestGetCandles(t *testing.T) {
 }`), nil
 	})}
 
-	client := NewClient("https://api.example.test/proxy/", httpClient)
+	client := newClient(t, "https://api.example.test/proxy/", httpClient)
 	candles, err := client.GetCandles(context.Background(), "BTCUSDT", 2)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestGetOpenInterest(t *testing.T) {
 }`), nil
 	})}
 
-	client := NewClient("https://api.example.test", httpClient)
+	client := newClient(t, "https://api.example.test", httpClient)
 	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestOpenInterestInterval(t *testing.T) {
 func TestGetOpenInterestRejectsUnsupportedWindow(t *testing.T) {
 	t.Parallel()
 
-	client := NewClient("https://api.example.test", nil)
+	client := newClient(t, "https://api.example.test", nil)
 	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 10)
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
@@ -206,7 +206,7 @@ func TestGetInstrumentRules(t *testing.T) {
 }`), nil
 	})}
 
-	client := NewClient("https://api.example.test", httpClient)
+	client := newClient(t, "https://api.example.test", httpClient)
 	rules, err := client.GetInstrumentRules(context.Background(), "BTCUSDT")
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestGetLastPrice(t *testing.T) {
 		}`), nil
 	})}
 
-	client := NewClient("https://api.example.test", httpClient)
+	client := newClient(t, "https://api.example.test", httpClient)
 	price, err := client.GetLastPrice(context.Background(), "BTCUSDT")
 	if err != nil {
 		t.Fatal(err)
@@ -369,7 +369,7 @@ func TestGetLeverageSignsRequest(t *testing.T) {
 		}`), nil
 	})}
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", httpClient)
 	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
 	info, err := client.GetLeverage(context.Background(), "BTCUSDT")
 	if err != nil {
@@ -511,7 +511,7 @@ func TestGetAccountInfoSignsRequest(t *testing.T) {
 		}`), nil
 	})}
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", httpClient)
 	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
 	info, err := client.GetAccountInfo(context.Background())
 	if err != nil {
@@ -594,7 +594,7 @@ func TestGetAccountBalanceSignsRequest(t *testing.T) {
 		}`), nil
 	})}
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", httpClient)
 	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
 	balance, err := client.GetAccountBalance(context.Background())
 	if err != nil {
@@ -612,7 +612,7 @@ func TestGetAccountBalanceRequiresCredentialsWithoutRequest(t *testing.T) {
 	t.Parallel()
 
 	requests := 0
-	client := NewClient("https://api.example.test", &http.Client{
+	client := newClient(t, "https://api.example.test", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			requests++
 			return nil, errors.New("unexpected request")
@@ -630,7 +630,7 @@ func TestGetAccountBalanceRequiresCredentialsWithoutRequest(t *testing.T) {
 func TestAuthenticatedClientFormattingDoesNotExposeCredentials(t *testing.T) {
 	t.Parallel()
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", nil)
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", nil)
 	formatted := fmt.Sprintf("%#v", client)
 	if strings.Contains(formatted, "test-key") || strings.Contains(formatted, "test-secret") {
 		t.Fatalf("formatted client exposes credentials: %s", formatted)
@@ -731,7 +731,7 @@ func TestParseAccountBalanceRejectsMalformedResult(t *testing.T) {
 
 func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 	requests := 0
-	client := NewClient("https://example.com", &http.Client{
+	client := newClient(t, "https://example.com", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			requests++
 			return nil, errors.New("unexpected request")
@@ -764,11 +764,35 @@ func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 	}
 }
 
-func TestGetOpenInterestRejectsInvalidBaseURL(t *testing.T) {
-	client := NewClient("://invalid", nil)
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
-	if !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+func TestConstructorsRejectInvalidBaseURL(t *testing.T) {
+	constructors := []struct {
+		name string
+		new  func() (*Client, error)
+	}{
+		{
+			name: "public",
+			new: func() (*Client, error) {
+				return NewClient("://invalid", nil)
+			},
+		},
+		{
+			name: "authenticated",
+			new: func() (*Client, error) {
+				return NewAuthenticatedClient("://invalid", "test-key", "test-secret", nil)
+			},
+		},
+	}
+
+	for _, constructor := range constructors {
+		t.Run(constructor.name, func(t *testing.T) {
+			client, err := constructor.new()
+			if client != nil {
+				t.Fatalf("client = %#v, want nil", client)
+			}
+			if !errors.Is(err, ErrInvalidArgument) {
+				t.Fatalf("error = %v, want ErrInvalidArgument", err)
+			}
+		})
 	}
 }
 
@@ -972,7 +996,7 @@ func TestClientRejectsOversizedResponse(t *testing.T) {
 }
 
 func TestClientPreservesContextCancellation(t *testing.T) {
-	client := NewClient("https://example.com", &http.Client{
+	client := newClient(t, "https://example.com", &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			return nil, request.Context().Err()
 		}),
@@ -1026,7 +1050,7 @@ func TestGetPosition(t *testing.T) {
 		}`), nil
 	})}
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", httpClient)
 	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
 	position, err := client.GetPosition(context.Background(), "BTCUSDT")
 	if err != nil {
@@ -1167,7 +1191,7 @@ func TestGetPositionRejectsInvalidSymbolWithoutRequest(t *testing.T) {
 	t.Parallel()
 
 	requests := 0
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", &http.Client{
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			requests++
 			return nil, errors.New("unexpected request")
@@ -1183,7 +1207,7 @@ func TestGetPositionRejectsInvalidSymbolWithoutRequest(t *testing.T) {
 }
 
 func TestTradingMethodsRemainNotImplemented(t *testing.T) {
-	client := NewClient("https://example.com", nil)
+	client := newClient(t, "https://example.com", nil)
 
 	if _, err := client.PlaceOrder(context.Background(), exchange.OrderRequest{}); !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("PlaceOrder error = %v", err)
@@ -1207,10 +1231,30 @@ func assertQuery(t *testing.T, request *http.Request, expected map[string]string
 	}
 }
 
+func newClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
+	t.Helper()
+
+	client, err := NewClient(baseURL, httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
+func newAuthenticatedClient(t *testing.T, baseURL, apiKey, apiSecret string, httpClient *http.Client) *Client {
+	t.Helper()
+
+	client, err := NewAuthenticatedClient(baseURL, apiKey, apiSecret, httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 func clientForResponse(t *testing.T, status int, body string) *Client {
 	t.Helper()
 
-	return NewClient("https://api.example.test", &http.Client{
+	return newClient(t, "https://api.example.test", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(status, body), nil
 		}),
@@ -1220,7 +1264,7 @@ func clientForResponse(t *testing.T, status int, body string) *Client {
 func authenticatedClientForResponse(t *testing.T, status int, body string) *Client {
 	t.Helper()
 
-	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", &http.Client{
+	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(status, body), nil
 		}),
