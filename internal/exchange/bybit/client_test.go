@@ -46,7 +46,7 @@ func TestGetCandles(t *testing.T) {
 }`), nil
 	})}
 
-	client := NewClient("https://api.example.test/proxy/", httpClient)
+	client := newClient(t, "https://api.example.test/proxy/", httpClient)
 	candles, err := client.GetCandles(context.Background(), "BTCUSDT", 2)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +105,7 @@ func TestGetOpenInterest(t *testing.T) {
 }`), nil
 	})}
 
-	client := NewClient("https://api.example.test", httpClient)
+	client := newClient(t, "https://api.example.test", httpClient)
 	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestGetOpenInterest(t *testing.T) {
 
 func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 	requests := 0
-	client := NewClient("https://example.com", &http.Client{
+	client := newClient(t, "https://example.com", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			requests++
 			return nil, errors.New("unexpected request")
@@ -156,9 +156,11 @@ func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 	}
 }
 
-func TestGetOpenInterestRejectsInvalidBaseURL(t *testing.T) {
-	client := NewClient("://invalid", nil)
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+func TestNewClientRejectsInvalidBaseURL(t *testing.T) {
+	client, err := NewClient("://invalid", nil)
+	if client != nil {
+		t.Fatalf("client = %#v, want nil", client)
+	}
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
 	}
@@ -364,7 +366,7 @@ func TestClientRejectsOversizedResponse(t *testing.T) {
 }
 
 func TestClientPreservesContextCancellation(t *testing.T) {
-	client := NewClient("https://example.com", &http.Client{
+	client := newClient(t, "https://example.com", &http.Client{
 		Transport: roundTripperFunc(func(request *http.Request) (*http.Response, error) {
 			return nil, request.Context().Err()
 		}),
@@ -379,7 +381,7 @@ func TestClientPreservesContextCancellation(t *testing.T) {
 }
 
 func TestPrivateMethodsRemainNotImplemented(t *testing.T) {
-	client := NewClient("https://example.com", nil)
+	client := newClient(t, "https://example.com", nil)
 
 	if _, err := client.PlaceOrder(context.Background(), exchange.OrderRequest{}); !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("PlaceOrder error = %v", err)
@@ -406,10 +408,20 @@ func assertQuery(t *testing.T, request *http.Request, expected map[string]string
 	}
 }
 
+func newClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
+	t.Helper()
+
+	client, err := NewClient(baseURL, httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 func clientForResponse(t *testing.T, status int, body string) *Client {
 	t.Helper()
 
-	return NewClient("https://api.example.test", &http.Client{
+	return newClient(t, "https://api.example.test", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(status, body), nil
 		}),

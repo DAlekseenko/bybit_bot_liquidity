@@ -117,3 +117,24 @@ unit-тесты, race detector, `go vet` и сборку на push и pull reque
 - `go build ./...` — успешно;
 - `git diff --check` — успешно;
 - GitHub Actions `CI` — успешно.
+
+## Дополнение 2026-08-30: fail-fast URL в Bybit-клиенте
+
+`bybit.NewClient` теперь возвращает `(*Client, error)` и проверяет base URL
+до создания клиента. Проверенный `url.URL` хранится в `Client` как значение;
+`endpoint` копирует его перед добавлением path и query. Невалидный URL больше не
+создаёт объект с отложенной ошибкой при первом REST-вызове.
+
+Изменены тесты и benchmark конструктора, обновлён контракт в `docs/API.md`.
+
+Проверки:
+
+- `go mod verify` — успешно;
+- `go test ./...` — успешно;
+- `go test -race ./...` — успешно;
+- `go vet ./...` — успешно;
+- `go build ./...` — успешно;
+- `test -z "$(gofmt -l cmd internal)"` и `git diff --check` — успешно;
+- `BenchmarkEndpoint` — 557.6 ns/op, 408 B/op, 11 allocs/op на Apple M1.
+
+Pull request: [#4 Make Bybit client URL validation fail fast](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/4).
