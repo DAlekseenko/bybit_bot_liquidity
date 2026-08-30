@@ -1,5 +1,23 @@
 # Передача работы
 
+## Дополнение 2026-08-31: 01 market-data resilience
+
+В ветке `codex/01-market-data-resilience` добавлены безопасные улучшения
+read-only market-data контура:
+
+- Collector нормализует candles: сортирует и дедуплицирует интервал, предпочитая
+  подтверждённую копию свечи.
+- Idempotent public REST reads имеют budget из трёх попыток и экспоненциальную
+  задержку с jitter; retry применяется только к 429/5xx, известным временным
+  Bybit errors и сетевым timeout.
+- Polling ждёт заданный интервал после окончания предыдущего snapshot, не делая
+  catch-up burst.
+- Public liquidation WebSocket переподключается с bounded exponential backoff и
+  jitter; после разрыва окно ликвидаций очищается, потому что Bybit не даёт
+  исторический replay и прежние события нельзя считать полным окном.
+
+Реальная торговля не добавлена.
+
 ## Результат
 
 На 2026-07-22 завершён первый инкремент `internal/exchange/bybit`. Реализованы

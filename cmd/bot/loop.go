@@ -76,14 +76,16 @@ func runReadOnlyLoop(ctx context.Context, log *slog.Logger, runner *readOnlyRunn
 		runner.Tick(ctx)
 	}
 
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
 	for {
+		// Schedule the next collection after the previous one finishes. This
+		// deliberately avoids catch-up bursts when a network call took longer
+		// than the polling interval.
+		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			runner.log.Debug("running read-only loop")
 			runner.Tick(ctx)
 		}

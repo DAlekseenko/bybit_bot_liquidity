@@ -25,6 +25,15 @@ func (w *LiquidationWindow) Add(liquidation exchange.Liquidation) {
 	w.events = append(w.events, liquidation)
 }
 
+// Reset discards the partial window after a WebSocket gap. Bybit does not offer
+// historical all-liquidation replay, therefore retaining pre-gap values would
+// make a complete-window strategy input look deceptively complete.
+func (w *LiquidationWindow) Reset() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.events = nil
+}
+
 // Recent удаляет события старше now-retention и возвращает оставшиеся события.
 // Событие ровно на границе окна сохраняется. Возвращаемый срез является копией,
 // поэтому вызывающий код может изменять его без блокировки и влияния на окно.

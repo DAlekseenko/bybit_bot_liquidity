@@ -103,7 +103,9 @@ func main() {
 	background.Add(2)
 	go func() {
 		defer background.Done()
-		runLiquidationStream(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, websocketRetryDelay)
+		policy := defaultReconnectPolicy()
+		policy.InitialDelay = websocketRetryDelay
+		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.Reset, nil)
 	}()
 	go func() {
 		defer background.Done()

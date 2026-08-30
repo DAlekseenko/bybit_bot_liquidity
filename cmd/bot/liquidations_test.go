@@ -21,6 +21,18 @@ func TestRunLiquidationStreamReconnectsAndStops(t *testing.T) {
 	}
 }
 
+func TestReconnectPolicyUsesExponentialBackoffWithBoundedJitter(t *testing.T) {
+	t.Parallel()
+
+	policy := reconnectPolicy{InitialDelay: time.Second, MaxDelay: 4 * time.Second, JitterPercent: 0.2}
+	if got := policy.delay(3, func() float64 { return 1 }); got != 4800*time.Millisecond {
+		t.Fatalf("delay = %s, want 4.8s", got)
+	}
+	if got := policy.delay(10, func() float64 { return 0 }); got != 3200*time.Millisecond {
+		t.Fatalf("capped delay = %s, want 3.2s", got)
+	}
+}
+
 func TestCollectLiquidationsStopsWithContext(t *testing.T) {
 	t.Parallel()
 

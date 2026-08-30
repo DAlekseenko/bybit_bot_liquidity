@@ -52,6 +52,12 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("bybit API error: retCode=%d retMsg=%q", e.Code, e.Message)
 }
 
+// Retryable reports whether a failed idempotent read may be safely retried.
+// The caller still owns the retry budget and context deadline.
+func (e *APIError) Retryable() bool {
+	return e.Code == 10000 || e.Code == 10006
+}
+
 // HTTPError описывает ответ Bybit за пределами диапазона 2xx.
 type HTTPError struct {
 	StatusCode int
@@ -65,6 +71,11 @@ func (e *HTTPError) Error() string {
 	}
 
 	return fmt.Sprintf("bybit HTTP error: %s: %s", e.Status, e.Body)
+}
+
+// Retryable reports whether an HTTP failure is transient for an idempotent read.
+func (e *HTTPError) Retryable() bool {
+	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= http.StatusInternalServerError
 }
 
 // Client отвечает только за низкоуровневое взаимодействие с Bybit V5 API.
