@@ -89,7 +89,7 @@ func TestGetOpenInterest(t *testing.T) {
 		assertQuery(t, r, map[string]string{
 			"category":     linearCategory,
 			"symbol":       "BTCUSDT",
-			"intervalTime": openInterestInterval,
+			"intervalTime": "5min",
 			"limit":        "1",
 		})
 
@@ -106,7 +106,7 @@ func TestGetOpenInterest(t *testing.T) {
 	})}
 
 	client := NewClient("https://api.example.test", httpClient)
-	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,614 @@ func TestGetOpenInterest(t *testing.T) {
 	}
 	if !openInterest.Time.Equal(time.UnixMilli(180000).UTC()) {
 		t.Errorf("Time = %s", openInterest.Time)
+	}
+}
+
+func TestOpenInterestInterval(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		minutes int
+		want    string
+	}{
+		{minutes: 5, want: "5min"},
+		{minutes: 15, want: "15min"},
+		{minutes: 30, want: "30min"},
+		{minutes: 60, want: "1h"},
+		{minutes: 240, want: "4h"},
+		{minutes: 1440, want: "1d"},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.want, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := openInterestInterval(test.minutes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("interval = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestGetOpenInterestRejectsUnsupportedWindow(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("https://api.example.test", nil)
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 10)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+}
+
+func TestGetInstrumentRules(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/market/instruments-info" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{
+			"category": linearCategory,
+			"symbol":   "BTCUSDT",
+			"limit":    "1",
+		})
+
+		return httpResponse(http.StatusOK, `{
+  "retCode": 0,
+  "retMsg": "OK",
+  "result": {
+    "category": "linear",
+    "list": [{
+      "symbol": "BTCUSDT",
+      "status": "Trading",
+      "leverageFilter": {
+        "minLeverage": "1",
+        "maxLeverage": "100",
+        "leverageStep": "0.01"
+      },
+      "priceFilter": {
+        "minPrice": "0.10",
+        "maxPrice": "1999999.80",
+        "tickSize": "0.10"
+      },
+      "lotSizeFilter": {
+        "minNotionalValue": "5",
+        "maxOrderQty": "100",
+        "maxMktOrderQty": "50",
+        "minOrderQty": "0.001",
+        "qtyStep": "0.001"
+      }
+    }]
+  },
+  "time": 180100
+}`), nil
+	})}
+
+	client := NewClient("https://api.example.test", httpClient)
+	rules, err := client.GetInstrumentRules(context.Background(), "BTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rules.Symbol != "BTCUSDT" || rules.Status != "Trading" {
+		t.Fatalf("identity = %q/%q", rules.Symbol, rules.Status)
+	}
+	if rules.MinLeverage != 1 || rules.MaxLeverage != 100 || rules.LeverageStep != 0.01 {
+		t.Fatalf("leverage rules = %#v", rules)
+	}
+	if rules.TickSize != 0.1 || rules.MinPrice != 0.1 || rules.MaxPrice != 1999999.8 {
+		t.Fatalf("price rules = %#v", rules)
+	}
+	if rules.QtyStep != 0.001 || rules.MinOrderQty != 0.001 ||
+		rules.MaxOrderQty != 100 || rules.MaxMarketOrderQty != 50 ||
+		rules.MinNotionalValue != 5 {
+		t.Fatalf("quantity rules = %#v", rules)
+	}
+}
+
+func TestGetInstrumentRulesRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  string
+		wantErr string
+	}{
+		{
+			name:    "empty list",
+			result:  `{"category":"linear","list":[]}`,
+			wantErr: ErrEmptyResult.Error(),
+		},
+		{
+			name: "unexpected symbol",
+			result: `{"category":"linear","list":[{
+				"symbol":"ETHUSDT","status":"Trading",
+				"leverageFilter":{"minLeverage":"1","maxLeverage":"2","leverageStep":"1"},
+				"priceFilter":{"minPrice":"1","maxPrice":"2","tickSize":"1"},
+				"lotSizeFilter":{"minNotionalValue":"1","maxOrderQty":"2","maxMktOrderQty":"2","minOrderQty":"1","qtyStep":"1"}
+			}]}`,
+			wantErr: "unexpected symbol",
+		},
+		{
+			name: "invalid step",
+			result: `{"category":"linear","list":[{
+				"symbol":"BTCUSDT","status":"Trading",
+				"leverageFilter":{"minLeverage":"1","maxLeverage":"2","leverageStep":"1"},
+				"priceFilter":{"minPrice":"1","maxPrice":"2","tickSize":"0"},
+				"lotSizeFilter":{"minNotionalValue":"1","maxOrderQty":"2","maxMktOrderQty":"2","minOrderQty":"1","qtyStep":"1"}
+			}]}`,
+			wantErr: "invalid tickSize",
+		},
+		{
+			name: "invalid leverage step",
+			result: `{"category":"linear","list":[{
+				"symbol":"BTCUSDT","status":"Trading",
+				"leverageFilter":{"minLeverage":"1","maxLeverage":"2","leverageStep":"0"},
+				"priceFilter":{"minPrice":"1","maxPrice":"2","tickSize":"1"},
+				"lotSizeFilter":{"minNotionalValue":"1","maxOrderQty":"2","maxMktOrderQty":"2","minOrderQty":"1","qtyStep":"1"}
+			}]}`,
+			wantErr: "invalid leverageStep",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := clientForResponse(t, http.StatusOK, fmt.Sprintf(`{
+				"retCode":0,
+				"retMsg":"OK",
+				"result":%s,
+				"time":180100
+			}`, test.result))
+			_, err := client.GetInstrumentRules(context.Background(), "BTCUSDT")
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetLastPrice(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/market/tickers" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{
+			"category": linearCategory,
+			"symbol":   "BTCUSDT",
+		})
+		return httpResponse(http.StatusOK, `{
+			"retCode":0,
+			"retMsg":"OK",
+			"result":{
+				"category":"linear",
+				"list":[{
+					"symbol":"BTCUSDT",
+					"lastPrice":"50000.1",
+					"markPrice":"50001.2",
+					"indexPrice":"50002.3"
+				}]
+			},
+			"time":180100
+		}`), nil
+	})}
+
+	client := NewClient("https://api.example.test", httpClient)
+	price, err := client.GetLastPrice(context.Background(), "BTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if price.Symbol != "BTCUSDT" || price.LastPrice != 50000.1 ||
+		price.MarkPrice != 50001.2 || price.IndexPrice != 50002.3 {
+		t.Fatalf("price = %#v", price)
+	}
+	if !price.Time.Equal(time.UnixMilli(180100).UTC()) {
+		t.Fatalf("Time = %s", price.Time)
+	}
+}
+
+func TestGetLeverageSignsRequest(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/position/list" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{
+			"category": linearCategory,
+			"symbol":   "BTCUSDT",
+		})
+		headers := map[string]string{
+			"X-BAPI-API-KEY":     "test-key",
+			"X-BAPI-TIMESTAMP":   "1658384314791",
+			"X-BAPI-RECV-WINDOW": "5000",
+			"X-BAPI-SIGN":        "acbce6f124ccb7a0f1a447455f5ade0ab2b18de10682b04f40e02d260e338d26",
+		}
+		for name, expected := range headers {
+			if actual := r.Header.Get(name); actual != expected {
+				t.Errorf("%s = %q, want %q", name, actual, expected)
+			}
+		}
+		return httpResponse(http.StatusOK, `{
+			"retCode":0,
+			"retMsg":"OK",
+			"result":{
+				"category":"linear",
+				"list":[{
+					"symbol":"BTCUSDT",
+					"leverage":"10",
+					"side":"",
+					"positionIdx":0
+				}]
+			},
+			"time":1658384314800
+		}`), nil
+	})}
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
+	info, err := client.GetLeverage(context.Background(), "BTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Symbol != "BTCUSDT" || info.Leverage != 10 {
+		t.Fatalf("info = %#v", info)
+	}
+	if !info.Time.Equal(time.UnixMilli(1658384314800).UTC()) {
+		t.Fatalf("Time = %s", info.Time)
+	}
+}
+
+func TestGetLeverageRejectsHedgeMode(t *testing.T) {
+	t.Parallel()
+
+	client := authenticatedClientForResponse(t, http.StatusOK, `{
+		"retCode":0,
+		"retMsg":"OK",
+		"result":{
+			"category":"linear",
+			"list":[
+				{"symbol":"BTCUSDT","leverage":"10","positionIdx":1},
+				{"symbol":"BTCUSDT","leverage":"10","positionIdx":2}
+			]
+		},
+		"time":1658384314800
+	}`)
+	_, err := client.GetLeverage(context.Background(), "BTCUSDT")
+	if !errors.Is(err, ErrUnsupportedPositionMode) {
+		t.Fatalf("error = %v, want ErrUnsupportedPositionMode", err)
+	}
+}
+
+func TestGetLeverageRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  string
+		time    int64
+		wantErr string
+		wantIs  error
+	}{
+		{
+			name:   "empty list",
+			result: `{"category":"linear","list":[]}`,
+			time:   1,
+			wantIs: ErrEmptyResult,
+		},
+		{
+			name:    "wrong category",
+			result:  `{"category":"inverse","list":[{"symbol":"BTCUSDT","leverage":"1","positionIdx":0}]}`,
+			time:    1,
+			wantErr: "unexpected category",
+		},
+		{
+			name:    "missing position index",
+			result:  `{"category":"linear","list":[{"symbol":"BTCUSDT","leverage":"1"}]}`,
+			time:    1,
+			wantErr: "positionIdx is missing",
+		},
+		{
+			name:    "wrong symbol",
+			result:  `{"category":"linear","list":[{"symbol":"ETHUSDT","leverage":"1","positionIdx":0}]}`,
+			time:    1,
+			wantErr: "unexpected symbol",
+		},
+		{
+			name:    "zero leverage",
+			result:  `{"category":"linear","list":[{"symbol":"BTCUSDT","leverage":"0","positionIdx":0}]}`,
+			time:    1,
+			wantErr: "invalid leverage",
+		},
+		{
+			name:    "missing server time",
+			result:  `{"category":"linear","list":[{"symbol":"BTCUSDT","leverage":"1","positionIdx":0}]}`,
+			wantErr: "invalid server time",
+		},
+		{
+			name:    "duplicate one-way record",
+			result:  `{"category":"linear","list":[{"positionIdx":0},{"positionIdx":0}]}`,
+			time:    1,
+			wantErr: "expected one one-way leverage",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := authenticatedClientForResponse(t, http.StatusOK, fmt.Sprintf(`{
+				"retCode":0,
+				"retMsg":"OK",
+				"result":%s,
+				"time":%d
+			}`, test.result, test.time))
+			_, err := client.GetLeverage(context.Background(), "BTCUSDT")
+			if test.wantIs != nil {
+				if !errors.Is(err, test.wantIs) {
+					t.Fatalf("error = %v, want %v", err, test.wantIs)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetAccountInfoSignsRequest(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/account/info" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{})
+		headers := map[string]string{
+			"X-BAPI-API-KEY":     "test-key",
+			"X-BAPI-TIMESTAMP":   "1658384314791",
+			"X-BAPI-RECV-WINDOW": "5000",
+			"X-BAPI-SIGN":        "c6ce9f5b0b7806bb5e58cb7afcfacb29f9de4472fd08286adfe698bde1cdc6eb",
+		}
+		for name, expected := range headers {
+			if actual := r.Header.Get(name); actual != expected {
+				t.Errorf("%s = %q, want %q", name, actual, expected)
+			}
+		}
+		return httpResponse(http.StatusOK, `{
+			"retCode":0,
+			"retMsg":"OK",
+			"result":{
+				"unifiedMarginStatus":5,
+				"marginMode":"REGULAR_MARGIN",
+				"updatedTime":"1697078946000"
+			}
+		}`), nil
+	})}
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
+	info, err := client.GetAccountInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.UnifiedMarginStatus != 5 || info.MarginMode != exchange.MarginModeRegular {
+		t.Fatalf("info = %#v", info)
+	}
+	if !info.UpdatedAt.Equal(time.UnixMilli(1697078946000).UTC()) {
+		t.Fatalf("UpdatedAt = %s", info.UpdatedAt)
+	}
+}
+
+func TestParseAccountInfoRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  accountInfoResult
+		wantErr string
+	}{
+		{
+			name:    "missing unified status",
+			result:  accountInfoResult{MarginMode: "REGULAR_MARGIN", UpdatedTime: "1"},
+			wantErr: "invalid unifiedMarginStatus",
+		},
+		{
+			name:    "unsupported margin mode",
+			result:  accountInfoResult{UnifiedMarginStatus: 5, MarginMode: "UNKNOWN", UpdatedTime: "1"},
+			wantErr: "unsupported marginMode",
+		},
+		{
+			name:    "invalid updated time",
+			result:  accountInfoResult{UnifiedMarginStatus: 5, MarginMode: "REGULAR_MARGIN", UpdatedTime: "0"},
+			wantErr: "invalid updatedTime",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseAccountInfo(test.result)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetAccountBalanceSignsRequest(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/account/wallet-balance" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{"accountType": unifiedAccountType})
+		headers := map[string]string{
+			"X-BAPI-API-KEY":     "test-key",
+			"X-BAPI-TIMESTAMP":   "1658384314791",
+			"X-BAPI-RECV-WINDOW": "5000",
+			"X-BAPI-SIGN":        "edbffe3f3eeb9baf6b94d4564b43c1ab691113041c2c533b9ccb6ce114c0e930",
+		}
+		for name, expected := range headers {
+			if actual := r.Header.Get(name); actual != expected {
+				t.Errorf("%s = %q, want %q", name, actual, expected)
+			}
+		}
+		return httpResponse(http.StatusOK, `{
+			"retCode":0,
+			"retMsg":"OK",
+			"result":{"list":[{
+				"accountType":"UNIFIED",
+				"totalAvailableBalance":"1000.5",
+				"totalEquity":"1200.25",
+				"totalWalletBalance":"1100.75"
+			}]},
+			"time":1658384314800
+		}`), nil
+	})}
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
+	balance, err := client.GetAccountBalance(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.AvailableUSD != 1000.5 || balance.EquityUSD != 1200.25 || balance.WalletUSD != 1100.75 {
+		t.Fatalf("balance = %#v", balance)
+	}
+	if !balance.Time.Equal(time.UnixMilli(1658384314800).UTC()) {
+		t.Fatalf("Time = %s", balance.Time)
+	}
+}
+
+func TestGetAccountBalanceRequiresCredentialsWithoutRequest(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	client := NewClient("https://api.example.test", &http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			requests++
+			return nil, errors.New("unexpected request")
+		}),
+	})
+	_, err := client.GetAccountBalance(context.Background())
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0", requests)
+	}
+}
+
+func TestAuthenticatedClientFormattingDoesNotExposeCredentials(t *testing.T) {
+	t.Parallel()
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", nil)
+	formatted := fmt.Sprintf("%#v", client)
+	if strings.Contains(formatted, "test-key") || strings.Contains(formatted, "test-secret") {
+		t.Fatalf("formatted client exposes credentials: %s", formatted)
+	}
+}
+
+func TestParseMarketPriceRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		item       tickerItem
+		serverTime int64
+		wantErr    string
+	}{
+		{
+			name: "wrong symbol",
+			item: tickerItem{
+				Symbol: "ETHUSDT", LastPrice: "1", MarkPrice: "1", IndexPrice: "1",
+			},
+			serverTime: 1,
+			wantErr:    "unexpected symbol",
+		},
+		{
+			name: "missing server time",
+			item: tickerItem{
+				Symbol: "BTCUSDT", LastPrice: "1", MarkPrice: "1", IndexPrice: "1",
+			},
+			wantErr: "invalid server time",
+		},
+		{
+			name: "zero last price",
+			item: tickerItem{
+				Symbol: "BTCUSDT", LastPrice: "0", MarkPrice: "1", IndexPrice: "1",
+			},
+			serverTime: 1,
+			wantErr:    "invalid lastPrice",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseMarketPrice(test.item, "BTCUSDT", test.serverTime)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestParseAccountBalanceRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		item       walletBalanceItem
+		serverTime int64
+		wantErr    string
+	}{
+		{
+			name: "wrong account type",
+			item: walletBalanceItem{
+				AccountType: "CONTRACT", TotalAvailableBalance: "1", TotalEquity: "1", TotalWalletBalance: "1",
+			},
+			serverTime: 1,
+			wantErr:    "unexpected account type",
+		},
+		{
+			name: "missing server time",
+			item: walletBalanceItem{
+				AccountType: "UNIFIED", TotalAvailableBalance: "1", TotalEquity: "1", TotalWalletBalance: "1",
+			},
+			wantErr: "invalid server time",
+		},
+		{
+			name: "negative available balance",
+			item: walletBalanceItem{
+				AccountType: "UNIFIED", TotalAvailableBalance: "-1", TotalEquity: "1", TotalWalletBalance: "1",
+			},
+			serverTime: 1,
+			wantErr:    "invalid totalAvailableBalance",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseAccountBalance(test.item, test.serverTime)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
 	}
 }
 
@@ -158,7 +766,7 @@ func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 
 func TestGetOpenInterestRejectsInvalidBaseURL(t *testing.T) {
 	client := NewClient("://invalid", nil)
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("error = %v, want ErrInvalidArgument", err)
 	}
@@ -172,7 +780,7 @@ func TestClientReturnsAPIError(t *testing.T) {
   "time": 180000
 }`)
 
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	var apiError *APIError
 	if !errors.As(err, &apiError) {
 		t.Fatalf("error = %v, want *APIError", err)
@@ -185,7 +793,7 @@ func TestClientReturnsAPIError(t *testing.T) {
 func TestClientReturnsHTTPError(t *testing.T) {
 	client := clientForResponse(t, http.StatusTooManyRequests, "rate limited")
 
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	var httpError *HTTPError
 	if !errors.As(err, &httpError) {
 		t.Fatalf("error = %v, want *HTTPError", err)
@@ -245,7 +853,7 @@ func TestClientRejectsMalformedResponses(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			client := clientForResponse(t, http.StatusOK, test.body)
-			_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+			_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("error = %v, want text %q", err, test.wantErr)
 			}
@@ -261,7 +869,7 @@ func TestClientRejectsEmptyResults(t *testing.T) {
   "time": 180100
 }`)
 
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if !errors.Is(err, ErrEmptyResult) {
 		t.Fatalf("error = %v, want ErrEmptyResult", err)
 	}
@@ -357,7 +965,7 @@ func TestGetCandlesRejectsInvalidKlineData(t *testing.T) {
 func TestClientRejectsOversizedResponse(t *testing.T) {
 	client := clientForResponse(t, http.StatusOK, strings.Repeat("x", maxResponseBytes+1))
 
-	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
+	_, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
 	if !errors.Is(err, ErrResponseTooLarge) {
 		t.Fatalf("error = %v, want ErrResponseTooLarge", err)
 	}
@@ -372,20 +980,213 @@ func TestClientPreservesContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := client.GetOpenInterest(ctx, "BTCUSDT")
+	_, err := client.GetOpenInterest(ctx, "BTCUSDT", 5)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
 
-func TestPrivateMethodsRemainNotImplemented(t *testing.T) {
+func TestGetPosition(t *testing.T) {
+	t.Parallel()
+
+	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path != "/v5/position/list" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		assertQuery(t, r, map[string]string{
+			"category": linearCategory,
+			"symbol":   "BTCUSDT",
+		})
+		headers := map[string]string{
+			"X-BAPI-API-KEY":     "test-key",
+			"X-BAPI-TIMESTAMP":   "1658384314791",
+			"X-BAPI-RECV-WINDOW": "5000",
+			"X-BAPI-SIGN":        "acbce6f124ccb7a0f1a447455f5ade0ab2b18de10682b04f40e02d260e338d26",
+		}
+		for name, expected := range headers {
+			if actual := r.Header.Get(name); actual != expected {
+				t.Errorf("%s = %q, want %q", name, actual, expected)
+			}
+		}
+		return httpResponse(http.StatusOK, `{
+			"retCode":0,
+			"retMsg":"OK",
+			"result":{
+				"category":"linear",
+				"list":[{
+					"positionIdx":0,
+					"symbol":"BTCUSDT",
+					"side":"Buy",
+					"size":"0.25",
+					"avgPrice":"50000.5",
+					"createdTime":"1658384000000"
+				}]
+			},
+			"time":1658384314800
+		}`), nil
+	})}
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", httpClient)
+	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
+	position, err := client.GetPosition(context.Background(), "BTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position == nil {
+		t.Fatal("position is nil")
+	}
+	if position.Symbol != "BTCUSDT" || position.Side != exchange.SideLong ||
+		position.Qty != 0.25 || position.EntryPrice != 50000.5 {
+		t.Fatalf("position = %#v", position)
+	}
+	if !position.OpenedAt.Equal(time.UnixMilli(1658384000000).UTC()) {
+		t.Fatalf("OpenedAt = %s", position.OpenedAt)
+	}
+}
+
+func TestGetPositionReturnsNilForEmptyOneWayPosition(t *testing.T) {
+	t.Parallel()
+
+	client := authenticatedClientForResponse(t, http.StatusOK, `{
+		"retCode":0,
+		"retMsg":"OK",
+		"result":{
+			"category":"linear",
+			"list":[{
+				"positionIdx":0,
+				"symbol":"BTCUSDT",
+				"side":"",
+				"size":"0",
+				"avgPrice":"",
+				"createdTime":""
+			}]
+		},
+		"time":1658384314800
+	}`)
+	position, err := client.GetPosition(context.Background(), "BTCUSDT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if position != nil {
+		t.Fatalf("position = %#v, want nil", position)
+	}
+}
+
+func TestGetPositionRejectsHedgeMode(t *testing.T) {
+	t.Parallel()
+
+	client := authenticatedClientForResponse(t, http.StatusOK, `{
+		"retCode":0,
+		"retMsg":"OK",
+		"result":{
+			"category":"linear",
+			"list":[
+				{"positionIdx":1,"symbol":"BTCUSDT","side":"","size":"0","avgPrice":"","createdTime":""},
+				{"positionIdx":2,"symbol":"BTCUSDT","side":"","size":"0","avgPrice":"","createdTime":""}
+			]
+		},
+		"time":1658384314800
+	}`)
+	_, err := client.GetPosition(context.Background(), "BTCUSDT")
+	if !errors.Is(err, ErrUnsupportedPositionMode) {
+		t.Fatalf("error = %v, want ErrUnsupportedPositionMode", err)
+	}
+}
+
+func TestGetPositionRejectsMalformedResult(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		result  string
+		wantErr string
+		wantIs  error
+	}{
+		{
+			name:   "empty list",
+			result: `{"category":"linear","list":[]}`,
+			wantIs: ErrEmptyResult,
+		},
+		{
+			name:    "wrong category",
+			result:  `{"category":"inverse","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"","size":"0"}]}`,
+			wantErr: "unexpected category",
+		},
+		{
+			name:    "missing position index",
+			result:  `{"category":"linear","list":[{"symbol":"BTCUSDT","side":"","size":"0"}]}`,
+			wantErr: "positionIdx is missing",
+		},
+		{
+			name:    "wrong symbol",
+			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"ETHUSDT","side":"","size":"0"}]}`,
+			wantErr: "unexpected symbol",
+		},
+		{
+			name:    "unsupported side",
+			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"None","size":"1","avgPrice":"1","createdTime":"1"}]}`,
+			wantErr: "unsupported position side",
+		},
+		{
+			name:    "missing created time",
+			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"Sell","size":"1","avgPrice":"1","createdTime":""}]}`,
+			wantErr: "invalid createdTime",
+		},
+		{
+			name:    "duplicate one-way record",
+			result:  `{"category":"linear","list":[{"positionIdx":0},{"positionIdx":0}]}`,
+			wantErr: "expected one one-way position",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			client := authenticatedClientForResponse(t, http.StatusOK, fmt.Sprintf(`{
+				"retCode":0,
+				"retMsg":"OK",
+				"result":%s,
+				"time":1658384314800
+			}`, test.result))
+			_, err := client.GetPosition(context.Background(), "BTCUSDT")
+			if test.wantIs != nil {
+				if !errors.Is(err, test.wantIs) {
+					t.Fatalf("error = %v, want %v", err, test.wantIs)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want text %q", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestGetPositionRejectsInvalidSymbolWithoutRequest(t *testing.T) {
+	t.Parallel()
+
+	requests := 0
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", &http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			requests++
+			return nil, errors.New("unexpected request")
+		}),
+	})
+	_, err := client.GetPosition(context.Background(), "btcusdt")
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
+	}
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0", requests)
+	}
+}
+
+func TestTradingMethodsRemainNotImplemented(t *testing.T) {
 	client := NewClient("https://example.com", nil)
 
 	if _, err := client.PlaceOrder(context.Background(), exchange.OrderRequest{}); !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("PlaceOrder error = %v", err)
-	}
-	if _, err := client.GetPosition(context.Background(), "BTCUSDT"); !errors.Is(err, ErrNotImplemented) {
-		t.Fatalf("GetPosition error = %v", err)
 	}
 	if err := client.ClosePosition(context.Background(), "BTCUSDT"); !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("ClosePosition error = %v", err)
@@ -414,6 +1215,18 @@ func clientForResponse(t *testing.T, status int, body string) *Client {
 			return httpResponse(status, body), nil
 		}),
 	})
+}
+
+func authenticatedClientForResponse(t *testing.T, status int, body string) *Client {
+	t.Helper()
+
+	client := NewAuthenticatedClient("https://api.example.test", "test-key", "test-secret", &http.Client{
+		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return httpResponse(status, body), nil
+		}),
+	})
+	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
+	return client
 }
 
 func httpResponse(status int, body string) *http.Response {

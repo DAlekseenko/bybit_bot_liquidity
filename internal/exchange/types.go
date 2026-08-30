@@ -42,6 +42,63 @@ type OpenInterest struct {
 	Value float64
 }
 
+// InstrumentRules задаёт актуальные биржевые ограничения linear-инструмента.
+type InstrumentRules struct {
+	Symbol            string
+	Status            string
+	MinLeverage       float64
+	MaxLeverage       float64
+	LeverageStep      float64
+	TickSize          float64
+	MinPrice          float64
+	MaxPrice          float64
+	QtyStep           float64
+	MinOrderQty       float64
+	MaxOrderQty       float64
+	MaxMarketOrderQty float64
+	MinNotionalValue  float64
+}
+
+// MarketPrice содержит актуальные public цены linear-инструмента.
+type MarketPrice struct {
+	Symbol     string
+	LastPrice  float64
+	MarkPrice  float64
+	IndexPrice float64
+	Time       time.Time
+}
+
+// LeverageInfo содержит текущую настройку плеча linear-инструмента.
+type LeverageInfo struct {
+	Symbol   string
+	Leverage float64
+	Time     time.Time
+}
+
+// MarginMode описывает account-level режим маржи Bybit.
+type MarginMode string
+
+const (
+	MarginModeIsolated  MarginMode = "ISOLATED_MARGIN"
+	MarginModeRegular   MarginMode = "REGULAR_MARGIN"
+	MarginModePortfolio MarginMode = "PORTFOLIO_MARGIN"
+)
+
+// AccountInfo содержит read-only параметры Unified account.
+type AccountInfo struct {
+	UnifiedMarginStatus int
+	MarginMode          MarginMode
+	UpdatedAt           time.Time
+}
+
+// AccountBalance содержит доступный баланс Unified account в USD.
+type AccountBalance struct {
+	AvailableUSD float64
+	EquityUSD    float64
+	WalletUSD    float64
+	Time         time.Time
+}
+
 // Liquidation описывает событие ликвидации из WebSocket-потока Bybit.
 type Liquidation struct {
 	// Symbol - торговый инструмент.
@@ -106,7 +163,12 @@ type Position struct {
 // Client задает минимальный контракт биржевого клиента для MVP.
 type Client interface {
 	GetCandles(ctx context.Context, symbol string, limit int) ([]Candle, error)
-	GetOpenInterest(ctx context.Context, symbol string) (OpenInterest, error)
+	GetOpenInterest(ctx context.Context, symbol string, windowMinutes int) (OpenInterest, error)
+	GetInstrumentRules(ctx context.Context, symbol string) (InstrumentRules, error)
+	GetLastPrice(ctx context.Context, symbol string) (MarketPrice, error)
+	GetLeverage(ctx context.Context, symbol string) (LeverageInfo, error)
+	GetAccountInfo(ctx context.Context) (AccountInfo, error)
+	GetAccountBalance(ctx context.Context) (AccountBalance, error)
 	PlaceOrder(ctx context.Context, order OrderRequest) (Order, error)
 	GetPosition(ctx context.Context, symbol string) (*Position, error)
 	ClosePosition(ctx context.Context, symbol string) error

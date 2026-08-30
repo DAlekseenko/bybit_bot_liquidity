@@ -15,7 +15,10 @@ import (
 )
 
 func TestExecutePlacesLongOrder(t *testing.T) {
-	fakeExchange := &exchangeMock{}
+	rules := testInstrumentRules()
+	rules.QtyStep = 0.1
+	rules.MinOrderQty = 0.1
+	fakeExchange := &exchangeMock{rules: rules}
 	fakeStore := &signalStoreMock{}
 	executor := New(
 		fakeExchange,
@@ -39,6 +42,9 @@ func TestExecutePlacesLongOrder(t *testing.T) {
 	}
 	if fakeExchange.lastOrder.Side != exchange.SideLong {
 		t.Fatalf("expected LONG, got %s", fakeExchange.lastOrder.Side)
+	}
+	if fakeExchange.lastOrder.Qty != 0.2 {
+		t.Fatalf("normalized Qty = %v, want 0.2", fakeExchange.lastOrder.Qty)
 	}
 	if fakeStore.saved.Type != strategy.SignalLong {
 		t.Fatalf("signal was not saved")
@@ -159,13 +165,57 @@ func TestMarkPositionClosedAllowsNextOrderAfterCooldown(t *testing.T) {
 	}
 }
 
+func TestExecuteDoesNotLockPositionAfterRejectedOrder(t *testing.T) {
+	placeErr := errors.New("place order")
+	fakeExchange := &exchangeMock{placeOrderErr: placeErr}
+	executor := New(
+		fakeExchange,
+		risk.New(risk.Config{RiskPerTradePercent: 1, StopLossPercent: 0.8, TakeProfitPercent: 1.6}),
+		nil,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		10*time.Minute,
+	)
+	signal := strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalLong}
+
+	if _, err := executor.Execute(context.Background(), signal, 10000, 50000); !errors.Is(err, placeErr) {
+		t.Fatalf("first Execute() error = %v, want %v", err, placeErr)
+	}
+	fakeExchange.placeOrderErr = nil
+	if _, err := executor.Execute(context.Background(), signal, 10000, 50000); err != nil {
+		t.Fatalf("second Execute() error = %v", err)
+	}
+}
+
 type exchangeMock struct {
-	position  *exchange.Position
-	lastOrder exchange.OrderRequest
+	position      *exchange.Position
+	lastOrder     exchange.OrderRequest
+	rules         exchange.InstrumentRules
+	placeOrderErr error
+}
+
+func (m *exchangeMock) GetInstrumentRules(_ context.Context, symbol string) (exchange.InstrumentRules, error) {
+	if m.rules.Symbol == "" {
+		return exchange.InstrumentRules{
+			Symbol:            symbol,
+			Status:            "Trading",
+			TickSize:          0.1,
+			MinPrice:          0.1,
+			MaxPrice:          1000000,
+			QtyStep:           0.001,
+			MinOrderQty:       0.001,
+			MaxOrderQty:       100,
+			MaxMarketOrderQty: 100,
+			MinNotionalValue:  5,
+		}, nil
+	}
+	return m.rules, nil
 }
 
 func (m *exchangeMock) PlaceOrder(ctx context.Context, order exchange.OrderRequest) (exchange.Order, error) {
 	m.lastOrder = order
+	if m.placeOrderErr != nil {
+		return exchange.Order{}, m.placeOrderErr
+	}
 	return exchange.Order{ID: "order-1", Symbol: order.Symbol, Side: order.Side, Qty: order.Qty}, nil
 }
 
@@ -184,6 +234,21 @@ type signalStoreMock struct {
 type countingExchange struct {
 	mu     sync.Mutex
 	orders int
+}
+
+func (e *countingExchange) GetInstrumentRules(_ context.Context, symbol string) (exchange.InstrumentRules, error) {
+	return exchange.InstrumentRules{
+		Symbol:            symbol,
+		Status:            "Trading",
+		TickSize:          0.1,
+		MinPrice:          0.1,
+		MaxPrice:          1000000,
+		QtyStep:           0.001,
+		MinOrderQty:       0.001,
+		MaxOrderQty:       100,
+		MaxMarketOrderQty: 100,
+		MinNotionalValue:  5,
+	}, nil
 }
 
 func (e *countingExchange) PlaceOrder(_ context.Context, order exchange.OrderRequest) (exchange.Order, error) {

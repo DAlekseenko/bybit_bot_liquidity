@@ -1,4 +1,5 @@
 .DS_Store
+.idea/
 
 # Build artifacts
 /bin/
@@ -11,3 +12,6 @@
 
 # Local configuration
 /.env
+/certs/*.cer
+/certs/*.crt
+/certs/*.pem

@@ -4,5 +4,5 @@
 единственном числе.
 
 Канонические инструкции находятся в [AGENTS.md](AGENTS.md). Краткий контекст
-проекта — в [.ai/CONTEXT.md](.ai/CONTEXT.md), текущая работа — в
-[.ai/CURRENT_TASK.md](.ai/CURRENT_TASK.md).
+проекта — в [.ai/CONTEXT.md](.ai/CONTEXT.md), состояние последней работы — в
+[.ai/HANDOFF.md](.ai/HANDOFF.md).

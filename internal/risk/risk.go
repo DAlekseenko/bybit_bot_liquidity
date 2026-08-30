@@ -17,11 +17,15 @@ type Config struct {
 	StopLossPercent float64
 	// TakeProfitPercent - расстояние take profit от цены входа.
 	TakeProfitPercent float64
+	// EstimatedRoundTripFeePercent - резерв комиссии входа и выхода.
+	EstimatedRoundTripFeePercent float64
+	// SlippageAllowancePercent - резерв ожидаемого проскальзывания.
+	SlippageAllowancePercent float64
 }
 
 // Plan содержит готовые параметры позиции после расчета риска.
 type Plan struct {
-	// Qty - размер позиции, рассчитанный из риска и расстояния до stop loss.
+	// Qty - размер позиции с учётом stop loss и оценочных издержек.
 	Qty float64
 	// StopLoss и TakeProfit - цены защитных ордеров.
 	StopLoss   float64
@@ -40,16 +44,24 @@ func New(cfg Config) *Manager {
 }
 
 func (m *Manager) Plan(balance, entryPrice float64, side exchange.Side) (Plan, error) {
-	if !isFinitePositive(balance) ||
-		!isFinitePositive(entryPrice) ||
-		!isFinitePositive(m.cfg.RiskPerTradePercent) ||
-		!isFinitePositive(m.cfg.StopLossPercent) ||
-		!isFinitePositive(m.cfg.TakeProfitPercent) {
+	if !positiveFinite(balance) ||
+		!positiveFinite(entryPrice) ||
+		!positiveFinite(m.cfg.RiskPerTradePercent) ||
+		!positiveFinite(m.cfg.StopLossPercent) ||
+		!positiveFinite(m.cfg.TakeProfitPercent) ||
+		!nonNegativeFinite(m.cfg.EstimatedRoundTripFeePercent) ||
+		!nonNegativeFinite(m.cfg.SlippageAllowancePercent) {
 		return Plan{}, ErrInvalidInput
 	}
 
 	riskUSD := balance * m.cfg.RiskPerTradePercent / 100
-	priceRisk := entryPrice * m.cfg.StopLossPercent / 100
+	totalLossPercent := m.cfg.StopLossPercent +
+		m.cfg.EstimatedRoundTripFeePercent +
+		m.cfg.SlippageAllowancePercent
+	if !positiveFinite(totalLossPercent) {
+		return Plan{}, ErrInvalidInput
+	}
+	priceRisk := entryPrice * totalLossPercent / 100
 	qty := riskUSD / priceRisk
 	plan := Plan{
 		Qty:     qty,
@@ -67,16 +79,20 @@ func (m *Manager) Plan(balance, entryPrice float64, side exchange.Side) (Plan, e
 		return Plan{}, ErrInvalidInput
 	}
 
-	if !isFinitePositive(plan.Qty) ||
-		!isFinitePositive(plan.StopLoss) ||
-		!isFinitePositive(plan.TakeProfit) ||
-		!isFinitePositive(plan.RiskUSD) {
+	if !positiveFinite(plan.Qty) ||
+		!positiveFinite(plan.StopLoss) ||
+		!positiveFinite(plan.TakeProfit) ||
+		!positiveFinite(plan.RiskUSD) {
 		return Plan{}, ErrInvalidInput
 	}
 
 	return plan, nil
 }
 
-func isFinitePositive(value float64) bool {
+func positiveFinite(value float64) bool {
 	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func nonNegativeFinite(value float64) bool {
+	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
