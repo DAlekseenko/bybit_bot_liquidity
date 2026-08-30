@@ -106,7 +106,7 @@ func TestGetOpenInterest(t *testing.T) {
 	})}
 
 	client := newClient(t, "https://api.example.test", httpClient)
-	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT", 5)
+	openInterest, err := client.GetOpenInterest(context.Background(), "BTCUSDT")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,35 +764,13 @@ func TestGetCandlesRejectsInvalidArgumentsWithoutRequest(t *testing.T) {
 	}
 }
 
-func TestConstructorsRejectInvalidBaseURL(t *testing.T) {
-	constructors := []struct {
-		name string
-		new  func() (*Client, error)
-	}{
-		{
-			name: "public",
-			new: func() (*Client, error) {
-				return NewClient("://invalid", nil)
-			},
-		},
-		{
-			name: "authenticated",
-			new: func() (*Client, error) {
-				return NewAuthenticatedClient("://invalid", "test-key", "test-secret", nil)
-			},
-		},
+func TestNewClientRejectsInvalidBaseURL(t *testing.T) {
+	client, err := NewClient("://invalid", nil)
+	if client != nil {
+		t.Fatalf("client = %#v, want nil", client)
 	}
-
-	for _, constructor := range constructors {
-		t.Run(constructor.name, func(t *testing.T) {
-			client, err := constructor.new()
-			if client != nil {
-				t.Fatalf("client = %#v, want nil", client)
-			}
-			if !errors.Is(err, ErrInvalidArgument) {
-				t.Fatalf("error = %v, want ErrInvalidArgument", err)
-			}
-		})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("error = %v, want ErrInvalidArgument", err)
 	}
 }
 
@@ -1010,203 +988,7 @@ func TestClientPreservesContextCancellation(t *testing.T) {
 	}
 }
 
-func TestGetPosition(t *testing.T) {
-	t.Parallel()
-
-	httpClient := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Path != "/v5/position/list" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
-		assertQuery(t, r, map[string]string{
-			"category": linearCategory,
-			"symbol":   "BTCUSDT",
-		})
-		headers := map[string]string{
-			"X-BAPI-API-KEY":     "test-key",
-			"X-BAPI-TIMESTAMP":   "1658384314791",
-			"X-BAPI-RECV-WINDOW": "5000",
-			"X-BAPI-SIGN":        "acbce6f124ccb7a0f1a447455f5ade0ab2b18de10682b04f40e02d260e338d26",
-		}
-		for name, expected := range headers {
-			if actual := r.Header.Get(name); actual != expected {
-				t.Errorf("%s = %q, want %q", name, actual, expected)
-			}
-		}
-		return httpResponse(http.StatusOK, `{
-			"retCode":0,
-			"retMsg":"OK",
-			"result":{
-				"category":"linear",
-				"list":[{
-					"positionIdx":0,
-					"symbol":"BTCUSDT",
-					"side":"Buy",
-					"size":"0.25",
-					"avgPrice":"50000.5",
-					"createdTime":"1658384000000"
-				}]
-			},
-			"time":1658384314800
-		}`), nil
-	})}
-
-	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", httpClient)
-	client.now = func() time.Time { return time.UnixMilli(1658384314791).UTC() }
-	position, err := client.GetPosition(context.Background(), "BTCUSDT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if position == nil {
-		t.Fatal("position is nil")
-	}
-	if position.Symbol != "BTCUSDT" || position.Side != exchange.SideLong ||
-		position.Qty != 0.25 || position.EntryPrice != 50000.5 {
-		t.Fatalf("position = %#v", position)
-	}
-	if !position.OpenedAt.Equal(time.UnixMilli(1658384000000).UTC()) {
-		t.Fatalf("OpenedAt = %s", position.OpenedAt)
-	}
-}
-
-func TestGetPositionReturnsNilForEmptyOneWayPosition(t *testing.T) {
-	t.Parallel()
-
-	client := authenticatedClientForResponse(t, http.StatusOK, `{
-		"retCode":0,
-		"retMsg":"OK",
-		"result":{
-			"category":"linear",
-			"list":[{
-				"positionIdx":0,
-				"symbol":"BTCUSDT",
-				"side":"",
-				"size":"0",
-				"avgPrice":"",
-				"createdTime":""
-			}]
-		},
-		"time":1658384314800
-	}`)
-	position, err := client.GetPosition(context.Background(), "BTCUSDT")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if position != nil {
-		t.Fatalf("position = %#v, want nil", position)
-	}
-}
-
-func TestGetPositionRejectsHedgeMode(t *testing.T) {
-	t.Parallel()
-
-	client := authenticatedClientForResponse(t, http.StatusOK, `{
-		"retCode":0,
-		"retMsg":"OK",
-		"result":{
-			"category":"linear",
-			"list":[
-				{"positionIdx":1,"symbol":"BTCUSDT","side":"","size":"0","avgPrice":"","createdTime":""},
-				{"positionIdx":2,"symbol":"BTCUSDT","side":"","size":"0","avgPrice":"","createdTime":""}
-			]
-		},
-		"time":1658384314800
-	}`)
-	_, err := client.GetPosition(context.Background(), "BTCUSDT")
-	if !errors.Is(err, ErrUnsupportedPositionMode) {
-		t.Fatalf("error = %v, want ErrUnsupportedPositionMode", err)
-	}
-}
-
-func TestGetPositionRejectsMalformedResult(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name    string
-		result  string
-		wantErr string
-		wantIs  error
-	}{
-		{
-			name:   "empty list",
-			result: `{"category":"linear","list":[]}`,
-			wantIs: ErrEmptyResult,
-		},
-		{
-			name:    "wrong category",
-			result:  `{"category":"inverse","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"","size":"0"}]}`,
-			wantErr: "unexpected category",
-		},
-		{
-			name:    "missing position index",
-			result:  `{"category":"linear","list":[{"symbol":"BTCUSDT","side":"","size":"0"}]}`,
-			wantErr: "positionIdx is missing",
-		},
-		{
-			name:    "wrong symbol",
-			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"ETHUSDT","side":"","size":"0"}]}`,
-			wantErr: "unexpected symbol",
-		},
-		{
-			name:    "unsupported side",
-			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"None","size":"1","avgPrice":"1","createdTime":"1"}]}`,
-			wantErr: "unsupported position side",
-		},
-		{
-			name:    "missing created time",
-			result:  `{"category":"linear","list":[{"positionIdx":0,"symbol":"BTCUSDT","side":"Sell","size":"1","avgPrice":"1","createdTime":""}]}`,
-			wantErr: "invalid createdTime",
-		},
-		{
-			name:    "duplicate one-way record",
-			result:  `{"category":"linear","list":[{"positionIdx":0},{"positionIdx":0}]}`,
-			wantErr: "expected one one-way position",
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-
-			client := authenticatedClientForResponse(t, http.StatusOK, fmt.Sprintf(`{
-				"retCode":0,
-				"retMsg":"OK",
-				"result":%s,
-				"time":1658384314800
-			}`, test.result))
-			_, err := client.GetPosition(context.Background(), "BTCUSDT")
-			if test.wantIs != nil {
-				if !errors.Is(err, test.wantIs) {
-					t.Fatalf("error = %v, want %v", err, test.wantIs)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
-				t.Fatalf("error = %v, want text %q", err, test.wantErr)
-			}
-		})
-	}
-}
-
-func TestGetPositionRejectsInvalidSymbolWithoutRequest(t *testing.T) {
-	t.Parallel()
-
-	requests := 0
-	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", &http.Client{
-		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			requests++
-			return nil, errors.New("unexpected request")
-		}),
-	})
-	_, err := client.GetPosition(context.Background(), "btcusdt")
-	if !errors.Is(err, ErrInvalidArgument) {
-		t.Fatalf("error = %v, want ErrInvalidArgument", err)
-	}
-	if requests != 0 {
-		t.Fatalf("requests = %d, want 0", requests)
-	}
-}
-
-func TestTradingMethodsRemainNotImplemented(t *testing.T) {
+func TestPrivateMethodsRemainNotImplemented(t *testing.T) {
 	client := newClient(t, "https://example.com", nil)
 
 	if _, err := client.PlaceOrder(context.Background(), exchange.OrderRequest{}); !errors.Is(err, ErrNotImplemented) {
@@ -1241,30 +1023,10 @@ func newClient(t *testing.T, baseURL string, httpClient *http.Client) *Client {
 	return client
 }
 
-func newAuthenticatedClient(t *testing.T, baseURL, apiKey, apiSecret string, httpClient *http.Client) *Client {
-	t.Helper()
-
-	client, err := NewAuthenticatedClient(baseURL, apiKey, apiSecret, httpClient)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return client
-}
-
 func clientForResponse(t *testing.T, status int, body string) *Client {
 	t.Helper()
 
 	return newClient(t, "https://api.example.test", &http.Client{
-		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-			return httpResponse(status, body), nil
-		}),
-	})
-}
-
-func authenticatedClientForResponse(t *testing.T, status int, body string) *Client {
-	t.Helper()
-
-	client := newAuthenticatedClient(t, "https://api.example.test", "test-key", "test-secret", &http.Client{
 		Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(status, body), nil
 		}),

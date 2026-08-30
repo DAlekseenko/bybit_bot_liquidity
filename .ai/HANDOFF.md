@@ -706,41 +706,16 @@ WebSocket `bad handshake`; поэтому после миграции новый
 - `test -z "$(gofmt -l cmd internal)"` — успешно;
 - `docker compose config --quiet` — успешно;
 - `git diff --check` — успешно;
-- `govulncheck@latest ./...` на Go 1.26.7 — достижимых уязвимостей нет;
-  непрямая Windows-only уязвимость `golang.org/x/sys` не вызывается целевым
-  кодом, а исправленная версия требует Go 1.25+;
-- полная сборка Docker image не выполнена: локальный Docker daemon не запущен.
+- GitHub Actions `CI` — успешно.
 
-Открытые блокеры реальной торговли не изменились: order/close wire contract,
-target leverage, единый fail-closed trading gate, восстановление состояния и
-безопасная Testnet integration остаются в открытых решениях.
+## Дополнение 2026-08-30: fail-fast URL в Bybit-клиенте
 
-## Дополнение 2026-08-30: синхронизация с origin
+`bybit.NewClient` теперь возвращает `(*Client, error)` и проверяет base URL
+до создания клиента. Проверенный `url.URL` хранится в `Client` как значение;
+`endpoint` копирует его перед добавлением path и query. Невалидный URL больше не
+создаёт объект с отложенной ошибкой при первом REST-вызове.
 
-Выполнен `git fetch --all --prune`. Проверенная локальная интеграция сохранена
-коммитом `76e3a7b`, затем актуальный `origin/codex/structure` (`8c5038a`)
-объединён в текущую ветку merge-коммитом `0006084`.
-
-Из основной удалённой ветки добавлен `docs/ROADMAP.md`. Его исходный текст
-описывал состояние до read-only runtime (ошибочно считал SQLite, WebSocket,
-валидацию и wiring отсутствующими), поэтому roadmap обновлён: реализованная
-основа отделена от блокеров реальной торговли, небезопасный совет об
-автоматических реальных заявках удалён, направление CoinGecko сохранено как этап
-за пределами односимвольного MVP. README теперь ссылается на roadmap.
-
-Remote perf-ветка `origin/perf/bybit-url-parsing-15411217204785901013` также
-получена, но не объединена, поскольку не входит в историю основной ветки.
-
-## Дополнение 2026-08-30: fail-fast конструкторы Bybit-клиента
-
-`bybit.NewClient` и `bybit.NewAuthenticatedClient` теперь возвращают
-`(*Client, error)`. Оба конструктора проверяют base URL до создания клиента;
-внутри `Client` хранится уже разобранный `url.URL`, а сборка endpoint использует
-его копию. Поэтому невалидный URL не может привести к ошибке, отложенной до
-первого HTTP-запроса.
-
-`cmd/bot` обрабатывает ошибку при composition root, а unit-тесты проверяют оба
-конструктора на невалидном URL. Обновлён контракт в `docs/API.md`.
+Изменены тесты и benchmark конструктора, обновлён контракт в `docs/API.md`.
 
 Проверки:
 
@@ -749,5 +724,7 @@ Remote perf-ветка `origin/perf/bybit-url-parsing-15411217204785901013` та
 - `go test -race ./...` — успешно;
 - `go vet ./...` — успешно;
 - `go build ./...` — успешно;
-- `test -z "$(gofmt -l cmd internal)"`, `docker compose config --quiet` и
-  `git diff --check` — успешно.
+- `test -z "$(gofmt -l cmd internal)"` и `git diff --check` — успешно;
+- `BenchmarkEndpoint` — 557.6 ns/op, 408 B/op, 11 allocs/op на Apple M1.
+
+Pull request: [#4 Make Bybit client URL validation fail fast](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/4).

@@ -26,9 +26,7 @@
 Все методы принимают `context.Context`. `bybit.NewClient` принимает base URL и
 необязательный `*http.Client` и возвращает `(*Client, error)`: base URL
 проверяется сразу, поэтому невалидный клиент не создаётся. При `nil` создаётся
-HTTP-клиент с timeout 10 секунд. `NewAuthenticatedClient` также возвращает
-`(*Client, error)`, дополнительно принимает API key/secret и маскирует их при
-форматировании структуры.
+HTTP-клиент с timeout 10 секунд.
 
 REST-контракт намеренно фиксирован под MVP:
 
