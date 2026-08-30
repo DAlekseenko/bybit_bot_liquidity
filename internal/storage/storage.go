@@ -3,10 +3,50 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
 	"bybit_bot_liquidity/internal/strategy"
+
+	_ "modernc.org/sqlite"
 )
+
+const DriverName = "sqlite"
+
+var (
+	ErrInvalidConfig        = errors.New("invalid storage config")
+	ErrIntegrityCheckFailed = errors.New("storage integrity check failed")
+	ErrVirtualSignalNotOpen = errors.New("virtual signal is not open")
+)
+
+// SignalRecord объединяет сигнал и необязательный снимок виртуальной сделки.
+type SignalRecord struct {
+	Signal      strategy.Signal
+	SignalPrice *float64
+	Indicators  *strategy.Indicators
+	Virtual     *VirtualTrade
+	ExitReason  string
+}
+
+// VirtualTrade хранит расчётные параметры позиции на момент сигнала.
+type VirtualTrade struct {
+	SignalCandleAt    time.Time
+	HypotheticalEntry float64
+	StopLoss          float64
+	TakeProfit        float64
+	EstimatedFees     float64
+	EstimatedSlippage float64
+	Qty               float64
+}
+
+// VirtualOutcome закрывает ранее сохранённую виртуальную сделку.
+type VirtualOutcome struct {
+	ExitPrice  float64
+	ExitReason string
+	PnL        float64
+	ClosedAt   time.Time
+}
 
 // Trade описывает завершенную или открытую сделку для таблицы trades.
 type Trade struct {
@@ -50,9 +90,20 @@ type Store struct {
 }
 
 func Open(driverName, dsn string) (*Store, error) {
+	if driverName == "" {
+		return nil, fmt.Errorf("%w: driver is required", ErrInvalidConfig)
+	}
+	if dsn == "" {
+		return nil, fmt.Errorf("%w: dsn is required", ErrInvalidConfig)
+	}
+
 	db, err := sql.Open(driverName, dsn)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open storage: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping storage: %w", err)
 	}
 
 	return &Store{db: db}, nil
@@ -64,6 +115,34 @@ func New(db *sql.DB) *Store {
 
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// Check выполняет read-only SQLite quick_check для runtime healthcheck.
+func (s *Store) Check(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA quick_check`)
+	if err != nil {
+		return fmt.Errorf("check storage integrity: %w", err)
+	}
+	defer rows.Close()
+
+	checked := false
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("check storage integrity: %w", err)
+		}
+		checked = true
+		if result != "ok" {
+			return fmt.Errorf("%w: %s", ErrIntegrityCheckFailed, result)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("check storage integrity: %w", err)
+	}
+	if !checked {
+		return fmt.Errorf("%w: empty result", ErrIntegrityCheckFailed)
+	}
+	return nil
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
@@ -85,20 +164,344 @@ CREATE TABLE IF NOT EXISTS signals (
 	symbol TEXT NOT NULL,
 	signal_type TEXT NOT NULL,
 	reason TEXT NOT NULL,
-	created_at TEXT NOT NULL
+	created_at TEXT NOT NULL,
+	signal_price REAL,
+	indicators_complete INTEGER,
+	confirmed_candles INTEGER,
+	required_candles INTEGER,
+	previous_open_interest REAL,
+	current_open_interest REAL,
+	previous_oi_at TEXT,
+	current_oi_at TEXT,
+	oi_growth_percent REAL,
+	oi_growth_threshold_percent REAL,
+	oi_condition_met INTEGER,
+	current_volume REAL,
+	volume_sma REAL,
+	volume_ratio REAL,
+	volume_threshold REAL,
+	volume_multiplier REAL,
+	volume_condition_met INTEGER,
+	candle_open REAL,
+	candle_close REAL,
+	candle_direction TEXT,
+	short_liquidations_usd REAL,
+	long_liquidations_usd REAL,
+	liquidation_threshold_usd REAL,
+	short_liquidation_condition_met INTEGER,
+	long_liquidation_condition_met INTEGER,
+	long_setup_met INTEGER,
+	short_setup_met INTEGER,
+	evaluated_at TEXT,
+	liquidation_window_start TEXT,
+	hypothetical_entry REAL,
+	stop_loss REAL,
+	take_profit REAL,
+	estimated_fees REAL,
+	estimated_slippage REAL,
+	virtual_qty REAL,
+	signal_candle_at TEXT,
+	virtual_exit_price REAL,
+	exit_reason TEXT,
+	virtual_pnl REAL,
+	virtual_closed_at TEXT
 );`)
-	return err
+	if err != nil {
+		return fmt.Errorf("migrate storage: %w", err)
+	}
+
+	return s.ensureSignalAnalysisColumns(ctx)
 }
 
 func (s *Store) SaveSignal(ctx context.Context, signal strategy.Signal) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO signals (symbol, signal_type, reason, created_at) VALUES (?, ?, ?, ?)`,
-		signal.Symbol,
-		string(signal.Type),
-		signal.Reason,
-		time.Now().UTC().Format(time.RFC3339Nano),
-	)
+	_, err := s.SaveSignalRecord(ctx, SignalRecord{Signal: signal})
 	return err
+}
+
+func (s *Store) SaveSignalRecord(ctx context.Context, record SignalRecord) (int64, error) {
+	var signalPrice any
+	if record.SignalPrice != nil {
+		signalPrice = *record.SignalPrice
+	}
+	indicatorValues := signalIndicatorValues(record.Indicators)
+
+	var hypotheticalEntry any
+	var stopLoss any
+	var takeProfit any
+	var estimatedFees any
+	var estimatedSlippage any
+	var virtualQty any
+	var signalCandleAt any
+	if record.Virtual != nil {
+		hypotheticalEntry = record.Virtual.HypotheticalEntry
+		stopLoss = record.Virtual.StopLoss
+		takeProfit = record.Virtual.TakeProfit
+		estimatedFees = record.Virtual.EstimatedFees
+		estimatedSlippage = record.Virtual.EstimatedSlippage
+		virtualQty = record.Virtual.Qty
+		signalCandleAt = record.Virtual.SignalCandleAt.UTC().Format(time.RFC3339Nano)
+	} else if record.Indicators != nil && !record.Indicators.SignalCandleAt.IsZero() {
+		signalCandleAt = record.Indicators.SignalCandleAt.UTC().Format(time.RFC3339Nano)
+	}
+
+	var exitReason any
+	if record.ExitReason != "" {
+		exitReason = record.ExitReason
+	}
+
+	result, err := s.db.ExecContext(ctx, `
+INSERT INTO signals (
+	symbol,
+	signal_type,
+	reason,
+	created_at,
+	signal_price,
+	indicators_complete,
+	confirmed_candles,
+	required_candles,
+	previous_open_interest,
+	current_open_interest,
+	previous_oi_at,
+	current_oi_at,
+	oi_growth_percent,
+	oi_growth_threshold_percent,
+	oi_condition_met,
+	current_volume,
+	volume_sma,
+	volume_ratio,
+	volume_threshold,
+	volume_multiplier,
+	volume_condition_met,
+	candle_open,
+	candle_close,
+	candle_direction,
+	short_liquidations_usd,
+	long_liquidations_usd,
+	liquidation_threshold_usd,
+	short_liquidation_condition_met,
+	long_liquidation_condition_met,
+	long_setup_met,
+	short_setup_met,
+	evaluated_at,
+	liquidation_window_start,
+	hypothetical_entry,
+	stop_loss,
+	take_profit,
+	estimated_fees,
+	estimated_slippage,
+	virtual_qty,
+	signal_candle_at,
+	exit_reason
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		record.Signal.Symbol,
+		string(record.Signal.Type),
+		record.Signal.Reason,
+		time.Now().UTC().Format(time.RFC3339Nano),
+		signalPrice,
+		indicatorValues[0],
+		indicatorValues[1],
+		indicatorValues[2],
+		indicatorValues[3],
+		indicatorValues[4],
+		indicatorValues[5],
+		indicatorValues[6],
+		indicatorValues[7],
+		indicatorValues[8],
+		indicatorValues[9],
+		indicatorValues[10],
+		indicatorValues[11],
+		indicatorValues[12],
+		indicatorValues[13],
+		indicatorValues[14],
+		indicatorValues[15],
+		indicatorValues[16],
+		indicatorValues[17],
+		indicatorValues[18],
+		indicatorValues[19],
+		indicatorValues[20],
+		indicatorValues[21],
+		indicatorValues[22],
+		indicatorValues[23],
+		indicatorValues[24],
+		indicatorValues[25],
+		indicatorValues[26],
+		indicatorValues[27],
+		hypotheticalEntry,
+		stopLoss,
+		takeProfit,
+		estimatedFees,
+		estimatedSlippage,
+		virtualQty,
+		signalCandleAt,
+		exitReason,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("save signal record: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("save signal record: get id: %w", err)
+	}
+	return id, nil
+}
+
+func signalIndicatorValues(indicators *strategy.Indicators) [28]any {
+	var values [28]any
+	if indicators == nil {
+		return values
+	}
+
+	values[0] = indicators.Complete
+	values[1] = indicators.ConfirmedCandles
+	values[2] = indicators.RequiredCandles
+	values[3] = indicators.PreviousOpenInterest
+	values[4] = indicators.CurrentOpenInterest
+	values[5] = nullableTime(indicators.PreviousOpenInterestAt)
+	values[6] = nullableTime(indicators.CurrentOpenInterestAt)
+	values[7] = indicators.OIGrowthPercent
+	values[8] = indicators.OIGrowthThresholdPercent
+	values[9] = indicators.OIConditionMet
+	if indicators.Complete {
+		values[10] = indicators.CurrentVolume
+		values[11] = indicators.VolumeSMA
+		if indicators.VolumeRatioAvailable {
+			values[12] = indicators.VolumeRatio
+		}
+		values[13] = indicators.VolumeThreshold
+		values[14] = indicators.VolumeMultiplier
+		values[15] = indicators.VolumeConditionMet
+		values[16] = indicators.CandleOpen
+		values[17] = indicators.CandleClose
+		values[18] = string(indicators.CandleDirection)
+	}
+	values[19] = indicators.ShortLiquidationsUSD
+	values[20] = indicators.LongLiquidationsUSD
+	values[21] = indicators.LiquidationThresholdUSD
+	values[22] = indicators.ShortLiquidationConditionMet
+	values[23] = indicators.LongLiquidationConditionMet
+	values[24] = indicators.LongSetupMet
+	values[25] = indicators.ShortSetupMet
+	values[26] = nullableTime(indicators.EvaluatedAt)
+	values[27] = nullableTime(indicators.LiquidationWindowStart)
+	return values
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC().Format(time.RFC3339Nano)
+}
+
+func (s *Store) CloseVirtualSignal(ctx context.Context, signalID int64, outcome VirtualOutcome) error {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE signals
+SET virtual_exit_price = ?, exit_reason = ?, virtual_pnl = ?, virtual_closed_at = ?
+WHERE id = ? AND hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL`,
+		outcome.ExitPrice,
+		outcome.ExitReason,
+		outcome.PnL,
+		outcome.ClosedAt.UTC().Format(time.RFC3339Nano),
+		signalID,
+	)
+	if err != nil {
+		return fmt.Errorf("close virtual signal: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("close virtual signal: rows affected: %w", err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("%w: signal id %d", ErrVirtualSignalNotOpen, signalID)
+	}
+	return nil
+}
+
+func (s *Store) ensureSignalAnalysisColumns(ctx context.Context) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(signals)`)
+	if err != nil {
+		return fmt.Errorf("inspect signals schema: %w", err)
+	}
+
+	existing := make(map[string]struct{})
+	for rows.Next() {
+		var cid int
+		var name string
+		var columnType string
+		var notNull int
+		var defaultValue any
+		var primaryKey int
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			rows.Close()
+			return fmt.Errorf("inspect signals schema: %w", err)
+		}
+		existing[name] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("inspect signals schema: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("inspect signals schema: %w", err)
+	}
+
+	columns := []struct {
+		name       string
+		definition string
+	}{
+		{name: "signal_price", definition: "signal_price REAL"},
+		{name: "indicators_complete", definition: "indicators_complete INTEGER"},
+		{name: "confirmed_candles", definition: "confirmed_candles INTEGER"},
+		{name: "required_candles", definition: "required_candles INTEGER"},
+		{name: "previous_open_interest", definition: "previous_open_interest REAL"},
+		{name: "current_open_interest", definition: "current_open_interest REAL"},
+		{name: "previous_oi_at", definition: "previous_oi_at TEXT"},
+		{name: "current_oi_at", definition: "current_oi_at TEXT"},
+		{name: "oi_growth_percent", definition: "oi_growth_percent REAL"},
+		{name: "oi_growth_threshold_percent", definition: "oi_growth_threshold_percent REAL"},
+		{name: "oi_condition_met", definition: "oi_condition_met INTEGER"},
+		{name: "current_volume", definition: "current_volume REAL"},
+		{name: "volume_sma", definition: "volume_sma REAL"},
+		{name: "volume_ratio", definition: "volume_ratio REAL"},
+		{name: "volume_threshold", definition: "volume_threshold REAL"},
+		{name: "volume_multiplier", definition: "volume_multiplier REAL"},
+		{name: "volume_condition_met", definition: "volume_condition_met INTEGER"},
+		{name: "candle_open", definition: "candle_open REAL"},
+		{name: "candle_close", definition: "candle_close REAL"},
+		{name: "candle_direction", definition: "candle_direction TEXT"},
+		{name: "short_liquidations_usd", definition: "short_liquidations_usd REAL"},
+		{name: "long_liquidations_usd", definition: "long_liquidations_usd REAL"},
+		{name: "liquidation_threshold_usd", definition: "liquidation_threshold_usd REAL"},
+		{name: "short_liquidation_condition_met", definition: "short_liquidation_condition_met INTEGER"},
+		{name: "long_liquidation_condition_met", definition: "long_liquidation_condition_met INTEGER"},
+		{name: "long_setup_met", definition: "long_setup_met INTEGER"},
+		{name: "short_setup_met", definition: "short_setup_met INTEGER"},
+		{name: "evaluated_at", definition: "evaluated_at TEXT"},
+		{name: "liquidation_window_start", definition: "liquidation_window_start TEXT"},
+		{name: "hypothetical_entry", definition: "hypothetical_entry REAL"},
+		{name: "stop_loss", definition: "stop_loss REAL"},
+		{name: "take_profit", definition: "take_profit REAL"},
+		{name: "estimated_fees", definition: "estimated_fees REAL"},
+		{name: "estimated_slippage", definition: "estimated_slippage REAL"},
+		{name: "virtual_qty", definition: "virtual_qty REAL"},
+		{name: "signal_candle_at", definition: "signal_candle_at TEXT"},
+		{name: "virtual_exit_price", definition: "virtual_exit_price REAL"},
+		{name: "exit_reason", definition: "exit_reason TEXT"},
+		{name: "virtual_pnl", definition: "virtual_pnl REAL"},
+		{name: "virtual_closed_at", definition: "virtual_closed_at TEXT"},
+	}
+
+	for _, column := range columns {
+		if _, ok := existing[column.name]; ok {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx, `ALTER TABLE signals ADD COLUMN `+column.definition); err != nil {
+			return fmt.Errorf("add signals.%s: %w", column.name, err)
+		}
+	}
+	return nil
 }
 
 func (s *Store) SaveTrade(ctx context.Context, trade Trade) error {
@@ -118,7 +521,10 @@ func (s *Store) SaveTrade(ctx context.Context, trade Trade) error {
 		trade.OpenedAt.UTC().Format(time.RFC3339Nano),
 		closedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("save trade: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) Stats(ctx context.Context) (Stats, error) {

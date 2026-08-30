@@ -1,0 +1,61 @@
+name: bybit-liquidity-bot
+
+services:
+  bot:
+    image: bybit-liquidity-bot:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      secrets:
+        - custom_ca
+    restart: unless-stopped
+    init: true
+    user: ${BOT_UID:-1000}:${BOT_GID:-1000}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - -config
+      - /app/configs/config.yaml
+    environment:
+      BYBIT_API_KEY: ${BYBIT_API_KEY:-}
+      BYBIT_API_SECRET: ${BYBIT_API_SECRET:-}
+      SSL_CERT_DIR: /etc/ssl/certs:/app/certs
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+      - ./certs:/app/certs:ro
+      - ./data:/app/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    healthcheck:
+      test: ["CMD", "/app/bot", "-config", "/app/configs/config.yaml", "-check-storage"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+  sqlite:
+    image: keinos/sqlite3:3.53.4
+    profiles:
+      - tools
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - /usr/bin/sqlite3
+      - -readonly
+      - -header
+      - -column
+      - /data/trades.db
+    volumes:
+      - ./data:/data:ro
+
+secrets:
+  custom_ca:
+    file: ${CUSTOM_CA_FILE:-/dev/null}

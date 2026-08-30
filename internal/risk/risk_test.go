@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -9,9 +10,11 @@ import (
 
 func TestPlanLong(t *testing.T) {
 	manager := New(Config{
-		RiskPerTradePercent: 1,
-		StopLossPercent:     0.8,
-		TakeProfitPercent:   1.6,
+		RiskPerTradePercent:          1,
+		StopLossPercent:              0.8,
+		TakeProfitPercent:            1.6,
+		EstimatedRoundTripFeePercent: 0.11,
+		SlippageAllowancePercent:     0.04,
 	})
 
 	plan, err := manager.Plan(10000, 50000, exchange.SideLong)
@@ -20,16 +23,18 @@ func TestPlanLong(t *testing.T) {
 	}
 
 	assertClose(t, plan.RiskUSD, 100)
-	assertClose(t, plan.Qty, 0.25)
+	assertClose(t, plan.Qty, 100.0/475.0)
 	assertClose(t, plan.StopLoss, 49600)
 	assertClose(t, plan.TakeProfit, 50800)
 }
 
 func TestPlanShort(t *testing.T) {
 	manager := New(Config{
-		RiskPerTradePercent: 1,
-		StopLossPercent:     0.8,
-		TakeProfitPercent:   1.6,
+		RiskPerTradePercent:          1,
+		StopLossPercent:              0.8,
+		TakeProfitPercent:            1.6,
+		EstimatedRoundTripFeePercent: 0.11,
+		SlippageAllowancePercent:     0.04,
 	})
 
 	plan, err := manager.Plan(10000, 50000, exchange.SideShort)
@@ -37,7 +42,7 @@ func TestPlanShort(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertClose(t, plan.Qty, 0.25)
+	assertClose(t, plan.Qty, 100.0/475.0)
 	assertClose(t, plan.StopLoss, 50400)
 	assertClose(t, plan.TakeProfit, 49200)
 }
@@ -68,6 +73,54 @@ func TestPlanRejectsInvalidInput(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestPlanUsesFeeAndSlippageReserveOnlyForPositionSize(t *testing.T) {
+	t.Parallel()
+
+	withoutReserve := New(Config{
+		RiskPerTradePercent: 1,
+		StopLossPercent:     0.8,
+		TakeProfitPercent:   1.6,
+	})
+	withReserve := New(Config{
+		RiskPerTradePercent:          1,
+		StopLossPercent:              0.8,
+		TakeProfitPercent:            1.6,
+		EstimatedRoundTripFeePercent: 0.11,
+		SlippageAllowancePercent:     0.04,
+	})
+
+	basePlan, err := withoutReserve.Plan(10000, 50000, exchange.SideLong)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reservedPlan, err := withReserve.Plan(10000, 50000, exchange.SideLong)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if reservedPlan.Qty >= basePlan.Qty {
+		t.Fatalf("reserved Qty = %f, want less than %f", reservedPlan.Qty, basePlan.Qty)
+	}
+	assertClose(t, reservedPlan.StopLoss, basePlan.StopLoss)
+	assertClose(t, reservedPlan.TakeProfit, basePlan.TakeProfit)
+	assertClose(t, reservedPlan.RiskUSD, basePlan.RiskUSD)
+}
+
+func TestPlanRejectsInvalidReserve(t *testing.T) {
+	t.Parallel()
+
+	manager := New(Config{
+		RiskPerTradePercent:          1,
+		StopLossPercent:              0.8,
+		TakeProfitPercent:            1.6,
+		EstimatedRoundTripFeePercent: -0.01,
+	})
+
+	if _, err := manager.Plan(10000, 50000, exchange.SideLong); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 // Exchange описывает минимальный источник рыночных данных для коллектора.
 type Exchange interface {
 	GetCandles(ctx context.Context, symbol string, limit int) ([]exchange.Candle, error)
-	GetOpenInterest(ctx context.Context, symbol string) (exchange.OpenInterest, error)
+	GetOpenInterest(ctx context.Context, symbol string, windowMinutes int) (exchange.OpenInterest, error)
 }
 
 // Snapshot собирает рыночное состояние, которое затем передается в strategy.
@@ -27,12 +27,13 @@ type Snapshot struct {
 
 // Collector получает и агрегирует данные без принятия торговых решений.
 type Collector struct {
-	exchange Exchange
-	symbol   string
+	exchange        Exchange
+	symbol          string
+	oiWindowMinutes int
 }
 
-func NewCollector(exchange Exchange, symbol string) *Collector {
-	return &Collector{exchange: exchange, symbol: symbol}
+func NewCollector(exchange Exchange, symbol string, oiWindowMinutes int) *Collector {
+	return &Collector{exchange: exchange, symbol: symbol, oiWindowMinutes: oiWindowMinutes}
 }
 
 func (c *Collector) Snapshot(ctx context.Context, candleLimit int, liquidations []exchange.Liquidation) (Snapshot, error) {
@@ -41,7 +42,7 @@ func (c *Collector) Snapshot(ctx context.Context, candleLimit int, liquidations 
 		return Snapshot{}, err
 	}
 
-	oi, err := c.exchange.GetOpenInterest(ctx, c.symbol)
+	oi, err := c.exchange.GetOpenInterest(ctx, c.symbol, c.oiWindowMinutes)
 	if err != nil {
 		return Snapshot{}, err
 	}

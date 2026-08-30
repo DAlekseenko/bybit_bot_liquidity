@@ -20,6 +20,7 @@ var (
 
 // Exchange ограничивает executor только методами, нужными для исполнения сделок.
 type Exchange interface {
+	GetInstrumentRules(ctx context.Context, symbol string) (exchange.InstrumentRules, error)
 	PlaceOrder(ctx context.Context, order exchange.OrderRequest) (exchange.Order, error)
 	GetPosition(ctx context.Context, symbol string) (*exchange.Position, error)
 	ClosePosition(ctx context.Context, symbol string) error
@@ -102,19 +103,27 @@ func (e *Executor) Execute(ctx context.Context, signal strategy.Signal, balance,
 		return exchange.Order{}, err
 	}
 
-	order, err := e.exchange.PlaceOrder(ctx, exchange.OrderRequest{
+	rules, err := e.exchange.GetInstrumentRules(ctx, signal.Symbol)
+	if err != nil {
+		return exchange.Order{}, err
+	}
+	request, err := NormalizeOrder(exchange.OrderRequest{
 		Symbol:     signal.Symbol,
 		Side:       side,
 		Qty:        plan.Qty,
 		StopLoss:   plan.StopLoss,
 		TakeProfit: plan.TakeProfit,
-	})
+	}, entryPrice, rules)
+	if err != nil {
+		return exchange.Order{}, err
+	}
+	order, err := e.exchange.PlaceOrder(ctx, request)
 	if err != nil {
 		return exchange.Order{}, err
 	}
 	e.positionOpen = true
 
-	e.log.Info("position opened", "symbol", signal.Symbol, "side", side, "qty", plan.Qty)
+	e.log.Info("position opened", "symbol", signal.Symbol, "side", side, "qty", request.Qty)
 	return order, nil
 }
 
