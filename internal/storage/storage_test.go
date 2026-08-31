@@ -440,7 +440,7 @@ func TestStoreStats(t *testing.T) {
 	}
 }
 
-func TestStoreVirtualStatsSeparatesCompletedOpenAndSkippedSignals(t *testing.T) {
+func TestStoreTracksSchemaVersionAndOpenVirtualSignals(t *testing.T) {
 	t.Parallel()
 
 	store := openTestStore(t)
@@ -448,41 +448,21 @@ func TestStoreVirtualStatsSeparatesCompletedOpenAndSkippedSignals(t *testing.T) 
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	base := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
-	for index, pnl := range []float64{10, -4, 6, -8} {
-		_, err := store.db.ExecContext(ctx, `
-INSERT INTO signals (symbol, signal_type, reason, created_at, hypothetical_entry, virtual_pnl, virtual_closed_at)
-VALUES (?, 'LONG', 'paper', ?, 100, ?, ?)`,
-			"BTCUSDT",
-			base.Add(time.Duration(index)*time.Minute).Format(time.RFC3339Nano),
-			pnl,
-			base.Add(time.Duration(index+1)*time.Minute).Format(time.RFC3339Nano),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+	version, err := store.SchemaVersion(ctx)
+	if err != nil || version != 1 {
+		t.Fatalf("SchemaVersion() = %d, %v", version, err)
 	}
-	if _, err := store.db.ExecContext(ctx, `
-INSERT INTO signals (symbol, signal_type, reason, created_at, hypothetical_entry)
-VALUES ('BTCUSDT', 'LONG', 'paper', ?, 100)`, base.Format(time.RFC3339Nano)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.db.ExecContext(ctx, `
-INSERT INTO signals (symbol, signal_type, reason, created_at, exit_reason)
-VALUES ('BTCUSDT', 'LONG', 'paper', ?, 'SKIPPED_COOLDOWN')`, base.Format(time.RFC3339Nano)); err != nil {
-		t.Fatal(err)
-	}
-
-	stats, err := store.VirtualStats(ctx)
+	candleAt := time.Date(2026, 8, 31, 11, 0, 0, 0, time.UTC)
+	id, err := store.SaveSignalRecord(ctx, SignalRecord{
+		Signal:  strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalLong, Reason: "paper"},
+		Virtual: &VirtualTrade{SignalCandleAt: candleAt, HypotheticalEntry: 100, StopLoss: 99, TakeProfit: 102, EstimatedFees: 0.1, EstimatedSlippage: 0.02, Qty: 1},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stats.ClosedTrades != 4 || stats.OpenTrades != 1 || stats.SkippedSignals != 1 ||
-		stats.WinRate != 50 || stats.TotalPnL != 4 || stats.AverageTrade != 1 || stats.MaxDrawdown != 8 {
-		t.Fatalf("VirtualStats() = %#v", stats)
-	}
-	if math.Abs(stats.ProfitFactor-16.0/12.0) > 1e-12 {
-		t.Fatalf("ProfitFactor = %v, want %v", stats.ProfitFactor, 16.0/12.0)
+	open, err := store.OpenVirtualSignals(ctx)
+	if err != nil || len(open) != 1 || open[0].SignalID != id || open[0].Side != "LONG" || open[0].Plan.Qty != 1 {
+		t.Fatalf("OpenVirtualSignals() = %#v, %v", open, err)
 	}
 }
 

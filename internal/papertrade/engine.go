@@ -167,6 +167,19 @@ func (e *Engine) Activate(signalID int64, plan Plan) error {
 	return nil
 }
 
+// Restore re-establishes one durable paper position after process restart. It
+// intentionally fails if the caller supplies an ambiguous second position.
+func (e *Engine) Restore(signalID int64, plan Plan) error {
+	if signalID <= 0 || e.active != nil || plan.SignalCandleAt.IsZero() ||
+		(plan.Side != exchange.SideLong && plan.Side != exchange.SideShort) ||
+		!positiveFinite(plan.HypotheticalEntry) || !positiveFinite(plan.StopLoss) ||
+		!positiveFinite(plan.TakeProfit) || !positiveFinite(plan.Qty) {
+		return ErrInvalidSignal
+	}
+	e.active = &activeTrade{signalID: signalID, plan: plan}
+	return nil
+}
+
 // Advance проверяет новые подтверждённые свечи. Pending outcome повторяется до
 // ConfirmClosed, чтобы ошибка SQLite не теряла виртуальное закрытие.
 func (e *Engine) Advance(candles []exchange.Candle) *Outcome {

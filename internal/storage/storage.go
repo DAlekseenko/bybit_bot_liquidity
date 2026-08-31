@@ -48,6 +48,14 @@ type VirtualOutcome struct {
 	ClosedAt   time.Time
 }
 
+// OpenVirtualSignal is the durable information required to resume one paper
+// position after a process restart. It never represents an exchange position.
+type OpenVirtualSignal struct {
+	SignalID int64
+	Plan     VirtualTrade
+	Side     string
+}
+
 // Trade описывает завершенную или открытую сделку для таблицы trades.
 type Trade struct {
 	// ID - первичный ключ в SQLite.
@@ -160,6 +168,20 @@ func (s *Store) Check(ctx context.Context) error {
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+	version INTEGER PRIMARY KEY,
+	applied_at TEXT NOT NULL
+);`); err != nil {
+		return fmt.Errorf("create schema migrations: %w", err)
+	}
+	var latest int
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&latest); err != nil {
+		return fmt.Errorf("read schema migrations: %w", err)
+	}
+	if latest > 1 {
+		return fmt.Errorf("migrate storage: database schema version %d is newer than supported version 1", latest)
+	}
 	_, err := s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS trades (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,7 +246,22 @@ CREATE TABLE IF NOT EXISTS signals (
 		return fmt.Errorf("migrate storage: %w", err)
 	}
 
-	return s.ensureSignalAnalysisColumns(ctx)
+	if err := s.ensureSignalAnalysisColumns(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, ?)`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("record schema migration: %w", err)
+	}
+	return nil
+}
+
+// SchemaVersion returns the latest successfully recorded migration.
+func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
+	var version int
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+		return 0, fmt.Errorf("read schema version: %w", err)
+	}
+	return version, nil
 }
 
 func (s *Store) SaveSignal(ctx context.Context, signal strategy.Signal) error {
@@ -431,6 +468,40 @@ WHERE id = ? AND hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL`,
 		return fmt.Errorf("%w: signal id %d", ErrVirtualSignalNotOpen, signalID)
 	}
 	return nil
+}
+
+// OpenVirtualSignals returns incomplete paper positions. The caller must reject
+// multiple rows because the MVP permits only one virtual position.
+func (s *Store) OpenVirtualSignals(ctx context.Context) ([]OpenVirtualSignal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, signal_type, signal_candle_at, hypothetical_entry, stop_loss, take_profit,
+       estimated_fees, estimated_slippage, virtual_qty
+FROM signals
+WHERE hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL
+ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list open virtual signals: %w", err)
+	}
+	defer rows.Close()
+
+	var result []OpenVirtualSignal
+	for rows.Next() {
+		var item OpenVirtualSignal
+		var signalCandleAt string
+		if err := rows.Scan(&item.SignalID, &item.Side, &signalCandleAt, &item.Plan.HypotheticalEntry, &item.Plan.StopLoss, &item.Plan.TakeProfit, &item.Plan.EstimatedFees, &item.Plan.EstimatedSlippage, &item.Plan.Qty); err != nil {
+			return nil, fmt.Errorf("scan open virtual signal: %w", err)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, signalCandleAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse open virtual signal candle time: %w", err)
+		}
+		item.Plan.SignalCandleAt = parsed.UTC()
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list open virtual signals: %w", err)
+	}
+	return result, nil
 }
 
 func (s *Store) ensureSignalAnalysisColumns(ctx context.Context) error {

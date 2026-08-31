@@ -138,6 +138,10 @@ func main() {
 		log.Error("failed to initialize paper trading", "error", err)
 		os.Exit(1)
 	}
+	if err := restorePaperTrade(ctx, log, store, paper); err != nil {
+		log.Error("failed to restore paper trade", "error", err)
+		os.Exit(1)
+	}
 	log.Info("paper trading initialized", "virtual_balance_usd", cfg.Trading.VirtualBalanceUSD)
 
 	candleLimit := cfg.Strategy.VolumeSMAPeriod + 2
