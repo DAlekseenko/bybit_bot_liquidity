@@ -19,7 +19,7 @@
 | `GetLeverage(ctx, symbol)` | получить текущее one-way leverage | signed read-only REST реализован |
 | `GetAccountInfo(ctx)` | получить Unified status и margin mode | signed read-only REST реализован |
 | `GetAccountBalance(ctx)` | получить available/equity/wallet USD | signed read-only REST реализован |
-| `PlaceOrder(ctx, OrderRequest)` | открыть позицию с Qty, SL и TP | `ErrNotImplemented` |
+| `PlaceOrder(ctx, OrderRequest)` | открыть позицию с Qty, SL, TP и стабильным `LinkID` | `ErrNotImplemented` |
 | `GetPosition(ctx, symbol)` | вернуть one-way позицию либо `nil` | signed read-only REST реализован |
 | `ClosePosition(ctx, symbol)` | закрыть позицию | `ErrNotImplemented` |
 

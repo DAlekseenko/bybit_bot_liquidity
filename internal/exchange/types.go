@@ -119,6 +119,9 @@ func (l Liquidation) USDValue() float64 {
 
 // OrderRequest содержит параметры заявки, которую executor передает бирже.
 type OrderRequest struct {
+	// LinkID is a caller-generated idempotency key for one opening intent.
+	// It must be stable when retrying an ambiguous transport failure.
+	LinkID string
 	// Symbol - торговый инструмент.
 	Symbol string
 	// Side - направление сделки.
@@ -128,6 +131,35 @@ type OrderRequest struct {
 	// StopLoss и TakeProfit - защитные уровни, рассчитанные risk manager.
 	StopLoss   float64
 	TakeProfit float64
+}
+
+// OrderStatus is the locally persisted lifecycle state of a Testnet order.
+// It does not claim that Bybit has confirmed the state; reconciliation is
+// responsible for that confirmation.
+type OrderStatus string
+
+const (
+	OrderStatusIntent    OrderStatus = "INTENT"
+	OrderStatusSubmitted OrderStatus = "SUBMITTED"
+	OrderStatusAccepted  OrderStatus = "ACCEPTED"
+	OrderStatusFilled    OrderStatus = "FILLED"
+	OrderStatusCancelled OrderStatus = "CANCELLED"
+	OrderStatusRejected  OrderStatus = "REJECTED"
+	OrderStatusUnknown   OrderStatus = "UNKNOWN"
+)
+
+// OrderLifecycle is the minimum durable representation needed to reconcile an
+// idempotent opening request after a timeout or process restart.
+type OrderLifecycle struct {
+	LinkID     string
+	ExchangeID string
+	Symbol     string
+	Side       Side
+	Qty        float64
+	Status     OrderStatus
+	ReduceOnly bool
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 // Order описывает результат успешной отправки заявки на биржу.
