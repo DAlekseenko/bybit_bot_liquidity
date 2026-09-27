@@ -36,11 +36,15 @@
 - Independent review: GREEN; полный контракт соблюдён, локальные ссылки и
   `git diff --check` проходят. Go-тесты не нужны: код не менялся.
 - Следующий Issue пока не назначен; определить после публикации #23.
-- Рабочее дерево до handoff: `README.md` изменён, `PROJECT_GOAL.md` добавлен;
-  иных изменений нет. Перед commit/push/PR handoff будет staged дополнительно.
-- Публикация: Issue открыт; commit, push без force и PR в `master` ожидают
-  выполнения и проверки publisher.
+- Issue commit: `70c76d65f43a22b9555150813aeb016d04498bc3`.
+- Публикация подтверждена readback: ветка `origin/codex/23-project-goal` указывает
+  на Issue commit; [PR #24](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/24)
+  открыт в `master`, не слит. Handoff фиксируется отдельным follow-up commit.
+- GitHub Actions CI для Issue commit запущен и на последнем readback был
+  `in_progress`; локальный `git diff --check` проходит. Изменённый Go-код и
+  связанные с ним тесты отсутствуют.
+- Незакоммиченных/неотслеживаемых файлов после публикационных commit нет.
 - Остаточный риск: цель описывает будущее состояние; текущая реализация остаётся
   read-only/Testnet/paper и не отправляет реальные ордера. Изменение документации
   не меняет runtime.
-- Блокеры на текущем этапе не выявлены.
+- Блокеров на текущем этапе не выявлено.
