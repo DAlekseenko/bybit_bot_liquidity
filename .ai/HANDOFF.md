@@ -118,3 +118,30 @@
   commit; итоговые head SHA и CI требуют свежего readback и передаются
   github-reviewer.
 - Блокеры: отсутствуют; GitHub readback и Actions доступны.
+
+## Issue #29 — безопасный реестр метрик
+
+- Issue: [#29](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/29);
+  ветка `codex/29-safe-metrics-registry`; база `372ddd7c0b02ef150becec461cd65e61509ba984`
+  после подтверждённого merge PR #39.
+- Перед публикацией проверены текущая ветка и HEAD, `origin/master` и
+  merge-base: все указывают на базу выше. Изменения находятся только в двух
+  reviewer-approved untracked файлах: `internal/observability/metrics.go`
+  (95 строк) и `internal/observability/metrics_test.go` (98 строк); иных
+  незакоммиченных файлов нет. Существующий PR этой ветки не найден.
+- Независимый reviewer: GREEN, blockers отсутствуют; одобрены ровно эти два
+  файла. Diff — 193 additions / 0 deletions, в пределах лимитов Issue. Проверки
+  reviewer: gofmt, целевые тесты, целевые race-тесты, `go test ./...`,
+  `go vet ./...` и `git diff --check` прошли. Изменение содержит bounded safe
+  metrics registry и точный HTTP `/metrics`, остальные paths дают 404; доступ
+  синхронизирован RWMutex. Runtime wiring, listener, Compose, CI и зависимости
+  не добавлены.
+- Остаточный риск: handler удерживает RLock во время записи ограниченного
+  ответа. Listener не подключён. Секреты, account balance, trading data,
+  payload/error detail и labels из внешнего ввода не включаются.
+- Публикация: Issue commit и PR ещё не созданы; подготовлено к staging только
+  два одобренных Issue-файла и `.ai/HANDOFF.md`. После успешного PR creation
+  указать `PR открыт`, проверить URL/base/head SHA и Actions для того же head,
+  затем передать точный readback github-reviewer. Блокеры: отсутствуют.
+- Merge, закрытие Issue, выбор следующего Issue и post-merge verification
+  остаются за orchestrator.
