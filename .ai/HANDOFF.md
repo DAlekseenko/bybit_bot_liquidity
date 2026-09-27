@@ -15,9 +15,11 @@ Markdown-ссылок разрешаются, `git diff --check` проходи�
 Известные изменения рабочей копии до публикации: `AGENTS.md`,
 `.codex/agents/developer.toml`, `.codex/agents/publisher.toml`,
 `.codex/agents/reviewer.toml`, `.codex/agents/system-designer.toml` и этот
-`.ai/HANDOFF.md`; иных изменённых файлов не обнаружено. Коммит, push и PR ещё
-не выполнены; публикация ожидает их проверки. Следующий Issue — зависимый
-`github-reviewer`. Остаточный риск: TOML-роли настраивают рабочий процесс, но
+`.ai/HANDOFF.md`; иных изменённых файлов не обнаружено. Issue опубликован
+коммитом `42c6b361d215967605ffbc582f3b76adda7042e5`, ветка отправлена в origin,
+PR #16 открыт против `master`:
+https://github.com/DAlekseenko/bybit_bot_liquidity/pull/16. Следующий Issue —
+зависимый `github-reviewer`. Остаточный риск: TOML-роли настраивают рабочий процесс, но
 сами по себе не гарантируют соблюдение прав или наличие GitHub-аутентификации.
 Реальных блокеров на момент handoff нет.
 
