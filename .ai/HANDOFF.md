@@ -151,3 +151,34 @@
   handoff-only commit создаст новый head; сверить PR и дождаться CI именно для
   него до передачи github-reviewer.
 - Блокеры: отсутствуют. PR открыт; merge и post-merge verification не выполнять.
+
+## Issue #30 — подключение метрик к read-only loop
+
+- Контракт: [Issue #30](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/30),
+  «#22 / PR #7: подключить метрики к read-only loop». Ветка
+  `codex/30-metrics-runtime-wiring`; база `79d66d8d729767b92fb93d2d76435441500d8dea`
+  (`origin/master` после подтверждённого merge PR #41). На публикационной
+  проверке `origin/master` совпал с базой, текущая ветка и HEAD также совпали
+  с handoff. Issue #30 открыта; поиск GitHub не нашёл PR для этой ветки.
+- Независимый reviewer: GREEN, blockers отсутствуют; одобрены ровно
+  `cmd/bot/metrics.go`, `cmd/bot/loop.go`, `cmd/bot/main.go`. Reviewer handoff
+  сообщает 79 additions / 2 deletions, все изменения в границах Issue. До
+  публикации uncommitted только эти три approved Issue-файла, staged-файлов и
+  иных изменений нет.
+- Проверки из reviewer handoff: `GOTOOLCHAIN=auto go test -race ./cmd/bot
+  ./internal/observability`, `go test ./...`, `go vet ./...`, gofmt changed
+  files и `git diff --check` — green. Publisher сверил ветку, базовый SHA,
+  имена файлов, отсутствие staged/чужих изменений и отсутствие существующего
+  PR. CI для опубликованного head ещё не наблюдался.
+- Остаточный риск: literal whitelist reviewer handoff исключил `_test.go`,
+  поэтому отдельного lifecycle/wiring теста нет; reviewer подтвердил имеющиеся
+  race проверки и прямой просмотр. Сохранить read-only/Testnet и безопасный
+  состав метрик.
+- Публикация: подготовка Issue-коммита и PR к `master`; до push/создания PR
+  статус `PR не открыт`. После успешного создания записать `PR открыт`, затем
+  повторно прочитать PR URL, base, точный head SHA и CI. Handoff-only changes
+  запрещены: этот файл входит в единственный Issue-коммит вместе с тремя
+  approved файлами.
+- Блокеры: `gh` CLI отсутствует; GitHub connector доступен. Push требует
+  подтверждения remote access. Не выполнять merge, выбор следующего Issue или
+  post-merge verification.

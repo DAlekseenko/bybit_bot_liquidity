@@ -15,6 +15,7 @@ import (
 	"bybit_bot_liquidity/internal/execution"
 	applogger "bybit_bot_liquidity/internal/logger"
 	"bybit_bot_liquidity/internal/marketdata"
+	"bybit_bot_liquidity/internal/observability"
 	"bybit_bot_liquidity/internal/papertrade"
 	"bybit_bot_liquidity/internal/risk"
 	"bybit_bot_liquidity/internal/storage"
@@ -30,6 +31,7 @@ const (
 func main() {
 	configPath := flag.String("config", "configs/config.yaml", "path to YAML config")
 	checkStorage := flag.Bool("check-storage", false, "run SQLite quick_check and exit")
+	metricsAddress := flag.String("metrics-address", "", "optional address for the read-only metrics endpoint")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
@@ -101,6 +103,8 @@ func main() {
 	liquidationEvents := make(chan generationLiquidation, 256)
 	var background sync.WaitGroup
 	background.Add(2)
+	metrics := observability.NewRegistry()
+	startMetricsServer(ctx, log, *metricsAddress, metrics, &background)
 	go func() {
 		defer background.Done()
 		policy := defaultReconnectPolicy()
@@ -137,7 +141,7 @@ func main() {
 	log.Info("paper trading initialized", "virtual_balance_usd", cfg.Trading.VirtualBalanceUSD)
 
 	candleLimit := cfg.Strategy.VolumeSMAPeriod + 2
-	runner := newReadOnlyRunner(log, cfg.Symbol, collector, signalStrategy, store, paper, liquidations, candleLimit)
+	runner := newReadOnlyRunner(log, cfg.Symbol, collector, signalStrategy, store, paper, liquidations, candleLimit, metrics)
 
 	runReadOnlyLoop(ctx, log, runner, readOnlyPollInterval)
 	background.Wait()
