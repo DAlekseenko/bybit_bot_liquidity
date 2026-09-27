@@ -65,31 +65,28 @@
   HEAD/base SHA: `2db7c5efa68e0da462fda01e3675a5cddc005c2d`.
 - Одобренные файлы: `AGENTS.md`, `.ai/HANDOFF.md`; контракт ограничивает
   документацию 130 изменёнными строками, без Go и тестов.
-- Стадия: прежний GREEN относился только к prepublication diff; исправление
-  handoff ожидает свежей независимой проверки. Ранее reviewer одобрил ровно
-  `AGENTS.md` и `.ai/HANDOFF.md`; подтверждены Issue #20 и отсутствие
-  существующего PR для этой ветки или checkpoint-комментария. Review diff:
-  это историческая prepublication-проверка: 2 файла, 51 добавленная строка,
-  0 удалений; `git diff --check` пройден. Это не размер текущего PR diff.
+- Стадия: свежая независимая проверка исправленного полного diff завершена
+  GREEN; reviewer одобрил ровно `AGENTS.md` и `.ai/HANDOFF.md`. Подтверждены
+  открытая Issue #20, открытый PR #27 без merge и отсутствие checkpoint.
+  Reviewer подтвердил будущий diff: 69 добавлений, 0 удалений (`AGENTS.md` 22,
+  `.ai/HANDOFF.md` 47), без Go и тестов; `git diff --check` чистый, untracked
+  отсутствуют. Эта проверка была до публикационного handoff-коммита.
 - Остаточный риск: изменение документирует процесс; проверка не создаёт
   гарантию доступности GitHub или обновления remote refs в будущих запусках.
 - Публикация: PR [#27](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/27)
-  открыт в `master`. Полный опубликованный PR diff до этого исправления:
-  64 добавленные строки (42 в `.ai/HANDOFF.md`, 22 в `AGENTS.md`). Последний
-  проверенный опубликованный head до исправления —
-  `f95574b62dcea3d0ec3bccd03be5eeb66774af88`; base —
-  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`. Новый итоговый head ещё не создан
-  и не подтверждён. Issue #20 остаётся открытой; merge и merge checkpoint для
-  неё отсутствуют.
+  открыт в `master` и не слит. После fast-forward push handoff-коммита GitHub
+  подтвердил PR и branch head `588e52fbc73cb41873e8234365f65b0d5d4eb464`,
+  base `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; PR содержит 69 добавлений,
+  0 удалений, 2 файла. Локальный HEAD совпадает, рабочее дерево чистое. Issue
+  #20 остаётся открытой; merge и merge checkpoint для неё отсутствуют.
 - Resume: сверить Issue/task, branch и worktree; fetch, проверить свежий
   `origin/master` и SHA. Найти и повторно использовать существующие PR и marker
   comment, не создавать дубликаты; сверить сохранённые проверки и blocker,
   выполнить точное следующее действие и продолжить с теми же объектами.
-- Проверки: 51 добавленная строка относится только к историческому reviewer
-  diff; полный опубликованный PR diff до исправления содержал 64 добавления.
-  Проверить обновлённый handoff отдельным diff; Go и тесты не менялись.
-- Следующее действие: провести свежую независимую проверку исправленного diff.
-  После GREEN publisher коммитит и fast-forward push-ит handoff, затем читает
-  PR #27 обратно и подтверждает URL и новый точный head SHA; только после этого
-  передать проверенный новый head `github-reviewer`. До readback не объявлять
-  новый head. Issue остаётся открытой, merge и checkpoint отсутствуют.
+- Проверки: diff `origin/master...HEAD` содержит только `AGENTS.md` и
+  `.ai/HANDOFF.md`; `git diff --check` пройден. Go и тесты не менялись.
+- Следующее действие: передать `github-reviewer` PR #27, финальный head
+  `588e52fbc73cb41873e8234365f65b0d5d4eb464` был подтверждён readback до
+  текущего handoff-коммита; после его push повторно прочитать PR URL/base/head,
+  сверить PR body и передать актуальный SHA вместе с GREEN handoff. Issue
+  остаётся открытой; merge, checkpoint и post-merge verification не выполнялись.
