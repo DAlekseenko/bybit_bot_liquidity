@@ -203,3 +203,25 @@ Docker-команды и оговорки среды приведены в
    verification, rewrites history, force-pushes, deletes data, handles secrets,
    changes financial rules, or enables live execution. The orchestrator chooses
    the next Issue and owns post-merge verification.
+9. После merge orchestrator закрывает Issue только после подтверждения gate:
+   получить из GitHub `mergedAt` и `mergeCommit`, обновить remote refs через
+   fetch, проверить достижимость merge commit из `origin/master` и записать
+   проверенный SHA `origin/master`. Исчезновение PR из списка open или совпадение
+   head SHA не доказывает merge; при squash проверять именно merge commit.
+   Если GitHub недоступен или `origin/master` не обновлён и не проверен, Issue
+   не закрывать. Затем идемпотентно создать или обновить в связанной Issue
+   checkpoint-комментарий с маркером `<!-- codex-merge-checkpoint:v1 -->`, PR
+   URL, merge SHA и проверенным SHA `origin/master`; прочитать комментарий назад
+   и сверить все поля до закрытия Issue. Не создавать дубликаты маркера.
+10. Следующую готовую Issue выбирает orchestrator по приоритету и зависимостям;
+    при равенстве брать старейшую. Issue, код или PR, заблокированные решением
+    пользователя, оставлять без изменений. Независимую Issue разрешено выполнять
+    только при отсутствии пересечения файлов и контрактов.
+11. При лимите или прерывании записать точное состояние для продолжения:
+    Issue/task, branch, worktree, PR и head SHA, пройденные проверки, blocker и
+    следующее действие. Продолжать те же Issue/task/branch/worktree/PR без
+    дубликатов и сверять актуальные SHA до дальнейших действий.
+12. Только orchestrator выполняет merge gate, checkpoint и закрытие Issue после
+    подтверждения. `publisher` останавливается после публикации PR;
+    `github-reviewer` проверяет опубликованный PR и не выполняет merge или
+    закрытие Issue.

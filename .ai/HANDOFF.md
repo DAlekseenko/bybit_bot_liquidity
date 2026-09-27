@@ -46,3 +46,47 @@
   исполнения агентом. Go-код и тесты не менялись.
 - Блокеры: отсутствуют. Merge и post-merge verification не выполнять;
   post-publication handoff передать `github-reviewer` после финального readback.
+
+- Подтверждённое завершение: PR #26 получил `mergedAt`
+  `2026-09-27T21:08:42Z`, `mergeCommit`
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; remote refs обновлены, этот merge
+  commit достижим из `origin/master`, проверенный SHA `origin/master` —
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`. Checkpoint Issue #19 прочитан:
+  [комментарий](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/19#issuecomment-5859856937).
+
+## Issue #20 — Merge gate и точное продолжение работы
+
+- Issue: [#20](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/20).
+- База проверена: `origin/master` и HEAD на старте совпали с
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; рабочее дерево было чистым.
+- Ветка: `codex/20-merge-gate-resume`; worktree:
+  `/Users/alekseenkodenis/.codex/worktrees/81f9/bybit_bot_liquidity`.
+- Codex task thread: `01a0e454-93c9-79c3-beec-6c26ffc9df71`; стартовый
+  HEAD/base SHA: `2db7c5efa68e0da462fda01e3675a5cddc005c2d`.
+- Одобренные файлы: `AGENTS.md`, `.ai/HANDOFF.md`; контракт ограничивает
+  документацию 130 изменёнными строками, без Go и тестов.
+- Стадия: свежая независимая проверка исправленного полного diff завершена
+  GREEN; reviewer одобрил ровно `AGENTS.md` и `.ai/HANDOFF.md`. Подтверждены
+  открытая Issue #20, открытый PR #27 без merge и отсутствие checkpoint.
+  Reviewer подтвердил будущий diff: 69 добавлений, 0 удалений (`AGENTS.md` 22,
+  `.ai/HANDOFF.md` 47), без Go и тестов; `git diff --check` чистый, untracked
+  отсутствуют. Эта проверка была до публикационного handoff-коммита.
+- Остаточный риск: изменение документирует процесс; проверка не создаёт
+  гарантию доступности GitHub или обновления remote refs в будущих запусках.
+- Публикация: PR [#27](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/27)
+  открыт в `master` и не слит. После fast-forward push handoff-коммита GitHub
+  подтвердил PR и branch head `588e52fbc73cb41873e8234365f65b0d5d4eb464`,
+  base `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; PR содержит 69 добавлений,
+  0 удалений, 2 файла. Локальный HEAD совпадает, рабочее дерево чистое. Issue
+  #20 остаётся открытой; merge и merge checkpoint для неё отсутствуют.
+- Resume: сверить Issue/task, branch и worktree; fetch, проверить свежий
+  `origin/master` и SHA. Найти и повторно использовать существующие PR и marker
+  comment, не создавать дубликаты; сверить сохранённые проверки и blocker,
+  выполнить точное следующее действие и продолжить с теми же объектами.
+- Проверки: diff `origin/master...HEAD` содержит только `AGENTS.md` и
+  `.ai/HANDOFF.md`; `git diff --check` пройден. Go и тесты не менялись.
+- Следующее действие: передать `github-reviewer` PR #27, финальный head
+  `588e52fbc73cb41873e8234365f65b0d5d4eb464` был подтверждён readback до
+  текущего handoff-коммита; после его push повторно прочитать PR URL/base/head,
+  сверить PR body и передать актуальный SHA вместе с GREEN handoff. Issue
+  остаётся открытой; merge, checkpoint и post-merge verification не выполнялись.
