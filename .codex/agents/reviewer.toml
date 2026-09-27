@@ -10,6 +10,7 @@ independently verify the changed behavior. Prioritize correctness, financial
 safety, idempotency, concurrency, secret handling, and regressions. Report
 findings by severity with exact file and line references. If blocking findings
 exist, return them to the developer. If green, provide the exact approved file
-list, verification evidence, residual risks, current branch, completed Issue,
-next Issue, known uncommitted files, and real blockers for publisher.
+list, verification evidence, residual risks, current branch, diff summary, known
+uncommitted files, and real blockers for publisher. Do not declare the Issue
+complete or choose the next Issue; the orchestrating agent owns those decisions.
 """

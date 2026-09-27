@@ -1,28 +1,19 @@
 # Передача работы
 
-## 2026-09-27: Issue #17 — Сжать handoff и удалить устаревший CURRENT_TASK
+## Issue #18 — Упростить старт Issue и разграничить роли агентов
 
-Контракт: [Issue #17](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/17).
-Это единственный актуальный снимок; подробная история изменений остаётся в Git.
-
-- Ветка: `codex/17-compact-handoff`.
-- База: `origin/master` на `751a70ef96426b734d5299be0a525a5bdd0eb0e7`.
-- Изменены только `.ai/HANDOFF.md` и удалён `.ai/CURRENT_TASK.md`.
-- Рабочий diff подготовлен; commit/push/PR пока отсутствуют. `HEAD` остаётся на
-  базовом SHA, публикация и head SHA коммита ожидают publisher.
-- Независимый read-only review: GREEN, blockers отсутствуют; reviewer утвердил
-  ровно `.ai/HANDOFF.md` (изменение) и `.ai/CURRENT_TASK.md` (удаление).
-- Проверки reviewer: `git diff --check <base>` прошёл; `docs/DECISIONS.md`
-  идентичен базе; проверка локальных Markdown-ссылок и credential patterns
-  прошла; handoff — 25 строк из 100. Go-файлы не менялись, Go-проверки не нужны.
-- Ограничения: Bybit Testnet и read-only; никаких секретов в репозитории или
-  логах. Реальная торговля, изменение лимитов риска и разрушительные миграции
-  требуют отдельного явного одобрения человека.
-- Незакоммиченные файлы до публикации: `.ai/HANDOFF.md` и удаление
-  `.ai/CURRENT_TASK.md`; иных изменений и untracked-файлов нет.
-- Блокеров нет. Следующий Issue определяется после публикации.
-- Статус публикации: ожидаются commit, push без force в origin и создание одного
-  PR в `master`; commit SHA, remote head SHA и PR URL будут подтверждены после
-  публикации. Merge не выполнять.
-
-Ссылки: [краткий контекст](CONTEXT.md), [инструкции](../AGENTS.md).
+- Ветка: `codex/18-agent-role-boundaries`; база: `50fe17bc549d1ecb94c008c61d8f8ec8b467746a` (`origin/master`).
+- Одобренные файлы Issue: `AGENTS.md`, `.codex/agents/reviewer.toml`,
+  `.codex/agents/publisher.toml`, `.codex/agents/system-designer.toml`.
+- Независимый read-only reviewer: GREEN, blockers отсутствуют. Подтверждены
+  54 additions / 51 deletions, TOML parse, 15 локальных ссылок, `git diff --check`,
+  отсутствие Go/test изменений, запрещённых путей и secret value.
+- Ветка и рабочее дерево сверены с handoff; иных локальных файлов нет.
+- Поиск PR через GitHub connector (`head:codex/18-agent-role-boundaries`, все
+  состояния) не нашёл существующего PR.
+- Публикация начата: следующий commit включает только четыре одобренных Issue
+  файла и этот handoff; планируется push без force и один PR в `master`.
+- После создания PR обновить этот handoff со статусом `PR открыт` и URL; проверить
+  persisted PR URL и head SHA. Merge и post-merge verification не выполнять.
+- Остаточные риски: изменения затрагивают только инструкции и конфигурацию
+  агентских ролей; Go-код и тесты не менялись. Следующий Issue выбирает orchestrator.

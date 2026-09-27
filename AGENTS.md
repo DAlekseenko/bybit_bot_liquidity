@@ -1,8 +1,9 @@
 # Инструкции для участников разработки
 
 Файл задаёт общие, независимые от конкретного AI-инструмента правила работы с
-репозиторием. Перед изменениями прочитайте [README.md](README.md), затем документ,
-относящийся к задаче:
+репозиторием. Для начала Issue прочитайте компактный контекст, последний handoff,
+контракт Issue и состояние Git. Остальные документы открывайте только при
+обнаруженной зависимости задачи:
 
 - бизнес-правила — [docs/DOMAIN.md](docs/DOMAIN.md);
 - компоненты и границы — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
@@ -132,19 +133,20 @@ Docker-команды и оговорки среды приведены в
 
 Перед передачей работы:
 
-1. Проверьте, что изменение соответствует запросу пользователя и границам
-   архитектуры.
+1. Проверьте соответствие изменения контракту Issue и границам архитектуры.
 2. Добавьте или обновите тесты для изменённого поведения.
-3. Выполните форматирование, unit-тесты, race detector, `go vet` и сборку либо
-   явно запишите, что и почему не запускалось.
+3. Выполните относящиеся к Issue проверки и явно запишите пропущенные.
 4. Обновите только затронутые источники документации и проверьте ссылки.
-5. Заполните [.ai/HANDOFF.md](.ai/HANDOFF.md): файлы, проверки, проблемы и
-   следующие шаги.
+5. Передайте handoff по текущему Issue; выбор следующего Issue и
+   post-merge-проверка остаются за orchestrator.
 
 ## How
 
 - One GitHub Issue per branch, PR, and Codex task. The approved Issue body is
   the sole implementation contract; do not add scope from adjacent Issues.
+- At Issue start, read `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, the assigned Issue,
+  `git status --short --branch`, and the base/relevant diff. Read other docs only
+  when the Issue contract or a discovered dependency requires them.
 - Use `system-designer` to define bounded work, `developer` to implement only
   that contract, `reviewer` for independent read-only review, then `publisher`
   for handoff and publication after a green review.
@@ -158,23 +160,13 @@ Docker-команды и оговорки среды приведены в
   and logs.
 - Live trading, risk-limit changes, and destructive migrations require explicit
   human approval. Prefer the Go standard library absent a clear need.
+- Future invariant only: planner → immutable `TradePlan` → explicit human
+  confirmation → execution engine. This describes no implemented behavior and
+  grants no trading authority.
 - For Go changes, add concise Russian comments to every function and method,
   including private functions and test helpers. Exported comments start with
   the identifier name. Run gofmt, targeted tests, `go test ./...`, and
   `go vet ./...`.
-
-## Context loading
-
-At the start of each Issue, read only the smallest useful context set:
-
-1. `README.md` and `.ai/CONTEXT.md` for project state and stable decisions.
-2. `.ai/HANDOFF.md` for the latest branch state and blockers.
-3. The approved GitHub Issue body for the exact contract.
-4. `git status --short --branch`, recent relevant commits, and the Issue diff.
-
-Read other docs only when the Issue contract depends on them. Do not scan the
-whole repository history by default. Git and the working tree are authoritative;
-correct a stale `.ai/HANDOFF.md` as part of the handoff.
 
 ## Workflow
 
@@ -182,12 +174,15 @@ correct a stale `.ai/HANDOFF.md` as part of the handoff.
 2. `developer` implements only that contract.
 3. `reviewer` reviews from a fresh context without editing the reviewed files.
 4. Repeat developer/reviewer until blocking findings are resolved.
-5. On GREEN, `reviewer` returns approved files, verification evidence,
-   residual risks, and an exact handoff for `publisher`.
-6. `publisher` updates `.ai/HANDOFF.md`, stages only approved Issue files plus
-   that handoff, commits, pushes the Issue branch without force, and opens a PR
-   against the default branch. It verifies the commit, remote branch, and PR
-   URL before reporting success. Missing access or required approval is a
-   blocker; publication must not be claimed.
-7. `publisher` never merges, rewrites history, force-pushes, deletes data,
-   handles secrets, changes financial rules, or enables live execution.
+5. On GREEN, `reviewer` returns the exact approved files, verification evidence,
+   residual risks, branch, diff, blockers, and an exact handoff for `publisher`.
+   Reviewer does not declare the Issue complete or choose the next Issue.
+6. `publisher` updates `.ai/HANDOFF.md` with publication state, stages only
+   approved files plus that handoff, commits, pushes the current Issue branch
+   without force, and opens a PR against the default branch. It verifies the PR
+   URL and head SHA, records `PR открыт`, then stops. Missing access or required
+   approval is a blocker; publication must not be claimed.
+7. `publisher` never merges, selects the next Issue, performs post-merge
+   verification, rewrites history, force-pushes, deletes data, handles secrets,
+   changes financial rules, or enables live execution. The orchestrator chooses
+   the next Issue and owns post-merge verification.
