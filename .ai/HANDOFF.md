@@ -1,5 +1,26 @@
 # Передача работы
 
+## 2026-09-27: Issue #15 — Add core agent workflow
+
+Контракт: https://github.com/DAlekseenko/bybit_bot_liquidity/issues/15. В
+ветке `codex/agent-workflow` добавлены роли `system-designer`, `developer`,
+`reviewer` и `publisher`, а также описан ограниченный Issue workflow с
+границами Bybit Testnet/read-only. Независимый reviewer вернул GREEN и утвердил
+ровно шесть файлов: `AGENTS.md`, этот handoff и четыре TOML-файла в
+`.codex/agents/`. Проверки reviewer: все 4 TOML разбираются, 17 локальных
+Markdown-ссылок разрешаются, `git diff --check` проходит; Go-файлы не менялись
+и Go-проверки не требовались. База ветки — `master` на
+`850ca9f3ca8fe6756af7de08676537ea3ff1a844`.
+
+Известные изменения рабочей копии до публикации: `AGENTS.md`,
+`.codex/agents/developer.toml`, `.codex/agents/publisher.toml`,
+`.codex/agents/reviewer.toml`, `.codex/agents/system-designer.toml` и этот
+`.ai/HANDOFF.md`; иных изменённых файлов не обнаружено. Коммит, push и PR ещё
+не выполнены; публикация ожидает их проверки. Следующий Issue — зависимый
+`github-reviewer`. Остаточный риск: TOML-роли настраивают рабочий процесс, но
+сами по себе не гарантируют соблюдение прав или наличие GitHub-аутентификации.
+Реальных блокеров на момент handoff нет.
+
 ## 2026-09-27: блокер публикации исправления liquidation gap для PR #6
 
 В изолированной ветке `codex/01-market-data-gap-fix` подготовлено исправление
@@ -22,13 +43,19 @@ Reviewer передал GREEN: targeted tests, `go test ./...`, `go test -race .
 автоматические проверки не подтверждают поведение реального Bybit WebSocket при
 сетевых разрывах; исполнение ордеров не добавлялось, контур остаётся read-only.
 
-Публикация пока заблокирована: `git ls-remote origin
+Историческая запись: публикация тогда была заблокирована: `git ls-remote origin
 refs/heads/codex/01-market-data-resilience` завершился ошибкой DNS
 `Could not resolve hostname github.com`. До восстановления доступа не созданы
 commit/push и не подтверждены текущий remote head и URL PR. Необходимо повторить
 проверку, убедиться, что целевая ветка всё ещё на ожидаемой базе, затем создать
 commit `Fix liquidation gap invalidation`, отправить fast-forward без force и
-проверить URL/title/head SHA существующего PR #6. Merge не выполнялся.
+проверить URL/title/head SHA существующего PR #6. На момент записи merge не
+выполнялся.
+
+Статус записи обновлён 2026-09-27: PR #6 впоследствии был успешно опубликован,
+проверен и merged в `master` (merge commit
+`850ca9f3ca8fe6756af7de08676537ea3ff1a844`). DNS-блокер устранён и больше не
+является текущим.
 
 ## Дополнение 2026-08-31: 01 market-data resilience
 

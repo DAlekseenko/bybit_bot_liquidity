@@ -140,3 +140,54 @@ Docker-команды и оговорки среды приведены в
 4. Обновите только затронутые источники документации и проверьте ссылки.
 5. Заполните [.ai/HANDOFF.md](.ai/HANDOFF.md): файлы, проверки, проблемы и
    следующие шаги.
+
+## How
+
+- One GitHub Issue per branch, PR, and Codex task. The approved Issue body is
+  the sole implementation contract; do not add scope from adjacent Issues.
+- Use `system-designer` to define bounded work, `developer` to implement only
+  that contract, `reviewer` for independent read-only review, then `publisher`
+  for handoff and publication after a green review.
+- Keep review under 15 minutes: normally <=6 files, <=250 production lines,
+  and <=150 test lines. Ask `system-designer` to split work that exceeds this.
+- Keep the bot on Bybit Testnet and read-only by default. This workflow grants
+  no authority to add/place orders or close positions. `dry_run: false` does
+  not enable live execution.
+- Never infer a fill from an absent order; only an executed broker operation is
+  evidence of execution. Keep secrets in environment variables and out of Git
+  and logs.
+- Live trading, risk-limit changes, and destructive migrations require explicit
+  human approval. Prefer the Go standard library absent a clear need.
+- For Go changes, add concise Russian comments to every function and method,
+  including private functions and test helpers. Exported comments start with
+  the identifier name. Run gofmt, targeted tests, `go test ./...`, and
+  `go vet ./...`.
+
+## Context loading
+
+At the start of each Issue, read only the smallest useful context set:
+
+1. `README.md` and `.ai/CONTEXT.md` for project state and stable decisions.
+2. `.ai/HANDOFF.md` for the latest branch state and blockers.
+3. The approved GitHub Issue body for the exact contract.
+4. `git status --short --branch`, recent relevant commits, and the Issue diff.
+
+Read other docs only when the Issue contract depends on them. Do not scan the
+whole repository history by default. Git and the working tree are authoritative;
+correct a stale `.ai/HANDOFF.md` as part of the handoff.
+
+## Workflow
+
+1. `system-designer` defines a bounded Issue contract.
+2. `developer` implements only that contract.
+3. `reviewer` reviews from a fresh context without editing the reviewed files.
+4. Repeat developer/reviewer until blocking findings are resolved.
+5. On GREEN, `reviewer` returns approved files, verification evidence,
+   residual risks, and an exact handoff for `publisher`.
+6. `publisher` updates `.ai/HANDOFF.md`, stages only approved Issue files plus
+   that handoff, commits, pushes the Issue branch without force, and opens a PR
+   against the default branch. It verifies the commit, remote branch, and PR
+   URL before reporting success. Missing access or required approval is a
+   blocker; publication must not be claimed.
+7. `publisher` never merges, rewrites history, force-pushes, deletes data,
+   handles secrets, changes financial rules, or enables live execution.
