@@ -111,8 +111,10 @@
 - Публикация: PR [#39](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/39)
   открыт к `master`, не draft, mergeable. GitHub readback подтвердил branch
   `codex/28-quality-gate`, base SHA
-  `52936af8820ed7b1c2ab600c6b605976ca156ec1` и первоначальный head SHA
-  `f727a1e2c32be23d7d14977ac227e15748bcf23a`. Запуск CI #100 для этого SHA
-  `in_progress`; combined statuses пока пусты. После handoff-only commit
-  перепроверить итоговый PR head и CI, затем передать точный SHA github-reviewer.
+  `52936af8820ed7b1c2ab600c6b605976ca156ec1` и head SHA при последнем readback
+  `fd584be3f17190ce6998dd449c1c9efe6c3694d8`. PR diff состоит из двух Issue
+  файлов и этого handoff. Запуск CI #102 на указанном SHA `pending`, combined
+  statuses пусты. После этого readback будет опубликован ещё один handoff-only
+  commit; итоговые head SHA и CI требуют свежего readback и передаются
+  github-reviewer.
 - Блокеры: отсутствуют; GitHub readback и Actions доступны.
