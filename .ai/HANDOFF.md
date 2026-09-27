@@ -26,3 +26,21 @@
   публикации. Merge не выполнять.
 
 Ссылки: [краткий контекст](CONTEXT.md), [инструкции](../AGENTS.md).
+
+## 2026-09-27: Issue #23 — цель проекта
+
+- Контракт: [Issue #23](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/23).
+- Ветка `codex/23-project-goal`; база `origin/master` и HEAD на старте:
+  `50fe17bc549d1ecb94c008c61d8f8ec8b467746a`.
+- Изменены только утверждённые `README.md`, `PROJECT_GOAL.md` и этот handoff.
+- Independent review: GREEN; полный контракт соблюдён, локальные ссылки и
+  `git diff --check` проходят. Go-тесты не нужны: код не менялся.
+- Следующий Issue пока не назначен; определить после публикации #23.
+- Рабочее дерево до handoff: `README.md` изменён, `PROJECT_GOAL.md` добавлен;
+  иных изменений нет. Перед commit/push/PR handoff будет staged дополнительно.
+- Публикация: Issue открыт; commit, push без force и PR в `master` ожидают
+  выполнения и проверки publisher.
+- Остаточный риск: цель описывает будущее состояние; текущая реализация остаётся
+  read-only/Testnet/paper и не отправляет реальные ордера. Изменение документации
+  не меняет runtime.
+- Блокеры на текущем этапе не выявлены.
