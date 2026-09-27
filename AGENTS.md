@@ -149,7 +149,8 @@ Docker-команды и оговорки среды приведены в
   when the Issue contract or a discovered dependency requires them.
 - Use `system-designer` to define bounded work, `developer` to implement only
   that contract, `reviewer` for independent read-only review, then `publisher`
-  for handoff and publication after a green review.
+  for handoff and publication after a green review, then `github-reviewer` for
+  the post-publication check.
 - Keep review under 15 minutes: normally <=6 files, <=250 production lines,
   and <=150 test lines. Ask `system-designer` to split work that exceeds this.
 - Keep the bot on Bybit Testnet and read-only by default. This workflow grants
@@ -180,9 +181,25 @@ Docker-команды и оговорки среды приведены в
 6. `publisher` updates `.ai/HANDOFF.md` with publication state, stages only
    approved files plus that handoff, commits, pushes the current Issue branch
    without force, and opens a PR against the default branch. It verifies the PR
-   URL and head SHA, records `PR открыт`, then stops. Missing access or required
-   approval is a blocker; publication must not be claimed.
-7. `publisher` never merges, selects the next Issue, performs post-merge
+   URL and exact head SHA, records `PR открыт`, provides the verified PR URL,
+   head SHA, and green reviewer handoff to `github-reviewer`, then stops. Missing
+   access or required approval is a blocker; publication must not be claimed.
+7. `github-reviewer` checks the exact published PR diff against the Issue and
+   approved files, confirms the local reviewer is GREEN, and confirms CI is
+   GREEN for that same head SHA. Fail closed on missing, stale, or mismatched
+   evidence. It publishes a Russian user-action comment only when user
+   participation is genuinely required; use marker
+   `<!-- codex-user-action:v1 -->`, sections `Контекст`, `От вас`, `До ответа`,
+   evidence and head SHA, exactly one concrete action, and the blocked step or
+   safe path if there is no reply. Mark mandatory participation `🟡` and optional
+   participation `🟢`. Before writing, find its own marker comment and update it
+   when the state changes; do not duplicate it. After writing, read back and
+   verify the comment URL, target PR and head, and full body. Ordinary review
+   notes, normal CI, and cases needing no user participation produce no new
+   comment. The role cannot approve or request changes, merge, push, edit code,
+   create Issues or PRs, trade, or change risk limits; Testnet/read-only safety
+   boundaries remain in force.
+8. `publisher` never merges, selects the next Issue, performs post-merge
    verification, rewrites history, force-pushes, deletes data, handles secrets,
    changes financial rules, or enables live execution. The orchestrator chooses
    the next Issue and owns post-merge verification.

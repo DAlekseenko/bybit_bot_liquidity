@@ -20,3 +20,29 @@
   URL выше и текущий head ветки. Merge и post-merge verification не выполнять.
 - Остаточные риски: изменения затрагивают только инструкции и конфигурацию
   агентских ролей; Go-код и тесты не менялись. Следующий Issue выбирает orchestrator.
+
+## Issue #19 — Роль post-publication github-reviewer
+
+- Ветка: `codex/19-github-reviewer`; база: `fdfb36c4a5218a8b81e50481305759ab1c7a9a58`.
+- Одобренные Issue-файлы: `AGENTS.md` и `.codex/agents/github-reviewer.toml`.
+- Перед публикацией сверено: HEAD совпадал с базой; изменены только два
+  одобренных файла, иных локальных изменений не было. В `AGENTS.md` 21
+  добавление и 4 удаления; TOML содержит конфигурацию отдельной read-only роли.
+- Независимый reviewer: GREEN; 58 изменённых строк; TOML parse и diff checks
+  чистые; Go и тесты не менялись. Остаточный риск по handoff reviewer: роль
+  декларативна, её поведение зависит от будущего исполнения агентом.
+- Проверки publisher: `git diff --check` и `git diff --cached --check` прошли.
+  Локальная верификация кода не запускалась, поскольку изменения только в
+  правилах и TOML; доказательства reviewer сохранены выше.
+- Issue commit: `c86451d2ab27015d6511ecb32627bccfb5113d6b`; push в origin
+  выполнен без force. PR открыт: [#26](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/26),
+  base `master`. Persisted readback подтвердил URL и head SHA issue commit.
+- На head issue commit CI `CI` выполнялся (`in_progress`); combined commit
+  statuses вернули пустой список. После handoff-only commit проверить CI на новом
+  head; GREEN локального reviewer подтверждён.
+- Handoff-only commit включает только `.ai/HANDOFF.md`; после push сверить
+  новый PR head SHA и CI на нём.
+- Остаточные риски: роль декларативна, её поведение зависит от будущего
+  исполнения агентом. Go-код и тесты не менялись.
+- Блокеры: отсутствуют. Merge и post-merge verification не выполнять;
+  post-publication handoff передать `github-reviewer` после финального readback.
