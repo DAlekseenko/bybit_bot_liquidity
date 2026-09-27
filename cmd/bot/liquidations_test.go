@@ -9,15 +9,31 @@ import (
 	"bybit_bot_liquidity/internal/exchange"
 )
 
+// TestRunLiquidationStreamReconnectsAndStops проверяет reconnect и отмену цикла.
 func TestRunLiquidationStreamReconnectsAndStops(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	streamer := &liquidationStreamerMock{cancel: cancel}
-	runLiquidationStream(ctx, discardLogger(), streamer, "BTCUSDT", make(chan exchange.Liquidation), time.Millisecond)
+	event := exchange.Liquidation{Symbol: "BTCUSDT", Price: 100}
+	streamer := &liquidationStreamerMock{cancel: cancel, event: event}
+	output := make(chan exchange.Liquidation, 1)
+	runLiquidationStream(ctx, discardLogger(), streamer, "BTCUSDT", output, time.Millisecond)
 
 	if streamer.calls != 2 {
 		t.Fatalf("stream calls = %d, want 2", streamer.calls)
+	}
+	if got := <-output; got != event {
+		t.Fatalf("forwarded event = %#v, want %#v", got, event)
+	}
+	invalidDone := make(chan struct{})
+	go func() {
+		runLiquidationStream(context.Background(), discardLogger(), &liquidationStreamerMock{}, "BTCUSDT", output, 0)
+		close(invalidDone)
+	}()
+	select {
+	case <-invalidDone:
+	case <-time.After(time.Second):
+		t.Fatal("invalid retry policy left the forwarder blocked")
 	}
 }
 
@@ -86,11 +102,16 @@ func TestCollectLiquidationsStopsWhenChannelCloses(t *testing.T) {
 
 type liquidationStreamerMock struct {
 	cancel context.CancelFunc
+	event  exchange.Liquidation
 	calls  int
 }
 
-func (m *liquidationStreamerMock) Stream(context.Context, string, chan<- exchange.Liquidation) error {
+// Stream завершает тестовую попытку и отменяет контекст на повторном вызове.
+func (m *liquidationStreamerMock) Stream(_ context.Context, _ string, output chan<- exchange.Liquidation) error {
 	m.calls++
+	if m.calls == 1 {
+		output <- m.event
+	}
 	if m.calls == 2 {
 		m.cancel()
 	}

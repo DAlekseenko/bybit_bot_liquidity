@@ -26,7 +26,8 @@ type signalStore interface {
 }
 
 type liquidationSource interface {
-	Recent(now time.Time) []exchange.Liquidation
+	Snapshot(now time.Time) marketdata.LiquidationSnapshot
+	AcquireReadyGeneration(generation uint64, now time.Time) (func(), bool)
 }
 
 type readOnlyRunner struct {
@@ -40,8 +41,10 @@ type readOnlyRunner struct {
 	candleLimit          int
 	now                  func() time.Time
 	previousOpenInterest *exchange.OpenInterest
+	previousOIGeneration uint64
 }
 
+// newReadOnlyRunner связывает зависимости цикла без включения торгового исполнения.
 func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollector, evaluator signalEvaluator, store signalStore, paper *papertrade.Engine, liquidations liquidationSource, candleLimit int) *readOnlyRunner {
 	if log == nil {
 		log = slog.Default()
@@ -60,6 +63,7 @@ func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollec
 	}
 }
 
+// runReadOnlyLoop выполняет snapshots с заданной паузой после завершения запроса.
 func runReadOnlyLoop(ctx context.Context, log *slog.Logger, runner *readOnlyRunner, interval time.Duration) {
 	if log == nil {
 		log = slog.Default()
@@ -92,18 +96,33 @@ func runReadOnlyLoop(ctx context.Context, log *slog.Logger, runner *readOnlyRunn
 	}
 }
 
+// Tick загружает рынок и оценивает сигнал только при готовом актуальном окне ликвидаций.
 func (r *readOnlyRunner) Tick(ctx context.Context) {
 	now := r.now().UTC()
-	snapshot, err := r.collector.Snapshot(ctx, r.candleLimit, r.liquidations.Recent(now))
+	liquidationSnapshot := r.liquidations.Snapshot(now)
+	if r.previousOpenInterest != nil && r.previousOIGeneration != liquidationSnapshot.Generation {
+		r.previousOpenInterest = nil
+	}
+	snapshot, err := r.collector.Snapshot(ctx, r.candleLimit, liquidationSnapshot.Events)
 	if err != nil {
 		r.log.Error("market snapshot failed", "symbol", r.symbol, "error", err)
 		return
 	}
 
 	r.advanceVirtualTrade(ctx, snapshot.Candles)
+	if !liquidationSnapshot.Ready {
+		r.previousOpenInterest = nil
+		return
+	}
+	releaseGeneration, acquired := r.liquidations.AcquireReadyGeneration(liquidationSnapshot.Generation, r.now().UTC())
+	if !acquired {
+		r.previousOpenInterest = nil
+		return
+	}
+	defer releaseGeneration()
 
 	if r.previousOpenInterest == nil {
-		r.setPreviousOpenInterest(snapshot.OpenInterest)
+		r.setPreviousOpenInterest(snapshot.OpenInterest, liquidationSnapshot.Generation)
 		r.log.Info(
 			"market snapshot initialized",
 			"symbol", r.symbol,
@@ -115,7 +134,7 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 
 	if !snapshot.OpenInterest.Time.After(r.previousOpenInterest.Time) {
 		if snapshot.OpenInterest.Time.Equal(r.previousOpenInterest.Time) {
-			r.setPreviousOpenInterest(snapshot.OpenInterest)
+			r.setPreviousOpenInterest(snapshot.OpenInterest, liquidationSnapshot.Generation)
 			r.log.Debug(
 				"open interest window has not advanced",
 				"symbol", r.symbol,
@@ -145,7 +164,6 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 	if evaluationTime.IsZero() {
 		evaluationTime = now
 	}
-
 	evaluation := r.evaluator.EvaluateDetailed(strategy.Input{
 		Symbol:               r.symbol,
 		Candles:              snapshot.Candles,
@@ -211,9 +229,10 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 	}
 	r.log.Info("signal generated", "symbol", signal.Symbol, "type", signal.Type, "reason", signal.Reason)
 
-	r.setPreviousOpenInterest(snapshot.OpenInterest)
+	r.setPreviousOpenInterest(snapshot.OpenInterest, liquidationSnapshot.Generation)
 }
 
+// advanceVirtualTrade обновляет только аналитическую виртуальную позицию.
 func (r *readOnlyRunner) advanceVirtualTrade(ctx context.Context, candles []exchange.Candle) {
 	if r.paper == nil {
 		return
@@ -244,6 +263,7 @@ func (r *readOnlyRunner) advanceVirtualTrade(ctx context.Context, candles []exch
 	)
 }
 
+// latestConfirmedCandle возвращает наиболее новую подтверждённую свечу.
 func latestConfirmedCandle(candles []exchange.Candle) (exchange.Candle, bool) {
 	var latest exchange.Candle
 	found := false
@@ -259,7 +279,9 @@ func latestConfirmedCandle(candles []exchange.Candle) (exchange.Candle, bool) {
 	return latest, found
 }
 
-func (r *readOnlyRunner) setPreviousOpenInterest(openInterest exchange.OpenInterest) {
+// setPreviousOpenInterest сохраняет базовый OI для следующего шага.
+func (r *readOnlyRunner) setPreviousOpenInterest(openInterest exchange.OpenInterest, generation uint64) {
 	copied := openInterest
 	r.previousOpenInterest = &copied
+	r.previousOIGeneration = generation
 }

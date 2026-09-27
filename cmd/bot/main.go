@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"bybit_bot_liquidity/internal/config"
-	"bybit_bot_liquidity/internal/exchange"
 	"bybit_bot_liquidity/internal/exchange/bybit"
 	"bybit_bot_liquidity/internal/execution"
 	applogger "bybit_bot_liquidity/internal/logger"
@@ -27,6 +26,7 @@ const (
 	websocketRetryDelay  = 5 * time.Second
 )
 
+// main собирает зависимости бота и запускает read-only цикл Testnet.
 func main() {
 	configPath := flag.String("config", "configs/config.yaml", "path to YAML config")
 	checkStorage := flag.Bool("check-storage", false, "run SQLite quick_check and exit")
@@ -98,18 +98,18 @@ func main() {
 	liquidationClient := bybit.NewLiquidationClient(cfg.Exchange.WebsocketURL, nil)
 	liquidationWindow := time.Duration(cfg.Strategy.LiquidationWindowMinutes) * time.Minute
 	liquidations := marketdata.NewLiquidationWindow(liquidationWindow)
-	liquidationEvents := make(chan exchange.Liquidation, 256)
+	liquidationEvents := make(chan generationLiquidation, 256)
 	var background sync.WaitGroup
 	background.Add(2)
 	go func() {
 		defer background.Done()
 		policy := defaultReconnectPolicy()
 		policy.InitialDelay = websocketRetryDelay
-		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.Reset, nil)
+		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.BeginGeneration, liquidations.Reset, nil)
 	}()
 	go func() {
 		defer background.Done()
-		collectLiquidations(ctx, liquidationEvents, liquidations.Add)
+		collectGenerationLiquidations(ctx, liquidationEvents, liquidations)
 	}()
 	signalStrategy := strategy.New(strategy.Config{
 		OIGrowthPercent:      cfg.Strategy.OIGrowthPercent,

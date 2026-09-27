@@ -18,6 +18,83 @@ import (
 
 const testStrategyCandleLimit = 22
 
+// TestReadOnlyRunnerDropsSnapshotWhenLiquidationGenerationResets проверяет reset во время REST-запроса.
+func TestReadOnlyRunnerDropsSnapshotWhenLiquidationGenerationResets(t *testing.T) {
+	now := time.Date(2026, 9, 27, 12, 5, 0, 0, time.UTC)
+	window := marketdata.NewLiquidationWindowWithClock(0, func() time.Time { return now })
+	window.AddForGeneration(window.BeginGeneration(), exchange.Liquidation{Symbol: "BTCUSDT", Price: 100}, now.Add(-5*time.Minute))
+	collector := &barrierSnapshotCollector{entered: make(chan struct{}), resume: make(chan struct{}), snapshot: marketdata.Snapshot{OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 101, Time: now}}}
+	evaluator := &signalEvaluatorMock{evaluation: strategy.Evaluation{Signal: strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalLong}}}
+	store := &signalStoreMock{}
+	runner := newReadOnlyRunner(discardLogger(), "BTCUSDT", collector, evaluator, store, nil, window, testStrategyCandleLimit)
+	runner.previousOpenInterest = &exchange.OpenInterest{Symbol: "BTCUSDT", Value: 100, Time: now.Add(-5 * time.Minute)}
+	runner.previousOIGeneration = 1
+	done := make(chan struct{})
+	go func() { runner.Tick(context.Background()); close(done) }()
+	<-collector.entered
+	func() { window.Reset(); close(collector.resume); <-done }()
+	if evaluator.calls != 0 || len(store.records) != 0 || runner.previousOpenInterest != nil {
+		t.Fatalf("after concurrent reset: evaluator=%d records=%d previousOI=%+v", evaluator.calls, len(store.records), runner.previousOpenInterest)
+	}
+	window.AddForGeneration(window.BeginGeneration(), exchange.Liquidation{Symbol: "BTCUSDT", Time: now}, now)
+	resetDone, resetStarted := make(chan struct{}), make(chan struct{})
+	store = &signalStoreMock{resetDone: resetDone}
+	evaluator = &signalEvaluatorMock{evaluation: strategy.Evaluation{Signal: strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalNone}}, entered: make(chan struct{}), resume: make(chan struct{})}
+	secondCollector := &snapshotCollectorMock{snapshots: []marketdata.Snapshot{{OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 101, Time: now.Add(5 * time.Minute)}}, {OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 102, Time: now.Add(10 * time.Minute)}}}}
+	runner = newReadOnlyRunner(discardLogger(), "BTCUSDT", secondCollector, evaluator, store, nil, window, testStrategyCandleLimit)
+	runner.Tick(context.Background())
+	done = make(chan struct{})
+	go func() { runner.Tick(context.Background()); close(done) }()
+	<-evaluator.entered
+	go func() { close(resetStarted); window.Reset(); close(resetDone) }()
+	<-resetStarted
+	close(evaluator.resume)
+	<-done
+	<-resetDone
+	if len(store.records) != 1 || store.savedAfterReset {
+		t.Fatalf("signal persistence crossed reset: records=%d savedAfterReset=%t", len(store.records), store.savedAfterReset)
+	}
+}
+
+// TestReadOnlyRunnerWaitsForCompletePostReconnectWindow проверяет baseline и оценку после покрытия окна.
+func TestReadOnlyRunnerWaitsForCompletePostReconnectWindow(t *testing.T) {
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+	window := marketdata.NewLiquidationWindowWithClock(5*time.Minute, func() time.Time { return now })
+	oldGeneration := window.BeginGeneration()
+	window.AddForGeneration(oldGeneration, exchange.Liquidation{Symbol: "BTCUSDT", Time: now, Price: 199}, now)
+	buffered := make(chan generationLiquidation, 1)
+	buffered <- generationLiquidation{generation: oldGeneration, liquidation: exchange.Liquidation{Symbol: "BTCUSDT", Time: now, Price: 199}, observedAt: now}
+	collector := &snapshotCollectorMock{snapshots: []marketdata.Snapshot{{OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 99, Time: now}}, {OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 100, Time: now.Add(5 * time.Minute)}}, {OpenInterest: exchange.OpenInterest{Symbol: "BTCUSDT", Value: 101, Time: now.Add(10 * time.Minute)}}}, err: errors.New("temporary REST error")}
+	evaluator := &signalEvaluatorMock{evaluation: strategy.Evaluation{Signal: strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalNone}}}
+	store := &signalStoreMock{}
+	runner := newReadOnlyRunner(discardLogger(), "BTCUSDT", collector, evaluator, store, nil, window, testStrategyCandleLimit)
+	runner.now = func() time.Time { return now }
+	now = now.Add(5 * time.Minute)
+	runner.Tick(context.Background())
+	window.Reset()
+	close(buffered)
+	collectGenerationLiquidations(context.Background(), buffered, window)
+	generation := window.BeginGeneration()
+	window.AddForGeneration(generation, exchange.Liquidation{Symbol: "BTCUSDT", Time: now, Price: 200}, now)
+	if window.Snapshot(now).Ready {
+		t.Fatal("new generation became ready before full retention")
+	}
+	now = now.Add(5 * time.Minute)
+	collector.failNext = true
+	runner.Tick(context.Background())
+	if runner.previousOpenInterest != nil {
+		t.Fatalf("REST error retained old-generation baseline: %+v", runner.previousOpenInterest)
+	}
+	runner.Tick(context.Background())
+	now = now.Add(5 * time.Minute)
+	newEvent := exchange.Liquidation{Symbol: "BTCUSDT", Time: now, Price: 201}
+	window.AddForGeneration(generation, newEvent, now)
+	runner.Tick(context.Background())
+	if evaluator.calls != 1 || len(store.records) != 1 || evaluator.lastInput.PreviousOpenInterest.Value != 100 || len(evaluator.lastInput.Liquidations) != 1 || evaluator.lastInput.Liquidations[0] != newEvent {
+		t.Fatalf("post-reconnect evaluation: evaluator=%d records=%d liquidations=%#v", evaluator.calls, len(store.records), evaluator.lastInput.Liquidations)
+	}
+}
+
 func TestReadOnlyRunnerInitializesPreviousOpenInterest(t *testing.T) {
 	openInterestTime := time.Date(2026, 7, 22, 11, 55, 0, 0, time.UTC)
 	collector := &snapshotCollectorMock{
@@ -271,16 +348,23 @@ func discardLogger() *slog.Logger {
 type snapshotCollectorMock struct {
 	snapshots []marketdata.Snapshot
 	err       error
+	failNext  bool
 	calls     int
 }
 
+// Snapshot возвращает очередной тестовый снимок с переданными ликвидациями.
 func (m *snapshotCollectorMock) Snapshot(ctx context.Context, candleLimit int, liquidations []exchange.Liquidation) (marketdata.Snapshot, error) {
+	if m.failNext {
+		m.failNext = false
+		return marketdata.Snapshot{}, m.err
+	}
 	if m.calls >= len(m.snapshots) {
 		return marketdata.Snapshot{}, m.err
 	}
 
 	snapshot := m.snapshots[m.calls]
 	m.calls++
+	snapshot.Liquidations = liquidations
 	return snapshot, nil
 }
 
@@ -288,14 +372,18 @@ type signalEvaluatorMock struct {
 	evaluation strategy.Evaluation
 	lastInput  strategy.Input
 	calls      int
+	entered    chan struct{}
+	resume     chan struct{}
 }
 
 type signalStoreMock struct {
-	records  []storage.SignalRecord
-	closed   []closedVirtualSignal
-	nextID   int64
-	err      error
-	closeErr error
+	records         []storage.SignalRecord
+	closed          []closedVirtualSignal
+	nextID          int64
+	err             error
+	closeErr        error
+	resetDone       chan struct{}
+	savedAfterReset bool
 }
 
 type closedVirtualSignal struct {
@@ -307,11 +395,36 @@ type liquidationSourceMock struct {
 	events []exchange.Liquidation
 }
 
-func (m *liquidationSourceMock) Recent(_ time.Time) []exchange.Liquidation {
-	return m.events
+// Snapshot возвращает готовый снимок тестового источника ликвидаций.
+func (m *liquidationSourceMock) Snapshot(_ time.Time) marketdata.LiquidationSnapshot {
+	return marketdata.LiquidationSnapshot{Events: append([]exchange.Liquidation(nil), m.events...), Generation: 1, Ready: true}
 }
 
+// AcquireReadyGeneration выдаёт тестовый lease только для заданного поколения.
+func (m *liquidationSourceMock) AcquireReadyGeneration(generation uint64, _ time.Time) (func(), bool) {
+	return func() {}, generation == 1
+}
+
+type barrierSnapshotCollector struct {
+	entered  chan struct{}
+	resume   chan struct{}
+	snapshot marketdata.Snapshot
+}
+
+// Snapshot блокирует сбор до разрешающего канала, моделируя REST interleaving.
+func (c *barrierSnapshotCollector) Snapshot(context.Context, int, []exchange.Liquidation) (marketdata.Snapshot, error) {
+	close(c.entered)
+	<-c.resume
+	return c.snapshot, nil
+}
+
+// SaveSignalRecord сохраняет сигнал в памяти для проверки цикла.
 func (m *signalStoreMock) SaveSignalRecord(_ context.Context, record storage.SignalRecord) (int64, error) {
+	select {
+	case <-m.resetDone:
+		m.savedAfterReset = true
+	default:
+	}
 	m.records = append(m.records, record)
 	if m.nextID == 0 {
 		m.nextID = int64(len(m.records))
@@ -324,7 +437,12 @@ func (m *signalStoreMock) CloseVirtualSignal(_ context.Context, signalID int64, 
 	return m.closeErr
 }
 
+// EvaluateDetailed сохраняет вход и возвращает заранее заданную оценку.
 func (m *signalEvaluatorMock) EvaluateDetailed(input strategy.Input) strategy.Evaluation {
+	if m.entered != nil {
+		close(m.entered)
+		<-m.resume
+	}
 	m.lastInput = input
 	m.calls++
 	return m.evaluation
