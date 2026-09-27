@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  exclusions:
+    rules:
+      - path: internal/marketdata/retry\.go
+        text: networkErr\.Temporary
+        linters:
+          - staticcheck
+
+formatters:
+  enable:
+    - gofmt

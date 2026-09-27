@@ -90,3 +90,31 @@
   текущего handoff-коммита; после его push повторно прочитать PR URL/base/head,
   сверить PR body и передать актуальный SHA вместе с GREEN handoff. Issue
   остаётся открытой; merge, checkpoint и post-merge verification не выполнялись.
+
+## Issue #28 — CI quality gates
+
+- Контракт GitHub Issue [#28](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/28)
+  («#22 / PR #7: выделить CI quality gates»); ветка `codex/28-quality-gate`,
+  база reviewer handoff `52936af8820ed7b1c2ab600c6b605976ca156ec1`.
+- Независимый reviewer: GREEN; одобрены ровно `.github/workflows/ci.yml` и
+  `.golangci.yml`. Diff: 33 additions, 0 deletions, 2 файла, в рамках контракта.
+  Проверки unit, race, vet, build, lint и coverage — green. `govulncheck`
+  проверяется CI с сетью на опубликованном точном head SHA.
+- Перед публикацией: текущая ветка и HEAD сверены с базой; локальные изменения
+  только в двух одобренных файлах, иных uncommitted файлов нет. `git diff
+  --check` чистый. Staged были только два одобренных файла и этот handoff.
+  Issue-коммит `f727a1e2c32be23d7d14977ac227e15748bcf23a`; push в origin
+  выполнен без force. Review повторно не выполнялся.
+- Остаточные риски: результат сетевой `govulncheck` и полный CI требуют проверки
+  на точном опубликованном head. Нет изменений Go runtime или тестов; Testnet и
+  read-only ограничения не затронуты.
+- Публикация: PR [#39](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/39)
+  открыт к `master`, не draft, mergeable. GitHub readback подтвердил branch
+  `codex/28-quality-gate`, base SHA
+  `52936af8820ed7b1c2ab600c6b605976ca156ec1` и head SHA при последнем readback
+  `fd584be3f17190ce6998dd449c1c9efe6c3694d8`. PR diff состоит из двух Issue
+  файлов и этого handoff. Запуск CI #102 на указанном SHA `pending`, combined
+  statuses пусты. После этого readback будет опубликован ещё один handoff-only
+  commit; итоговые head SHA и CI требуют свежего readback и передаются
+  github-reviewer.
+- Блокеры: отсутствуют; GitHub readback и Actions доступны.
