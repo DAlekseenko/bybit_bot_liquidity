@@ -141,9 +141,13 @@
   runtime; сетевой listener не добавлен. Сохранить безопасные bounded labels и
   подтвердить green CI для точного PR head. Merge и post-merge verification не
   выполнялись.
-- Публикация: подготовка; Issue commit, push и PR ещё не подтверждены. После
-  публикации записать PR URL, base/head SHA, проверенный список файлов и CI
-  readback; затем передать точный head и GREEN handoff `github-reviewer`.
-- Блокеры: отсутствуют на этапе подготовки. Если push, авторизация или GitHub
-  readback будут недоступны, записать конкретный blocker и остановиться без
-  заявления об успешной публикации.
+- Issue commit `f1a9c77a088e9c215d20547221c2d66de37e3e14`; push в origin
+  выполнен без force. PR открыт: [#41](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/41)
+  к `master`. GitHub readback подтвердил base SHA
+  `372ddd7c0b02ef150becec461cd65e61509ba984`, head SHA
+  `f1a9c77a088e9c215d20547221c2d66de37e3e14`, non-draft и три файла:
+  `.ai/HANDOFF.md` плюс ровно два reviewer-approved Issue-файла. CI `CI` для
+  этого head запущен (run `36355069107`, queued); combined statuses ещё не
+  подтверждены. После handoff-only commit/push повторно прочитать PR и CI для
+  нового exact head перед передачей github-reviewer.
+- Блокеры: отсутствуют. PR открыт; merge и post-merge verification не выполнять.
