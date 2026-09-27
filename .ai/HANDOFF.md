@@ -102,9 +102,17 @@
   проверяется CI с сетью на опубликованном точном head SHA.
 - Перед публикацией: текущая ветка и HEAD сверены с базой; локальные изменения
   только в двух одобренных файлах, иных uncommitted файлов нет. `git diff
-  --check` чистый. Review повторно не выполнялся.
+  --check` чистый. Staged были только два одобренных файла и этот handoff.
+  Issue-коммит `f727a1e2c32be23d7d14977ac227e15748bcf23a`; push в origin
+  выполнен без force. Review повторно не выполнялся.
 - Остаточные риски: результат сетевой `govulncheck` и полный CI требуют проверки
   на точном опубликованном head. Нет изменений Go runtime или тестов; Testnet и
   read-only ограничения не затронуты.
-- Публикация: ожидает commit, push и PR readback.
-- Блокеры: отсутствуют на момент подготовки handoff.
+- Публикация: PR [#39](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/39)
+  открыт к `master`, не draft, mergeable. GitHub readback подтвердил branch
+  `codex/28-quality-gate`, base SHA
+  `52936af8820ed7b1c2ab600c6b605976ca156ec1` и первоначальный head SHA
+  `f727a1e2c32be23d7d14977ac227e15748bcf23a`. Запуск CI #100 для этого SHA
+  `in_progress`; combined statuses пока пусты. После handoff-only commit
+  перепроверить итоговый PR head и CI, затем передать точный SHA github-reviewer.
+- Блокеры: отсутствуют; GitHub readback и Actions доступны.
