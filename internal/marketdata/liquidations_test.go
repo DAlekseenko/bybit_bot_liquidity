@@ -27,3 +27,15 @@ func TestLiquidationWindowKeepsOnlyRecentEventsAndReturnsCopy(t *testing.T) {
 		t.Fatalf("internal event changed through returned slice: %#v", again[0])
 	}
 }
+
+func TestLiquidationWindowResetDropsPartialWindow(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+	window := NewLiquidationWindow(5 * time.Minute)
+	window.Add(exchange.Liquidation{Time: now, Price: 1})
+	window.Reset()
+	if recent := window.Recent(now); len(recent) != 0 {
+		t.Fatalf("Recent() = %#v, want empty", recent)
+	}
+}

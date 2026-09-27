@@ -66,17 +66,66 @@ func TestCollectorSnapshotReturnsOpenInterestError(t *testing.T) {
 	}
 }
 
+func TestCollectorDeduplicatesAndOrdersCandles(t *testing.T) {
+	t.Parallel()
+
+	earlier := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+	later := earlier.Add(time.Minute)
+	collector := NewCollector(&exchangeMock{
+		candles: []exchange.Candle{
+			{OpenTime: later, Close: 102, Confirmed: false},
+			{OpenTime: earlier, Close: 100, Confirmed: true},
+			{OpenTime: later, Close: 101, Confirmed: true},
+		},
+		openInterest: exchange.OpenInterest{Value: 1},
+	}, "BTCUSDT", 5)
+
+	snapshot, err := collector.Snapshot(context.Background(), 3, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Candles) != 2 {
+		t.Fatalf("candles = %#v", snapshot.Candles)
+	}
+	if !snapshot.Candles[0].OpenTime.Equal(earlier) || snapshot.Candles[1].Close != 101 || !snapshot.Candles[1].Confirmed {
+		t.Fatalf("normalized candles = %#v", snapshot.Candles)
+	}
+}
+
+func TestCollectorRetriesClassifiedReadFailure(t *testing.T) {
+	t.Parallel()
+
+	collector := NewCollectorWithRetry(&exchangeMock{
+		candles:          []exchange.Candle{{OpenTime: time.Now(), Confirmed: true}},
+		candleFailures:   1,
+		candleFailureErr: retryableError{},
+		openInterest:     exchange.OpenInterest{Value: 1},
+	}, "BTCUSDT", 5, RetryPolicy{MaxAttempts: 2, InitialDelay: time.Millisecond, MaxDelay: time.Millisecond})
+	collector.sleep = func(context.Context, time.Duration) error { return nil }
+	collector.random = func() float64 { return 0.5 }
+
+	if _, err := collector.Snapshot(context.Background(), 1, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type exchangeMock struct {
-	candles         []exchange.Candle
-	candlesErr      error
-	openInterest    exchange.OpenInterest
-	openInterestErr error
-	candleLimit     int
-	oiWindowMinutes int
+	candles          []exchange.Candle
+	candlesErr       error
+	candleFailures   int
+	candleFailureErr error
+	openInterest     exchange.OpenInterest
+	openInterestErr  error
+	candleLimit      int
+	oiWindowMinutes  int
 }
 
 func (m *exchangeMock) GetCandles(ctx context.Context, symbol string, limit int) ([]exchange.Candle, error) {
 	m.candleLimit = limit
+	if m.candleFailures > 0 {
+		m.candleFailures--
+		return nil, m.candleFailureErr
+	}
 	return m.candles, m.candlesErr
 }
 
@@ -84,3 +133,8 @@ func (m *exchangeMock) GetOpenInterest(ctx context.Context, symbol string, windo
 	m.oiWindowMinutes = windowMinutes
 	return m.openInterest, m.openInterestErr
 }
+
+type retryableError struct{}
+
+func (retryableError) Error() string   { return "retryable" }
+func (retryableError) Retryable() bool { return true }

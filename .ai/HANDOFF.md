@@ -1,5 +1,53 @@
 # Передача работы
 
+## 2026-09-27: блокер публикации исправления liquidation gap для PR #6
+
+В изолированной ветке `codex/01-market-data-gap-fix` подготовлено исправление
+двух дефектов обработки разрыва liquidation stream для существующего PR #6
+(`Improve market data resilience`, целевая ветка
+`codex/01-market-data-resilience`, ожидаемая база
+`4babc659e9ffa6a4e438a3619acc7b675883100c`). Изменены только одобренные
+независимым reviewer файлы:
+
+- `cmd/bot/liquidations.go`;
+- `cmd/bot/liquidations_test.go`;
+- `cmd/bot/loop.go`;
+- `cmd/bot/loop_test.go`;
+- `cmd/bot/main.go`;
+- `internal/marketdata/liquidations.go`.
+
+Reviewer передал GREEN: targeted tests, `go test ./...`, `go test -race ./...`,
+`go vet ./...`, `go build ./...`, проверка `gofmt` и `git diff --check` прошли;
+изменение — +233 строки production и +149 строк тестов. Остаточный риск:
+автоматические проверки не подтверждают поведение реального Bybit WebSocket при
+сетевых разрывах; исполнение ордеров не добавлялось, контур остаётся read-only.
+
+Публикация пока заблокирована: `git ls-remote origin
+refs/heads/codex/01-market-data-resilience` завершился ошибкой DNS
+`Could not resolve hostname github.com`. До восстановления доступа не созданы
+commit/push и не подтверждены текущий remote head и URL PR. Необходимо повторить
+проверку, убедиться, что целевая ветка всё ещё на ожидаемой базе, затем создать
+commit `Fix liquidation gap invalidation`, отправить fast-forward без force и
+проверить URL/title/head SHA существующего PR #6. Merge не выполнялся.
+
+## Дополнение 2026-08-31: 01 market-data resilience
+
+В ветке `codex/01-market-data-resilience` добавлены безопасные улучшения
+read-only market-data контура:
+
+- Collector нормализует candles: сортирует и дедуплицирует интервал, предпочитая
+  подтверждённую копию свечи.
+- Idempotent public REST reads имеют budget из трёх попыток и экспоненциальную
+  задержку с jitter; retry применяется только к 429/5xx, известным временным
+  Bybit errors и сетевым timeout.
+- Polling ждёт заданный интервал после окончания предыдущего snapshot, не делая
+  catch-up burst.
+- Public liquidation WebSocket переподключается с bounded exponential backoff и
+  jitter; после разрыва окно ликвидаций очищается, потому что Bybit не даёт
+  исторический replay и прежние события нельзя считать полным окном.
+
+Реальная торговля не добавлена.
+
 ## Результат
 
 На 2026-07-22 завершён первый инкремент `internal/exchange/bybit`. Реализованы
