@@ -174,11 +174,17 @@
   поэтому отдельного lifecycle/wiring теста нет; reviewer подтвердил имеющиеся
   race проверки и прямой просмотр. Сохранить read-only/Testnet и безопасный
   состав метрик.
-- Публикация: подготовка Issue-коммита и PR к `master`; до push/создания PR
-  статус `PR не открыт`. После успешного создания записать `PR открыт`, затем
-  повторно прочитать PR URL, base, точный head SHA и CI. Handoff-only changes
-  запрещены: этот файл входит в единственный Issue-коммит вместе с тремя
-  approved файлами.
-- Блокеры: `gh` CLI отсутствует; GitHub connector доступен. Push требует
-  подтверждения remote access. Не выполнять merge, выбор следующего Issue или
+- Публикация: Issue-коммит `98690c53af3159ea73c6a906a1e76d56c22045cf`
+  отправлен в origin без force; PR открыт: [#42](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/42)
+  к `master`. GitHub readback подтвердил URL, ветку, base SHA
+  `79d66d8d729767b92fb93d2d76435441500d8dea`, head SHA
+  `98690c53af3159ea73c6a906a1e76d56c22045cf`, open/non-draft/mergeable state,
+  четыре файла (три approved Issue-файла и этот handoff), 110 additions / 2
+  deletions. CI `CI` run `36356737364` (#118) на этом точном head пока
+  `in_progress`; combined status пока пуст. Текущий handoff-only commit
+  изменит head: после его push повторно сверить PR URL, base/head SHA и CI на
+  новом точном head перед передачей github-reviewer.
+- Блокеры: отсутствуют; `gh` CLI недоступен, publication выполнена через
+  GitHub connector и обычный git push. Github-reviewer должен проверить PR #42
+  и CI для финального head SHA. Не выполнять merge, выбор следующего Issue или
   post-merge verification.
