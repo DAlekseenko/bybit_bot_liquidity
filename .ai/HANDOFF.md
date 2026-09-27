@@ -11,9 +11,13 @@
 - Ветка и рабочее дерево сверены с handoff; иных локальных файлов нет.
 - Поиск PR через GitHub connector (`head:codex/18-agent-role-boundaries`, все
   состояния) не нашёл существующего PR.
-- Публикация начата: следующий commit включает только четыре одобренных Issue
-  файла и этот handoff; планируется push без force и один PR в `master`.
-- После создания PR обновить этот handoff со статусом `PR открыт` и URL; проверить
-  persisted PR URL и head SHA. Merge и post-merge verification не выполнять.
+- Issue commit: `c310a914d9afc83470cf4868d37573cd0e02ec66`; push в origin выполнен
+  без force.
+- PR открыт: [#25](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/25),
+  base `master`. Созданный PR readback подтвердил head
+  `c310a914d9afc83470cf4868d37573cd0e02ec66`.
+- Этот handoff-only follow-up commit будет отправлен fast-forward; после него
+  сверить persisted PR URL и итоговый head SHA. Merge и post-merge verification
+  не выполнять.
 - Остаточные риски: изменения затрагивают только инструкции и конфигурацию
   агентских ролей; Go-код и тесты не менялись. Следующий Issue выбирает orchestrator.
