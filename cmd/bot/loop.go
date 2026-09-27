@@ -7,6 +7,7 @@ import (
 
 	"bybit_bot_liquidity/internal/exchange"
 	"bybit_bot_liquidity/internal/marketdata"
+	"bybit_bot_liquidity/internal/observability"
 	"bybit_bot_liquidity/internal/papertrade"
 	"bybit_bot_liquidity/internal/storage"
 	"bybit_bot_liquidity/internal/strategy"
@@ -36,6 +37,7 @@ type readOnlyRunner struct {
 	collector            snapshotCollector
 	evaluator            signalEvaluator
 	store                signalStore
+	metrics              *observability.Registry
 	paper                *papertrade.Engine
 	liquidations         liquidationSource
 	candleLimit          int
@@ -45,17 +47,22 @@ type readOnlyRunner struct {
 }
 
 // newReadOnlyRunner связывает зависимости цикла без включения торгового исполнения.
-func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollector, evaluator signalEvaluator, store signalStore, paper *papertrade.Engine, liquidations liquidationSource, candleLimit int) *readOnlyRunner {
+func newReadOnlyRunner(log *slog.Logger, symbol string, collector snapshotCollector, evaluator signalEvaluator, store signalStore, paper *papertrade.Engine, liquidations liquidationSource, candleLimit int, metrics ...*observability.Registry) *readOnlyRunner {
 	if log == nil {
 		log = slog.Default()
 	}
 
+	var registry *observability.Registry
+	if len(metrics) > 0 {
+		registry = metrics[0]
+	}
 	return &readOnlyRunner{
 		log:          log,
 		symbol:       symbol,
 		collector:    collector,
 		evaluator:    evaluator,
 		store:        store,
+		metrics:      registry,
 		paper:        paper,
 		liquidations: liquidations,
 		candleLimit:  candleLimit,
@@ -105,8 +112,14 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 	}
 	snapshot, err := r.collector.Snapshot(ctx, r.candleLimit, liquidationSnapshot.Events)
 	if err != nil {
+		if r.metrics != nil {
+			r.metrics.MarkMarketDataFailure()
+		}
 		r.log.Error("market snapshot failed", "symbol", r.symbol, "error", err)
 		return
+	}
+	if r.metrics != nil {
+		r.metrics.MarkMarketDataSuccess(time.Now().UTC())
 	}
 
 	r.advanceVirtualTrade(ctx, snapshot.Candles)
@@ -208,7 +221,11 @@ func (r *readOnlyRunner) Tick(ctx context.Context) {
 		}
 	}
 
+	writeStarted := time.Now()
 	signalID, err := r.store.SaveSignalRecord(ctx, record)
+	if r.metrics != nil {
+		r.metrics.ObserveStorageWrite(time.Since(writeStarted), err)
+	}
 	if err != nil {
 		r.log.Error("save signal failed", "symbol", signal.Symbol, "type", signal.Type, "error", err)
 		return
@@ -242,12 +259,16 @@ func (r *readOnlyRunner) advanceVirtualTrade(ctx context.Context, candles []exch
 	if outcome == nil {
 		return
 	}
+	writeStarted := time.Now()
 	err := r.store.CloseVirtualSignal(ctx, outcome.SignalID, storage.VirtualOutcome{
 		ExitPrice:  outcome.ExitPrice,
 		ExitReason: outcome.Reason,
 		PnL:        outcome.PnL,
 		ClosedAt:   outcome.ClosedAt,
 	})
+	if r.metrics != nil {
+		r.metrics.ObserveStorageWrite(time.Since(writeStarted), err)
+	}
 	if err != nil {
 		r.log.Error("close virtual signal failed", "signal_id", outcome.SignalID, "error", err)
 		return
