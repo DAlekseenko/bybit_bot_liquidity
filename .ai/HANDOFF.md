@@ -139,9 +139,14 @@
 - Остаточный риск: handler удерживает RLock во время записи ограниченного
   ответа. Listener не подключён. Секреты, account balance, trading data,
   payload/error detail и labels из внешнего ввода не включаются.
-- Публикация: Issue commit и PR ещё не созданы; подготовлено к staging только
-  два одобренных Issue-файла и `.ai/HANDOFF.md`. После успешного PR creation
-  указать `PR открыт`, проверить URL/base/head SHA и Actions для того же head,
-  затем передать точный readback github-reviewer. Блокеры: отсутствуют.
+- Публикация: Issue commit `36603af02a1aa06a1712b7b03ae7f713f4a078cd`
+  создан из двух одобренных файлов и `.ai/HANDOFF.md`; push текущей ветки в
+  origin выполнен без force. PR открыт: [#40](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/40),
+  base `master` на SHA `372ddd7c0b02ef150becec461cd65e61509ba984`, head
+  `36603af02a1aa06a1712b7b03ae7f713f4a078cd`; GitHub PR readback подтвердил
+  URL, base и head. На том же head CI `CI` запущен, состояние `in_progress`;
+  combined statuses пока пусты. После handoff-only commit повторно сверить PR
+  URL/base/head, diff и CI status и передать точный readback github-reviewer.
+  Блокеры: отсутствуют.
 - Merge, закрытие Issue, выбор следующего Issue и post-merge verification
   остаются за orchestrator.
