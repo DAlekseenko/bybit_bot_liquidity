@@ -118,3 +118,32 @@
   commit; итоговые head SHA и CI требуют свежего readback и передаются
   github-reviewer.
 - Блокеры: отсутствуют; GitHub readback и Actions доступны.
+
+## Issue #29 — безопасный реестр метрик
+
+- Контракт: [Issue #29](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/29),
+  «#22 / PR #7: безопасный реестр метрик». Ветка
+  `codex/29-metrics-registry`; reviewer base —
+  `372ddd7c0b02ef150becec461cd65e61509ba984` (`origin/master` на старте).
+- Независимый reviewer: GREEN; одобрены ровно
+  `internal/observability/metrics.go` (110 production lines) и
+  `internal/observability/metrics_test.go` (80 test lines). Изменение
+  укладывается в лимит Issue; runtime wiring и listener не входят в scope.
+- Перед публикацией проверено: текущая ветка `codex/29-metrics-registry`, HEAD
+  и `origin/master` совпадают с reviewer base; незакоммиченные файлы ровно два
+  одобренных файла в `internal/observability/`. Остальных локальных изменений
+  нет. PR для этой head-ветки поиском GitHub не найден.
+- Проверки по reviewer/developer handoff: targeted и race tests, `go test ./...`,
+  `go vet ./...` и `go build ./...` — green; также сообщены green lint,
+  vulnerability и coverage checks. Эти локальные результаты не заменяют CI на
+  опубликованном точном head SHA.
+- Остаточные риски: метрики ограничены process registry и пока не подключены к
+  runtime; сетевой listener не добавлен. Сохранить безопасные bounded labels и
+  подтвердить green CI для точного PR head. Merge и post-merge verification не
+  выполнялись.
+- Публикация: подготовка; Issue commit, push и PR ещё не подтверждены. После
+  публикации записать PR URL, base/head SHA, проверенный список файлов и CI
+  readback; затем передать точный head и GREEN handoff `github-reviewer`.
+- Блокеры: отсутствуют на этапе подготовки. Если push, авторизация или GitHub
+  readback будут недоступны, записать конкретный blocker и остановиться без
+  заявления об успешной публикации.
