@@ -46,3 +46,40 @@
   исполнения агентом. Go-код и тесты не менялись.
 - Блокеры: отсутствуют. Merge и post-merge verification не выполнять;
   post-publication handoff передать `github-reviewer` после финального readback.
+
+- Подтверждённое завершение: PR #26 получил `mergedAt`
+  `2026-09-27T21:08:42Z`, `mergeCommit`
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; remote refs обновлены, этот merge
+  commit достижим из `origin/master`, проверенный SHA `origin/master` —
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`. Checkpoint Issue #19 прочитан:
+  [комментарий](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/19#issuecomment-5859856937).
+
+## Issue #20 — Merge gate и точное продолжение работы
+
+- Issue: [#20](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/20).
+- База проверена: `origin/master` и HEAD на старте совпали с
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`; рабочее дерево было чистым.
+- Ветка: `codex/20-merge-gate-resume`; worktree:
+  `/Users/alekseenkodenis/.codex/worktrees/81f9/bybit_bot_liquidity`.
+- Codex task thread: `01a0e454-93c9-79c3-beec-6c26ffc9df71`; HEAD/base SHA:
+  `2db7c5efa68e0da462fda01e3675a5cddc005c2d`.
+- Одобренные файлы: `AGENTS.md`, `.ai/HANDOFF.md`; контракт ограничивает
+  документацию 130 изменёнными строками, без Go и тестов.
+- Стадия: независимая проверка завершена GREEN. Reviewer одобрил ровно
+  `AGENTS.md` и `.ai/HANDOFF.md`; подтверждены Issue #20 и отсутствие
+  существующего PR для этой ветки или checkpoint-комментария. Review diff:
+  2 файла, 51 добавленная строка, 0 удалений; `git diff --check` пройден.
+- Остаточный риск: изменение документирует процесс; проверка не создаёт
+  гарантию доступности GitHub или обновления remote refs в будущих запусках.
+- Публикация: commit ещё не создан; push и PR ещё не выполнены. Issue #20
+  остаётся открытой. Merge и merge checkpoint для неё отсутствуют.
+- Resume: сверить Issue/task, branch и worktree; fetch, проверить свежий
+  `origin/master` и SHA. Найти и повторно использовать существующие PR и marker
+  comment, не создавать дубликаты; сверить сохранённые проверки и blocker,
+  выполнить точное следующее действие и продолжить с теми же объектами.
+- Проверки: `git diff --check` пройден, изменены только два одобренных файла
+  (51 добавленная строка, 0 удалений); Go и тесты не менялись. Блокеров нет.
+- Следующее действие: publisher фиксирует только одобренные файлы и handoff,
+  отправляет текущую ветку без force и открывает PR в `master`; затем сверяет
+  URL и head SHA. После публикации передать точный handoff `github-reviewer`.
+  Merge, закрытие Issue и post-merge verification не выполнять.
