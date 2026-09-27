@@ -16,8 +16,7 @@
 - PR открыт: [#25](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/25),
   base `master`. Созданный PR readback подтвердил head
   `c310a914d9afc83470cf4868d37573cd0e02ec66`.
-- Этот handoff-only follow-up commit будет отправлен fast-forward; после него
-  сверить persisted PR URL и итоговый head SHA. Merge и post-merge verification
-  не выполнять.
+- Handoff-only commits отправлены fast-forward. Persisted PR readback подтвердил
+  URL выше и текущий head ветки. Merge и post-merge verification не выполнять.
 - Остаточные риски: изменения затрагивают только инструкции и конфигурацию
   агентских ролей; Go-код и тесты не менялись. Следующий Issue выбирает orchestrator.
