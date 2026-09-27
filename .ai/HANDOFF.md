@@ -143,11 +143,11 @@
   выполнялись.
 - Issue commit `f1a9c77a088e9c215d20547221c2d66de37e3e14`; push в origin
   выполнен без force. PR открыт: [#41](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/41)
-  к `master`. GitHub readback подтвердил base SHA
+  к `master`. Последний завершённый GitHub readback подтвердил base SHA
   `372ddd7c0b02ef150becec461cd65e61509ba984`, head SHA
-  `f1a9c77a088e9c215d20547221c2d66de37e3e14`, non-draft и три файла:
-  `.ai/HANDOFF.md` плюс ровно два reviewer-approved Issue-файла. CI `CI` для
-  этого head запущен (run `36355069107`, queued); combined statuses ещё не
-  подтверждены. После handoff-only commit/push повторно прочитать PR и CI для
-  нового exact head перед передачей github-reviewer.
+  `9460d800bf3f9933d30cb68378897621b448bb18`, non-draft и три файла:
+  `.ai/HANDOFF.md` плюс ровно два reviewer-approved Issue-файла. CI `CI` run
+  `36355130949` (`#113`) завершился `success` на этом точном head. Текущий
+  handoff-only commit создаст новый head; сверить PR и дождаться CI именно для
+  него до передачи github-reviewer.
 - Блокеры: отсутствуют. PR открыт; merge и post-merge verification не выполнять.
