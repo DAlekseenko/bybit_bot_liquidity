@@ -330,3 +330,31 @@
   exact-head CI pending. Блокеров публикации пока нет; после проверки PR передать
   github-reviewer. Не выполнять merge, закрытие Issue, выбор следующей Issue или
   post-merge verification.
+
+## Issue #34 — аналитика виртуальных сделок
+
+- Контракт: [Issue #34](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/34).
+  Ветка `codex/34-paper-analytics`; reviewer base, `HEAD` и `origin/master` на
+  проверке publisher совпали: `f62851056940bc0d6e846bd9e3638ee440c3cb2e`.
+- Независимый reviewer вернул GREEN без блокеров и одобрил ровно:
+  `internal/storage/storage.go`, `internal/storage/storage_test.go`,
+  `docs/sql/paper-trading-report.sql`, `docs/DEVELOPMENT.md`. Reviewer подтвердил
+  бюджет: 119 production/docs lines и 47 test lines. Изменение добавляет
+  `storage.VirtualStats`, counts завершённых/открытых/пропущенных virtual signals
+  и воспроизводимый read-only SQL report.
+- Evidence reviewer: targeted tests, `go test ./...`, `go vet ./...`, race для
+  `internal/storage`, gofmt и `git diff --check` прошли с
+  `GOTOOLCHAIN=auto` и Go 1.26.7. Проверены literal `SKIPPED_` escaping,
+  согласованный read transaction, SQL fixture counts 3/1/2 и нулевые результаты
+  для пустой базы. Publisher сверил ветку/base и подтвердил незакоммиченные
+  изменения только в четырёх одобренных файлах; staged и иных файлов нет.
+- Остаточные риски: exact-head CI ещё не проверен; детерминированного теста
+  конкурентного writer нет. Изменение остаётся аналитическим и read-only; режим
+  Testnet и финансовые ограничения не меняются.
+- Перед публикацией PR поиска по head branch во всех состояниях не найдено.
+  `git diff --check` publisher проходит. Незакоммиченные файлы: четыре
+  reviewer-approved Issue-файла и этот handoff. Публикация ожидает Issue-коммит,
+  обычный push только текущей ветки и PR к `master`; после создания проверить
+  сохранённые URL, base/head SHA и точный состав PR-файлов, затем передать
+  `github-reviewer`. PR открыт после успешного создания; merge и post-merge
+  verification не выполнять.

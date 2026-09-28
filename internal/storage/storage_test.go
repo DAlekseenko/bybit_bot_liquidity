@@ -11,6 +11,7 @@ import (
 	"bybit_bot_liquidity/internal/strategy"
 )
 
+// TestOpenValidatesConfig проверяет обязательные параметры подключения.
 func TestOpenValidatesConfig(t *testing.T) {
 	t.Parallel()
 
@@ -33,6 +34,7 @@ func TestOpenValidatesConfig(t *testing.T) {
 	}
 }
 
+// TestStoreMigrateAndSaveSignal проверяет миграцию и сохранение сигнала.
 func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +70,7 @@ func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	}
 }
 
+// TestStoreCheck проверяет read-only проверку целостности SQLite.
 func TestStoreCheck(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +84,7 @@ func TestStoreCheck(t *testing.T) {
 	}
 }
 
+// TestStoreSavesAndClosesVirtualSignal проверяет жизненный цикл виртуального сигнала.
 func TestStoreSavesAndClosesVirtualSignal(t *testing.T) {
 	t.Parallel()
 
@@ -185,6 +189,7 @@ FROM signals WHERE id = ?`, signalID).Scan(
 	}
 }
 
+// TestStoreSavesSignalIndicators проверяет сохранение снимка индикаторов.
 func TestStoreSavesSignalIndicators(t *testing.T) {
 	t.Parallel()
 
@@ -364,6 +369,7 @@ WHERE id = ?`, signalID).Scan(
 	}
 }
 
+// TestStoreMigrateUpgradesExistingSignalsTable проверяет добавление колонок старой таблице.
 func TestStoreMigrateUpgradesExistingSignalsTable(t *testing.T) {
 	t.Parallel()
 
@@ -402,6 +408,7 @@ CREATE TABLE signals (
 	}
 }
 
+// TestStoreStats проверяет статистику закрытых сделок.
 func TestStoreStats(t *testing.T) {
 	t.Parallel()
 
@@ -440,6 +447,44 @@ func TestStoreStats(t *testing.T) {
 	}
 }
 
+// TestStoreVirtualStats разделяет статусы и считает метрики только по завершённым строкам.
+func TestStoreVirtualStats(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, err := store.db.ExecContext(ctx, `
+INSERT INTO signals (symbol, signal_type, reason, created_at, hypothetical_entry, virtual_closed_at, virtual_pnl, exit_reason) VALUES
+('BTCUSDT','LONG','a','2026-01-01',100,'2026-01-02',10,'TAKE_PROFIT'),
+('BTCUSDT','LONG','b','2026-01-01',100,'2026-01-02',-4,'STOP_LOSS'),
+('BTCUSDT','LONG','c','2026-01-01',100,'2026-01-03',6,'TAKE_PROFIT'),
+('BTCUSDT','NONE','open','2026-01-01',100,NULL,500,NULL),
+('BTCUSDT','NONE','skip','2026-01-01',NULL,NULL,NULL,'SKIPPED_LIMIT'),
+('BTCUSDT','NONE','skip','2026-01-01',NULL,NULL,NULL,'SKIPPED_COOLDOWN'),
+('BTCUSDT','NONE','near miss','2026-01-01',NULL,NULL,NULL,'SKIPPEDXFOO'),
+('BTCUSDT','LONG','no entry','2026-01-01',NULL,'2026-01-04',999,'TAKE_PROFIT'),
+('BTCUSDT','LONG','no pnl','2026-01-01',100,'2026-01-04',NULL,'TAKE_PROFIT')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.VirtualStats(ctx)
+	if err != nil {
+		t.Fatalf("VirtualStats() error = %v", err)
+	}
+	if stats.ClosedTrades != 3 || stats.OpenTrades != 1 || stats.SkippedSignals != 2 {
+		t.Fatalf("VirtualStats() counts = closed:%d open:%d skipped:%d", stats.ClosedTrades, stats.OpenTrades, stats.SkippedSignals)
+	}
+	assertFloat(t, stats.TotalPnL, 12)
+	assertFloat(t, stats.AverageTrade, 4)
+	assertFloat(t, stats.WinRate, 200.0/3)
+	assertFloat(t, stats.ProfitFactor, 4)
+	assertFloat(t, stats.MaxDrawdown, 4)
+}
+
+// openTestStore создаёт изолированную временную SQLite-базу для теста.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 
@@ -455,10 +500,12 @@ func openTestStore(t *testing.T) *Store {
 	return store
 }
 
+// timePointer возвращает указатель на переданное время.
 func timePointer(value time.Time) *time.Time {
 	return &value
 }
 
+// assertFloat сравнивает числа с небольшим допуском округления.
 func assertFloat(t *testing.T, got, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 1e-9 {

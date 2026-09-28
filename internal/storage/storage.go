@@ -84,11 +84,18 @@ type Stats struct {
 	MaxDrawdown float64
 }
 
+// VirtualStats содержит аналитику только по завершённым виртуальным сигналам.
+type VirtualStats struct {
+	ClosedTrades, OpenTrades, SkippedSignals                   int
+	WinRate, ProfitFactor, TotalPnL, AverageTrade, MaxDrawdown float64
+}
+
 // Store инкапсулирует доступ к SQLite через database/sql.
 type Store struct {
 	db *sql.DB
 }
 
+// Open открывает и проверяет соединение с хранилищем.
 func Open(driverName, dsn string) (*Store, error) {
 	if driverName == "" {
 		return nil, fmt.Errorf("%w: driver is required", ErrInvalidConfig)
@@ -109,10 +116,12 @@ func Open(driverName, dsn string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// New создаёт хранилище на основе готового соединения.
 func New(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+// Close закрывает соединение хранилища.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
@@ -145,6 +154,7 @@ func (s *Store) Check(ctx context.Context) error {
 	return nil
 }
 
+// Migrate создаёт таблицы и недостающие колонки схемы.
 func (s *Store) Migrate(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS trades (
@@ -213,11 +223,13 @@ CREATE TABLE IF NOT EXISTS signals (
 	return s.ensureSignalAnalysisColumns(ctx)
 }
 
+// SaveSignal сохраняет сигнал без дополнительных снимков.
 func (s *Store) SaveSignal(ctx context.Context, signal strategy.Signal) error {
 	_, err := s.SaveSignalRecord(ctx, SignalRecord{Signal: signal})
 	return err
 }
 
+// SaveSignalRecord сохраняет сигнал, индикаторы и виртуальный план.
 func (s *Store) SaveSignalRecord(ctx context.Context, record SignalRecord) (int64, error) {
 	var signalPrice any
 	if record.SignalPrice != nil {
@@ -346,6 +358,7 @@ INSERT INTO signals (
 	return id, nil
 }
 
+// signalIndicatorValues преобразует снимок индикаторов в значения SQL.
 func signalIndicatorValues(indicators *strategy.Indicators) [28]any {
 	var values [28]any
 	if indicators == nil {
@@ -387,6 +400,7 @@ func signalIndicatorValues(indicators *strategy.Indicators) [28]any {
 	return values
 }
 
+// nullableTime преобразует нулевое время в SQL NULL.
 func nullableTime(value time.Time) any {
 	if value.IsZero() {
 		return nil
@@ -394,6 +408,7 @@ func nullableTime(value time.Time) any {
 	return value.UTC().Format(time.RFC3339Nano)
 }
 
+// CloseVirtualSignal сохраняет результат ранее открытого виртуального сигнала.
 func (s *Store) CloseVirtualSignal(ctx context.Context, signalID int64, outcome VirtualOutcome) error {
 	result, err := s.db.ExecContext(ctx, `
 UPDATE signals
@@ -419,6 +434,7 @@ WHERE id = ? AND hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL`,
 	return nil
 }
 
+// ensureSignalAnalysisColumns добавляет отсутствующие колонки аналитики сигналов.
 func (s *Store) ensureSignalAnalysisColumns(ctx context.Context) error {
 	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(signals)`)
 	if err != nil {
@@ -504,6 +520,7 @@ func (s *Store) ensureSignalAnalysisColumns(ctx context.Context) error {
 	return nil
 }
 
+// SaveTrade сохраняет сделку в таблицу биржевых сделок.
 func (s *Store) SaveTrade(ctx context.Context, trade Trade) error {
 	var closedAt any
 	if trade.ClosedAt != nil {
@@ -527,6 +544,7 @@ func (s *Store) SaveTrade(ctx context.Context, trade Trade) error {
 	return nil
 }
 
+// Stats считает статистику закрытых биржевых сделок.
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT pnl FROM trades WHERE closed_at IS NOT NULL ORDER BY closed_at ASC`)
 	if err != nil {
@@ -580,5 +598,70 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 		stats.ProfitFactor = grossProfit / grossLoss
 	}
 
+	return stats, nil
+}
+
+// VirtualStats считает завершённые виртуальные сигналы отдельно от открытых и пропущенных.
+func (s *Store) VirtualStats(ctx context.Context) (VirtualStats, error) {
+	var stats VirtualStats
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats transaction: %w", err)
+	}
+	defer tx.Rollback()
+	err = tx.QueryRowContext(ctx, `SELECT COUNT(CASE WHEN hypothetical_entry IS NOT NULL AND virtual_closed_at IS NOT NULL AND virtual_pnl IS NOT NULL THEN 1 END),
+COUNT(CASE WHEN hypothetical_entry IS NOT NULL AND virtual_closed_at IS NULL THEN 1 END),
+COUNT(CASE WHEN hypothetical_entry IS NULL AND exit_reason LIKE 'SKIPPED\_%' ESCAPE '\' THEN 1 END) FROM signals`).Scan(&stats.ClosedTrades, &stats.OpenTrades, &stats.SkippedSignals)
+	if err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats counts: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, `
+SELECT virtual_pnl
+FROM signals
+WHERE hypothetical_entry IS NOT NULL AND virtual_closed_at IS NOT NULL AND virtual_pnl IS NOT NULL
+ORDER BY virtual_closed_at ASC, id ASC`)
+	if err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats rows: %w", err)
+	}
+	defer rows.Close()
+
+	var wins int
+	var grossProfit, grossLoss, equity, peak float64
+	for rows.Next() {
+		var pnl float64
+		if err := rows.Scan(&pnl); err != nil {
+			return VirtualStats{}, fmt.Errorf("virtual stats scan: %w", err)
+		}
+		stats.TotalPnL += pnl
+		if pnl > 0 {
+			wins++
+			grossProfit += pnl
+		} else if pnl < 0 {
+			grossLoss -= pnl
+		}
+		equity += pnl
+		if equity > peak {
+			peak = equity
+		}
+		if drawdown := peak - equity; drawdown > stats.MaxDrawdown {
+			stats.MaxDrawdown = drawdown
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats rows: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats close rows: %w", err)
+	}
+	if stats.ClosedTrades > 0 {
+		stats.AverageTrade = stats.TotalPnL / float64(stats.ClosedTrades)
+		stats.WinRate = float64(wins) / float64(stats.ClosedTrades) * 100
+		if grossLoss > 0 {
+			stats.ProfitFactor = grossProfit / grossLoss
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return VirtualStats{}, fmt.Errorf("virtual stats commit: %w", err)
+	}
 	return stats, nil
 }
