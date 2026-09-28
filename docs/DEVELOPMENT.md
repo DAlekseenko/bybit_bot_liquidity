@@ -79,6 +79,13 @@ LIMIT 20;
 sqlite3 -readonly ./data/trades.db
 ```
 
+Чтобы вывести read-only отчёт по сохранённым виртуальным сигналам (строки,
+отдельные counts и агрегаты завершённых сигналов), выполните из корня проекта:
+
+```bash
+sqlite3 -readonly -header -column ./data/trades.db < docs/sql/paper-trading-report.sql
+```
+
 При использовании GUI-клиента также открывайте файл только для чтения, пока бот
 работает.
 

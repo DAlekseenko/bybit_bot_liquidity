@@ -330,3 +330,35 @@
   exact-head CI pending. Блокеров публикации пока нет; после проверки PR передать
   github-reviewer. Не выполнять merge, закрытие Issue, выбор следующей Issue или
   post-merge verification.
+
+## Issue #34 — аналитика виртуальных сделок
+
+- Контракт: [Issue #34](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/34).
+  Ветка `codex/34-paper-analytics`; reviewer base, `HEAD` и `origin/master` на
+  проверке publisher совпали: `f62851056940bc0d6e846bd9e3638ee440c3cb2e`.
+- Независимый reviewer вернул GREEN без блокеров и одобрил ровно:
+  `internal/storage/storage.go`, `internal/storage/storage_test.go`,
+  `docs/sql/paper-trading-report.sql`, `docs/DEVELOPMENT.md`. Reviewer подтвердил
+  бюджет: 119 production/docs lines и 47 test lines. Изменение добавляет
+  `storage.VirtualStats`, counts завершённых/открытых/пропущенных virtual signals
+  и воспроизводимый read-only SQL report.
+- Evidence reviewer: targeted tests, `go test ./...`, `go vet ./...`, race для
+  `internal/storage`, gofmt и `git diff --check` прошли с
+  `GOTOOLCHAIN=auto` и Go 1.26.7. Проверены literal `SKIPPED_` escaping,
+  согласованный read transaction, SQL fixture counts 3/1/2 и нулевые результаты
+  для пустой базы. Publisher сверил ветку/base и подтвердил незакоммиченные
+  изменения только в четырёх одобренных файлах; staged и иных файлов нет.
+- Остаточные риски: exact-head CI ещё не проверен; детерминированного теста
+  конкурентного writer нет. Изменение остаётся аналитическим и read-only; режим
+  Testnet и финансовые ограничения не меняются.
+- Перед публикацией PR поиск по head branch во всех состояниях не нашёл
+  дубликат. `git diff --check` publisher прошёл. Issue-коммит
+  `52e2683f8349ee6830a944807689529ba6ab80fd` отправлен обычным push только
+  текущей ветки. `PR открыт`: [#46](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/46)
+  к `master`. GitHub readback подтвердил URL, базу
+  `f62851056940bc0d6e846bd9e3638ee440c3cb2e`, первоначальный head
+  `52e2683f8349ee6830a944807689529ba6ab80fd` и ровно пять файлов: четыре
+  reviewer-approved Issue-файла плюс `.ai/HANDOFF.md`. После handoff-only
+  commit/push повторно сверить PR URL, base/head SHA и список файлов; передать
+  подтверждённый финальный head вместе с GREEN reviewer handoff
+  `github-reviewer`. Merge и post-merge verification не выполнять.
