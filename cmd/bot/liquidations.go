@@ -11,7 +11,13 @@ import (
 )
 
 type liquidationStreamer interface {
+	// Stream запускает публичный поток ликвидаций.
 	Stream(ctx context.Context, symbol string, output chan<- exchange.Liquidation) error
+}
+
+type websocketMetrics interface {
+	// MarkWebsocketReconnect отмечает непредвиденное переподключение.
+	MarkWebsocketReconnect()
 }
 
 type generationLiquidation struct {
@@ -86,7 +92,7 @@ func runLiquidationStream(
 	runLiquidationStreamWithPolicy(ctx, log, streamer, symbol, events, policy, func() uint64 {
 		generation++
 		return generation
-	}, func() {}, rand.Float64)
+	}, func() {}, rand.Float64, nil)
 	cancelForwarder()
 	<-forwarderDone
 }
@@ -102,6 +108,7 @@ func runLiquidationStreamWithPolicy(
 	beginGeneration func() uint64,
 	invalidate func(),
 	random func() float64,
+	metrics websocketMetrics,
 ) {
 	if log == nil {
 		log = slog.Default()
@@ -151,7 +158,13 @@ func runLiquidationStreamWithPolicy(
 		close(streamEvents)
 		<-collectorDone
 		cancelAttempt()
-		log.Warn("liquidation websocket disconnected; liquidation window reset", "symbol", symbol, "error", err, "attempt", attempt, "retry_in", delay)
+		if ctx.Err() != nil {
+			return
+		}
+		if metrics != nil {
+			metrics.MarkWebsocketReconnect()
+		}
+		log.Warn("liquidation websocket disconnected; liquidation window reset", "symbol", symbol, "reason", classifyWebsocketDisconnect(err), "attempt", attempt, "retry_in", delay)
 
 		timer := time.NewTimer(delay)
 		select {
@@ -161,6 +174,14 @@ func runLiquidationStreamWithPolicy(
 		case <-timer.C:
 		}
 	}
+}
+
+// classifyWebsocketDisconnect возвращает безопасную категорию ошибки потока.
+func classifyWebsocketDisconnect(err error) string {
+	if err == nil {
+		return "stream_closed"
+	}
+	return "stream_error"
 }
 
 // collectLiquidationGeneration помечает события неизменяемым токеном попытки.

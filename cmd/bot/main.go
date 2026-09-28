@@ -45,6 +45,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	metrics := observability.NewRegistry()
 
 	store, err := storage.Open(cfg.Storage.Driver, cfg.Storage.DSN)
 	if err != nil {
@@ -95,6 +96,7 @@ func main() {
 		cfg.Exchange.Credentials.Configured(),
 		execution.NewExecutionReadinessPreflight(exchangeClient),
 		cfg.Symbol,
+		metrics,
 	)
 	collector := marketdata.NewCollector(exchangeClient, cfg.Symbol, cfg.Strategy.OIWindowMinutes)
 	liquidationClient := bybit.NewLiquidationClient(cfg.Exchange.WebsocketURL, nil)
@@ -103,13 +105,12 @@ func main() {
 	liquidationEvents := make(chan generationLiquidation, 256)
 	var background sync.WaitGroup
 	background.Add(2)
-	metrics := observability.NewRegistry()
 	startMetricsServer(ctx, log, *metricsAddress, metrics, &background)
 	go func() {
 		defer background.Done()
 		policy := defaultReconnectPolicy()
 		policy.InitialDelay = websocketRetryDelay
-		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.BeginGeneration, liquidations.Reset, nil)
+		runLiquidationStreamWithPolicy(ctx, log, liquidationClient, cfg.Symbol, liquidationEvents, policy, liquidations.BeginGeneration, liquidations.Reset, nil, metrics)
 	}()
 	go func() {
 		defer background.Done()

@@ -391,3 +391,29 @@
   commit/push повторно сверить PR URL, base/head SHA и список файлов; передать
   подтверждённый финальный head вместе с GREEN reviewer handoff
   `github-reviewer`. Merge и post-merge verification не выполнять.
+
+## Issue #31 — ограниченная телеметрия WebSocket и readiness
+
+- Контракт: [Issue #31](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/31);
+  ветка `codex/31-websocket-readiness-telemetry`; актуальная база и HEAD до
+  коммита `99e4859dbb0315f0a9f48c03bd69d4e1254b34c4` (`origin/master`). Issue
+  открыта. GitHub connector не обнаружил PR или remote branch для этой ветки.
+- Независимый reviewer повторно проверил актуальную базу и выдал GREEN без
+  блокеров. Одобрены ровно `cmd/bot/liquidations.go`,
+  `cmd/bot/liquidations_test.go`, `cmd/bot/main.go`,
+  `cmd/bot/readiness.go`, `cmd/bot/readiness_test.go`. Diff: 45 production
+  добавлений / 4 удаления и 112 тестовых добавлений; изменения `main.go`
+  сохраняют `restorePaperTrade` из PR #42.
+- Проверки reviewer: targeted race, `go test ./...`, `go vet ./...`, gofmt и
+  `git diff --check` — GREEN. Publisher перед staging сверил ветку, HEAD, базу,
+  whitelist файлов, отсутствие staged и посторонних изменений; дополнительный
+  `git diff --check` также GREEN. Проверки кода повторно не запускались.
+- Остаточный риск: CI на опубликованном точном head ещё требуется проверить.
+  Сохранить Testnet/read-only; live execution и order transport не добавлять.
+- Публикация: Issue-файлы и этот handoff staged только по whitelist. Коммит
+  Issue создан и отправлен в origin без force; `PR открыт` к `master`. После
+  создания обязательно подтвердить GitHub readback: URL, точный base/head SHA,
+  список ровно шести файлов, mergeability и состояние PR; затем записать эти
+  значения и передать точный GREEN handoff `github-reviewer`.
+- Блокеры: до проверки опубликованного PR отсутствуют. Merge, закрытие Issue и
+  post-merge verification не выполнять; следующий Issue не выбирать.
