@@ -251,6 +251,25 @@ OI, volume/candle/liquidation значения, вычисленные threshold
 
 ## Тесты и статический анализ
 
+### Live Testnet contract tests
+
+Обычный `go test ./...` не выполняет сетевых запросов и не использует credentials.
+Контрактные проверки собираются только с build tag `integration` и требуют явного
+opt-in до создания клиента или сетевого вызова:
+
+```bash
+BYBIT_TESTNET_CONTRACT_TESTS=1 go test -tags=integration ./internal/exchange/bybit
+```
+
+Без флага тесты пропускаются. Без обеих переменных `BYBIT_API_KEY` и
+`BYBIT_API_SECRET` signed-проверка пропускается; частичная пара завершается
+ошибкой без вывода значений. Публичные проверки читают только свечи, OI, цену и
+instrument rules; подписанные — только account info, balance, position и
+leverage. Запись ордеров и изменение leverage не выполняются. Workflow
+`Testnet contract tests` запускается вручную в GitHub Environment
+`testnet-contract`; credentials при необходимости добавляются как environment
+secrets.
+
 Полный локальный набор:
 
 ```bash

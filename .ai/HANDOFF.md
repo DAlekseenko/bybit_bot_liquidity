@@ -296,3 +296,30 @@
 - Рабочее дерево после Issue-коммита было чистым; текущая единственная
   незакоммиченная правка — этот handoff. Блокеров пока нет; merge и
   post-merge verification не выполнять.
+
+## Issue #33 — Testnet read-only contract checks
+
+- Контракт: [Issue #33](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/33);
+  ветка `codex/33-testnet-contract-tests`, база reviewer handoff и `origin/master`:
+  `6b4277dc24ae1a47ccda82929b12691ce5da1728`.
+- Независимый reviewer: GREEN, blockers отсутствуют. Одобрены ровно
+  `.github/workflows/testnet-contract.yml`, `docs/DEVELOPMENT.md` и
+  `internal/exchange/bybit/contract_integration_test.go`. Diff: 144 additions;
+  workflow/docs — 45 lines, тест — 99 lines. Workflow запускается вручную в
+  Testnet environment; тесты требуют tag и явный opt-in, signed endpoints только
+  read-only. Изменений production кода, order/leverage writes нет.
+- Проверки reviewer: tagged no-opt-in skip, partial dummy credentials fail
+  safely, `go test ./...`, `go vet ./...`, gofmt и diff checks — PASS. Live
+  Testnet и подписанные запросы с реальными credentials не запускались; CI для
+  опубликованного exact head ожидает проверки.
+- Перед публикацией ветка/HEAD и `origin/master` совпали с базой; незакоммиченные
+  файлы — только три одобренных Issue-файла, staged/прочих изменений не было.
+  GitHub поиск не обнаружил PR или удалённой ветки с именем ветки; локальный
+  `git ls-remote` не прошёл из-за DNS. Старый PR #8 не изменять.
+- Публикация: ожидаются Issue-коммит, push без force и replacement PR в `master`;
+  после создания записать `PR открыт`, URL, подтверждённые base/head SHA и exact
+  список PR-файлов. PR должен явно указывать, что заменяет PR #8, не меняя его.
+- Остаточные риски: live Testnet и подписанный контракт не подтверждены локально;
+  exact-head CI pending. Блокеров публикации пока нет; после проверки PR передать
+  github-reviewer. Не выполнять merge, закрытие Issue, выбор следующей Issue или
+  post-merge verification.
