@@ -264,3 +264,28 @@
   список файлов github-reviewer.
 - Блокеров нет. Не выполнять merge, закрытие Issue или PR #13, выбор следующей
   Issue или post-merge verification.
+
+## Issue #37 — pure fail-closed gate
+
+- Контракт: [Issue #37](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/37).
+  Ветка `codex/37-pure-fail-closed-gate`; база reviewer handoff и
+  `origin/master`: `8900720fb490b8004a0e88580d09842c12e72326`.
+- Независимый reviewer: GREEN, blockers отсутствуют; одобрены ровно
+  `internal/execution/gate.go` (58 production lines) и
+  `internal/execution/gate_test.go` (32 test lines). Изменение — pure
+  deny-by-default аналитический контракт по dry_run/emergency/readiness/daily
+  limit; runtime/transport wiring отсутствует. Это не human confirmation и не
+  разрешение на заявки; Testnet/read-only режим сохраняется.
+- До публикации проверено: текущая ветка и HEAD совпали с указанной базой;
+  `origin/master` совпал с базой; незакоммиченные файлы — ровно два approved
+  Issue-файла, staged и прочих изменений нет. Поиск GitHub по head branch во
+  всех состояниях не нашёл дубликата PR. Reviewer сообщил green targeted tests,
+  `go test ./...`, `go vet ./...`, gofmt и diff checks.
+- Остаточный риск: аналитический gate не подключён к runtime; при будущем
+  wiring потребуется повторно проверить актуальность readiness/лимитов.
+- Публикация: ожидаются commit, push текущей ветки без force и один replacement
+  PR к `master`. После создания подтвердить GitHub readback URL, base/head SHA,
+  список файлов и CI на точном head; затем передать точное состояние
+  github-reviewer. Старую ветку и PR #12 не изменять.
+- Незакоммиченные файлы до публикации: два approved Issue-файла и этот handoff.
+  Блокеров пока нет; merge и post-merge verification не выполнять.
