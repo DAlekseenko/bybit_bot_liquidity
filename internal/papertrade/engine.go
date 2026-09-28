@@ -75,6 +75,7 @@ type Engine struct {
 	tradesToday int
 }
 
+// New создаёт движок виртуальной торговли с проверенной конфигурацией.
 func New(cfg Config) (*Engine, error) {
 	if !positiveFinite(cfg.VirtualBalanceUSD) ||
 		cfg.Cooldown <= 0 ||
@@ -167,6 +168,21 @@ func (e *Engine) Activate(signalID int64, plan Plan) error {
 	return nil
 }
 
+// Restore восстанавливает одну проверенную виртуальную позицию после перезапуска.
+func (e *Engine) Restore(signalID int64, plan Plan) error {
+	invalidLevels := (plan.Side == exchange.SideLong && !(plan.StopLoss < plan.HypotheticalEntry && plan.HypotheticalEntry < plan.TakeProfit)) ||
+		(plan.Side == exchange.SideShort && !(plan.TakeProfit < plan.HypotheticalEntry && plan.HypotheticalEntry < plan.StopLoss))
+	if signalID <= 0 || e.active != nil || e.pending != nil || !e.lastClosed.IsZero() || e.tradeDay != "" || e.tradesToday != 0 ||
+		(plan.Side != exchange.SideLong && plan.Side != exchange.SideShort) || plan.SignalCandleAt.IsZero() ||
+		!positiveFinite(plan.HypotheticalEntry) || !positiveFinite(plan.StopLoss) ||
+		!positiveFinite(plan.TakeProfit) || !positiveFinite(plan.Qty) ||
+		!nonNegativeFinite(plan.EstimatedFees) || !nonNegativeFinite(plan.EstimatedSlippage) || invalidLevels {
+		return ErrInvalidSignal
+	}
+	e.active = &activeTrade{signalID: signalID, plan: plan}
+	return nil
+}
+
 // Advance проверяет новые подтверждённые свечи. Pending outcome повторяется до
 // ConfirmClosed, чтобы ошибка SQLite не теряла виртуальное закрытие.
 func (e *Engine) Advance(candles []exchange.Candle) *Outcome {
@@ -216,6 +232,7 @@ func (e *Engine) Advance(candles []exchange.Candle) *Outcome {
 	return nil
 }
 
+// ConfirmClosed подтверждает сохранённое закрытие виртуальной позиции.
 func (e *Engine) ConfirmClosed() {
 	if e.pending == nil {
 		return
@@ -225,10 +242,12 @@ func (e *Engine) ConfirmClosed() {
 	e.active = nil
 }
 
+// HasActiveTrade сообщает, хранит ли движок активную виртуальную позицию.
 func (e *Engine) HasActiveTrade() bool {
 	return e.active != nil
 }
 
+// SkipReason преобразует ожидаемую блокировку входа в её стабильный код.
 func SkipReason(err error) string {
 	switch {
 	case errors.Is(err, ErrPositionLimit):
@@ -242,6 +261,7 @@ func SkipReason(err error) string {
 	}
 }
 
+// signalSide преобразует тип сигнала в направление виртуальной позиции.
 func signalSide(signalType strategy.SignalType) (exchange.Side, error) {
 	switch signalType {
 	case strategy.SignalLong:
@@ -253,6 +273,7 @@ func signalSide(signalType strategy.SignalType) (exchange.Side, error) {
 	}
 }
 
+// exitForCandle определяет виртуальный выход по подтверждённой свече.
 func exitForCandle(plan Plan, candle exchange.Candle) (float64, string, bool) {
 	switch plan.Side {
 	case exchange.SideLong:
@@ -273,10 +294,12 @@ func exitForCandle(plan Plan, candle exchange.Candle) (float64, string, bool) {
 	return 0, "", false
 }
 
+// positiveFinite проверяет положительное конечное число.
 func positiveFinite(value float64) bool {
 	return value > 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }
 
+// nonNegativeFinite проверяет неотрицательное конечное число.
 func nonNegativeFinite(value float64) bool {
 	return value >= 0 && !math.IsNaN(value) && !math.IsInf(value, 0)
 }

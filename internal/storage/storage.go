@@ -48,6 +48,14 @@ type VirtualOutcome struct {
 	ClosedAt   time.Time
 }
 
+// OpenVirtualSignal содержит данные одной незакрытой виртуальной позиции.
+type OpenVirtualSignal struct {
+	SignalID int64
+	Plan     VirtualTrade
+	Side     string
+	Symbol   string
+}
+
 // Trade описывает завершенную или открытую сделку для таблицы trades.
 type Trade struct {
 	// ID - первичный ключ в SQLite.
@@ -156,6 +164,16 @@ func (s *Store) Check(ctx context.Context) error {
 
 // Migrate создаёт таблицы и недостающие колонки схемы.
 func (s *Store) Migrate(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		return fmt.Errorf("create schema migrations: %w", err)
+	}
+	var version int
+	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+		return fmt.Errorf("read schema migrations: %w", err)
+	}
+	if version > 1 {
+		return fmt.Errorf("migrate storage: database schema version %d is newer than supported version 1", version)
+	}
 	_, err := s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS trades (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -220,7 +238,49 @@ CREATE TABLE IF NOT EXISTS signals (
 		return fmt.Errorf("migrate storage: %w", err)
 	}
 
-	return s.ensureSignalAnalysisColumns(ctx)
+	if err := s.ensureSignalAnalysisColumns(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (1, ?)`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return fmt.Errorf("record schema migration: %w", err)
+	}
+	return nil
+}
+
+// OpenVirtualSignals читает все незакрытые виртуальные позиции по ID.
+func (s *Store) OpenVirtualSignals(ctx context.Context) ([]OpenVirtualSignal, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, symbol, signal_type, signal_candle_at, hypothetical_entry, stop_loss, take_profit,
+       estimated_fees, estimated_slippage, virtual_qty
+FROM signals
+WHERE virtual_closed_at IS NULL AND (hypothetical_entry IS NOT NULL OR stop_loss IS NOT NULL OR
+      take_profit IS NOT NULL OR estimated_fees IS NOT NULL OR estimated_slippage IS NOT NULL OR virtual_qty IS NOT NULL)
+ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("list open virtual signals: %w", err)
+	}
+	defer rows.Close()
+	var result []OpenVirtualSignal
+	for rows.Next() {
+		var item OpenVirtualSignal
+		var candleAt string
+		if err := rows.Scan(&item.SignalID, &item.Symbol, &item.Side, &candleAt, &item.Plan.HypotheticalEntry, &item.Plan.StopLoss, &item.Plan.TakeProfit, &item.Plan.EstimatedFees, &item.Plan.EstimatedSlippage, &item.Plan.Qty); err != nil {
+			return nil, fmt.Errorf("scan open virtual signal: %w", err)
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, candleAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse open virtual signal candle time: %w", err)
+		}
+		item.Plan.SignalCandleAt = parsed.UTC()
+		result = append(result, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list open virtual signals: %w", err)
+	}
+	if len(result) > 1 {
+		return nil, fmt.Errorf("ambiguous open virtual signals: found %d", len(result))
+	}
+	return result, nil
 }
 
 // SaveSignal сохраняет сигнал без дополнительных снимков.
