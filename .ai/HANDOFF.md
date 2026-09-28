@@ -414,12 +414,12 @@
   staged были только пять Issue-файлов и этот handoff; обычный push без force
   выполнен. `PR открыт`: [#48](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/48)
   к `master`. GitHub readback подтвердил base SHA
-  `99e4859dbb0315f0a9f48c03bd69d4e1254b34c4`, head SHA
-  `ec9aebdffcbd97ebfec0dd9b6df366277a7c9789`, состояние open/non-draft и
+  `99e4859dbb0315f0a9f48c03bd69d4e1254b34c4`, head SHA последнего readback
+  `3caf8997990a710f550958fa0cbdab8bf85aef11`, состояние open/non-draft и
   mergeable. PR содержит ровно шесть файлов: пять reviewer-approved Issue
-  файлов и `.ai/HANDOFF.md`; всего 183 additions / 4 deletions. После
-  handoff-only commit/push повторно сверить URL, base/head SHA, файлы и
-  mergeability, затем передать финальный head и GREEN handoff
+  файлов и `.ai/HANDOFF.md`; суммарно 190 additions / 4 deletions. После
+  последующих handoff-only изменений повторно сверить URL, base/head SHA,
+  файлы и mergeability, затем передать финальный head и GREEN handoff
   `github-reviewer`.
 - Блокеры: отсутствуют. CI этого опубликованного head ещё должен проверить
   github-reviewer. Merge, закрытие Issue и post-merge verification не выполнять;
