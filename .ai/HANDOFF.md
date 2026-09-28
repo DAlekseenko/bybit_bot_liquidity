@@ -1,5 +1,34 @@
 # Передача работы
 
+## Issue #36 — восстановление однозначной paper-позиции
+
+- Контракт: [Issue #36](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/36).
+- Ветка: `codex/36-paper-position-recovery`; база и начальный HEAD —
+  `origin/master` `ab81f56c31b8e1ca87738b7cf7df80532e3db611`.
+- Независимый read-only reviewer вернул GREEN и одобрил ровно пять файлов:
+  `cmd/bot/main.go`, `cmd/bot/recovery.go`, `internal/papertrade/engine.go`,
+  `internal/storage/storage.go`, `internal/storage/storage_test.go`.
+- Reviewer подтвердил 258 добавлений и 2 удаления: 140 строк production-кода
+  и 120 строк тестов. Проверки прошли: `go test ./internal/storage
+  ./internal/papertrade ./cmd/bot`, `go test ./...`, `go vet ./...`, проверка
+  `gofmt`, `git diff --check`. Для Go использовались `GOTOOLCHAIN=auto` и
+  временный cache.
+- Publisher сверил ветку, HEAD, базу и рабочее дерево с handoff reviewer.
+  Незакоммиченные Issue-файлы: ровно одобренные пять файлов; до записи этого
+  handoff незакоммиченных изменений вне них не было.
+- Остаточные риски reviewer: нет прямого integration-теста
+  `restorePaperTrade` и несовпадения symbol. CI на точном опубликованном head
+  является отдельным gate для github-reviewer.
+- Issue commit: `6c985a59d809f9b655ee863ce5c556372eb13b22`; push текущей ветки
+  выполнен без force. Persisted GitHub readback подтвердил открытый PR в
+  `master`: [PR #47](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/47),
+  head `6c985a59d809f9b655ee863ce5c556372eb13b22`, base
+  `ab81f56c31b8e1ca87738b7cf7df80532e3db611`.
+- PR открыт. Выполняется отдельный handoff-only commit; после его push необходимо
+  повторно проверить PR URL, текущий head SHA и CI именно на новом head.
+- Блокеров публикации не обнаружено. Merge и post-merge verification не
+  выполнять; следующий Issue выбирает orchestrator.
+
 ## 2026-09-27: Issue #17 — Сжать handoff и удалить устаревший CURRENT_TASK
 
 Контракт: [Issue #17](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/17).

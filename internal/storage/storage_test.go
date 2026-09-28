@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"bybit_bot_liquidity/internal/exchange"
+	"bybit_bot_liquidity/internal/papertrade"
 	"bybit_bot_liquidity/internal/strategy"
 )
 
@@ -43,8 +45,15 @@ func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("first Migrate() error = %v", err)
 	}
+	if err := store.SaveSignal(ctx, strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalLong, Reason: "before repeat migration"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Migrate(ctx); err != nil {
 		t.Fatalf("second Migrate() error = %v", err)
+	}
+	var preserved int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM signals WHERE reason = 'before repeat migration'`).Scan(&preserved); err != nil || preserved != 1 {
+		t.Fatalf("repeated migration preserved rows = %d, %v", preserved, err)
 	}
 
 	signal := strategy.Signal{Symbol: "BTCUSDT", Type: strategy.SignalLong, Reason: "test reason"}
@@ -53,7 +62,7 @@ func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	}
 
 	var symbol, signalType, reason, createdAt string
-	err := store.db.QueryRowContext(ctx, `SELECT symbol, signal_type, reason, created_at FROM signals`).Scan(
+	err := store.db.QueryRowContext(ctx, `SELECT symbol, signal_type, reason, created_at FROM signals WHERE reason = ?`, signal.Reason).Scan(
 		&symbol,
 		&signalType,
 		&reason,
@@ -67,6 +76,115 @@ func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	}
 	if _, err := time.Parse(time.RFC3339Nano, createdAt); err != nil {
 		t.Fatalf("created_at = %q: %v", createdAt, err)
+	}
+}
+
+// TestStoreOpenVirtualSignalsFailClosed проверяет пустое, однозначное и неоднозначное состояние.
+func TestStoreOpenVirtualSignalsFailClosed(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		rows int
+		want int
+	}{
+		{name: "none"},
+		{name: "one", rows: 1, want: 1},
+		{name: "multiple", rows: 2, want: -1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := openTestStore(t)
+			ctx := context.Background()
+			if err := store.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.ExecContext(ctx, `INSERT INTO signals (symbol, signal_type, reason, created_at, signal_candle_at) VALUES ('BTCUSDT','NONE','indicator-only','2026-01-01','2026-01-01T00:00:00Z')`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.db.ExecContext(ctx, `INSERT INTO signals (symbol, signal_type, reason, created_at, signal_candle_at, hypothetical_entry, stop_loss, take_profit, estimated_fees, estimated_slippage, virtual_qty, virtual_closed_at) VALUES ('BTCUSDT','LONG','closed','2026-01-01','2026-01-01T00:00:00Z',100,99,102,0.1,0.2,3,'2026-01-02T00:00:00Z')`); err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < test.rows; i++ {
+				_, err := store.db.ExecContext(ctx, `INSERT INTO signals (symbol, signal_type, reason, created_at, signal_candle_at, hypothetical_entry, stop_loss, take_profit, estimated_fees, estimated_slippage, virtual_qty) VALUES ('BTCUSDT','LONG','paper','2026-01-01','2026-01-01T00:00:00Z',100,99,102,0.1,0.2,3)`)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			open, err := store.OpenVirtualSignals(ctx)
+			if (test.want < 0) != (err != nil) || (err == nil && len(open) != test.want) {
+				t.Fatalf("OpenVirtualSignals() = %d rows, %v; want %d", len(open), err, test.want)
+			}
+			if test.want == 1 {
+				item := open[0]
+				if item.Symbol != "BTCUSDT" || item.Side != "LONG" || item.Plan.SignalCandleAt.IsZero() || item.Plan.HypotheticalEntry != 100 || item.Plan.StopLoss != 99 || item.Plan.TakeProfit != 102 || item.Plan.EstimatedFees != 0.1 || item.Plan.EstimatedSlippage != 0.2 || item.Plan.Qty != 3 {
+					t.Fatalf("OpenVirtualSignals() item = %#v", item)
+				}
+			}
+		})
+	}
+}
+
+// TestStoreOpenVirtualSignalsRejectsMalformedRows проверяет отказ при NULL и неверном времени.
+func TestStoreOpenVirtualSignalsRejectsMalformedRows(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name string
+		row  string
+	}{
+		{name: "null plan value", row: `NULL,'2026-01-01T00:00:00Z',100,99,102,0.2,3`},
+		{name: "invalid timestamp", row: `0.1,'invalid',100,99,102,0.2,3`},
+		{name: "null entry with other plan evidence", row: `0.1,'2026-01-01T00:00:00Z',NULL,99,102,0.2,3`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			store := openTestStore(t)
+			ctx := context.Background()
+			if err := store.Migrate(ctx); err != nil {
+				t.Fatal(err)
+			}
+			_, err := store.db.ExecContext(ctx, `INSERT INTO signals (symbol, signal_type, reason, created_at, estimated_fees, signal_candle_at, hypothetical_entry, stop_loss, take_profit, estimated_slippage, virtual_qty) VALUES ('BTCUSDT','LONG','paper','2026-01-01',`+test.row+`)`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := store.OpenVirtualSignals(ctx); err == nil {
+				t.Fatal("OpenVirtualSignals() accepted malformed row")
+			}
+		})
+	}
+}
+
+// TestPaperEngineRestoreRejectsInvertedLevels проверяет порядок уровней восстановленной позиции.
+func TestPaperEngineRestoreRejectsInvertedLevels(t *testing.T) {
+	engine, err := papertrade.New(papertrade.Config{VirtualBalanceUSD: 1000, Cooldown: time.Minute, MaxTradesPerDay: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, plan := range []papertrade.Plan{
+		{Side: exchange.SideLong, HypotheticalEntry: 100, StopLoss: 101, TakeProfit: 102, Qty: 1, SignalCandleAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+		{Side: exchange.SideShort, HypotheticalEntry: 100, StopLoss: 99, TakeProfit: 98, Qty: 1, SignalCandleAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)},
+	} {
+		if err := engine.Restore(1, plan); err == nil {
+			t.Fatalf("Restore() accepted inverted %s levels", plan.Side)
+		}
+	}
+}
+
+// TestStoreMigrateRejectsNewerSchema проверяет отказ до миграции неизвестной схемы.
+func TestStoreMigrateRejectsNewerSchema(t *testing.T) {
+	store := openTestStore(t)
+	ctx := context.Background()
+	if _, err := store.db.ExecContext(ctx, `CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); INSERT INTO schema_migrations VALUES (2, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(ctx); err == nil {
+		t.Fatal("Migrate() accepted schema version 2")
+	}
+	var tables int
+	if err := store.db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='signals'`).Scan(&tables); err != nil {
+		t.Fatal(err)
+	}
+	if tables != 0 {
+		t.Fatalf("signals table created for unsupported schema: %d", tables)
 	}
 }
 
