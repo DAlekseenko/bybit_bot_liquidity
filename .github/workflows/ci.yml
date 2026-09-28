@@ -32,6 +32,20 @@ jobs:
       - name: Run unit tests
         run: go test ./...
 
+      - name: Check test coverage
+        run: |
+          go test -coverprofile=coverage.out ./...
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
+          awk -v total="$total" 'BEGIN { if (total < 70) exit 1 }'
+
+      - name: Run vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+      - name: Run static linter
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.10.1
+
       - name: Run race detector
         run: go test -race ./...
 

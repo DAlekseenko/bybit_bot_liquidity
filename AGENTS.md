@@ -1,8 +1,9 @@
 # Инструкции для участников разработки
 
 Файл задаёт общие, независимые от конкретного AI-инструмента правила работы с
-репозиторием. Перед изменениями прочитайте [README.md](README.md), затем документ,
-относящийся к задаче:
+репозиторием. Для начала Issue прочитайте компактный контекст, последний handoff,
+контракт Issue и состояние Git. Остальные документы открывайте только при
+обнаруженной зависимости задачи:
 
 - бизнес-правила — [docs/DOMAIN.md](docs/DOMAIN.md);
 - компоненты и границы — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
@@ -132,22 +133,24 @@ Docker-команды и оговорки среды приведены в
 
 Перед передачей работы:
 
-1. Проверьте, что изменение соответствует запросу пользователя и границам
-   архитектуры.
+1. Проверьте соответствие изменения контракту Issue и границам архитектуры.
 2. Добавьте или обновите тесты для изменённого поведения.
-3. Выполните форматирование, unit-тесты, race detector, `go vet` и сборку либо
-   явно запишите, что и почему не запускалось.
+3. Выполните относящиеся к Issue проверки и явно запишите пропущенные.
 4. Обновите только затронутые источники документации и проверьте ссылки.
-5. Заполните [.ai/HANDOFF.md](.ai/HANDOFF.md): файлы, проверки, проблемы и
-   следующие шаги.
+5. Передайте handoff по текущему Issue; выбор следующего Issue и
+   post-merge-проверка остаются за orchestrator.
 
 ## How
 
 - One GitHub Issue per branch, PR, and Codex task. The approved Issue body is
   the sole implementation contract; do not add scope from adjacent Issues.
+- At Issue start, read `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, the assigned Issue,
+  `git status --short --branch`, and the base/relevant diff. Read other docs only
+  when the Issue contract or a discovered dependency requires them.
 - Use `system-designer` to define bounded work, `developer` to implement only
   that contract, `reviewer` for independent read-only review, then `publisher`
-  for handoff and publication after a green review.
+  for handoff and publication after a green review, then `github-reviewer` for
+  the post-publication check.
 - Keep review under 15 minutes: normally <=6 files, <=250 production lines,
   and <=150 test lines. Ask `system-designer` to split work that exceeds this.
 - Keep the bot on Bybit Testnet and read-only by default. This workflow grants
@@ -158,23 +161,13 @@ Docker-команды и оговорки среды приведены в
   and logs.
 - Live trading, risk-limit changes, and destructive migrations require explicit
   human approval. Prefer the Go standard library absent a clear need.
+- Future invariant only: planner → immutable `TradePlan` → explicit human
+  confirmation → execution engine. This describes no implemented behavior and
+  grants no trading authority.
 - For Go changes, add concise Russian comments to every function and method,
   including private functions and test helpers. Exported comments start with
   the identifier name. Run gofmt, targeted tests, `go test ./...`, and
   `go vet ./...`.
-
-## Context loading
-
-At the start of each Issue, read only the smallest useful context set:
-
-1. `README.md` and `.ai/CONTEXT.md` for project state and stable decisions.
-2. `.ai/HANDOFF.md` for the latest branch state and blockers.
-3. The approved GitHub Issue body for the exact contract.
-4. `git status --short --branch`, recent relevant commits, and the Issue diff.
-
-Read other docs only when the Issue contract depends on them. Do not scan the
-whole repository history by default. Git and the working tree are authoritative;
-correct a stale `.ai/HANDOFF.md` as part of the handoff.
 
 ## Workflow
 
@@ -182,12 +175,53 @@ correct a stale `.ai/HANDOFF.md` as part of the handoff.
 2. `developer` implements only that contract.
 3. `reviewer` reviews from a fresh context without editing the reviewed files.
 4. Repeat developer/reviewer until blocking findings are resolved.
-5. On GREEN, `reviewer` returns approved files, verification evidence,
-   residual risks, and an exact handoff for `publisher`.
-6. `publisher` updates `.ai/HANDOFF.md`, stages only approved Issue files plus
-   that handoff, commits, pushes the Issue branch without force, and opens a PR
-   against the default branch. It verifies the commit, remote branch, and PR
-   URL before reporting success. Missing access or required approval is a
-   blocker; publication must not be claimed.
-7. `publisher` never merges, rewrites history, force-pushes, deletes data,
-   handles secrets, changes financial rules, or enables live execution.
+5. On GREEN, `reviewer` returns the exact approved files, verification evidence,
+   residual risks, branch, diff, blockers, and an exact handoff for `publisher`.
+   Reviewer does not declare the Issue complete or choose the next Issue.
+6. `publisher` updates `.ai/HANDOFF.md` with publication state, stages only
+   approved files plus that handoff, commits, pushes the current Issue branch
+   without force, and opens a PR against the default branch. It verifies the PR
+   URL and exact head SHA, records `PR открыт`, provides the verified PR URL,
+   head SHA, and green reviewer handoff to `github-reviewer`, then stops. Missing
+   access or required approval is a blocker; publication must not be claimed.
+7. `github-reviewer` checks the exact published PR diff against the Issue and
+   approved files, confirms the local reviewer is GREEN, and confirms CI is
+   GREEN for that same head SHA. Fail closed on missing, stale, or mismatched
+   evidence. It publishes a Russian user-action comment only when user
+   participation is genuinely required; use marker
+   `<!-- codex-user-action:v1 -->`, sections `Контекст`, `От вас`, `До ответа`,
+   evidence and head SHA, exactly one concrete action, and the blocked step or
+   safe path if there is no reply. Mark mandatory participation `🟡` and optional
+   participation `🟢`. Before writing, find its own marker comment and update it
+   when the state changes; do not duplicate it. After writing, read back and
+   verify the comment URL, target PR and head, and full body. Ordinary review
+   notes, normal CI, and cases needing no user participation produce no new
+   comment. The role cannot approve or request changes, merge, push, edit code,
+   create Issues or PRs, trade, or change risk limits; Testnet/read-only safety
+   boundaries remain in force.
+8. `publisher` never merges, selects the next Issue, performs post-merge
+   verification, rewrites history, force-pushes, deletes data, handles secrets,
+   changes financial rules, or enables live execution. The orchestrator chooses
+   the next Issue and owns post-merge verification.
+9. После merge orchestrator закрывает Issue только после подтверждения gate:
+   получить из GitHub `mergedAt` и `mergeCommit`, обновить remote refs через
+   fetch, проверить достижимость merge commit из `origin/master` и записать
+   проверенный SHA `origin/master`. Исчезновение PR из списка open или совпадение
+   head SHA не доказывает merge; при squash проверять именно merge commit.
+   Если GitHub недоступен или `origin/master` не обновлён и не проверен, Issue
+   не закрывать. Затем идемпотентно создать или обновить в связанной Issue
+   checkpoint-комментарий с маркером `<!-- codex-merge-checkpoint:v1 -->`, PR
+   URL, merge SHA и проверенным SHA `origin/master`; прочитать комментарий назад
+   и сверить все поля до закрытия Issue. Не создавать дубликаты маркера.
+10. Следующую готовую Issue выбирает orchestrator по приоритету и зависимостям;
+    при равенстве брать старейшую. Issue, код или PR, заблокированные решением
+    пользователя, оставлять без изменений. Независимую Issue разрешено выполнять
+    только при отсутствии пересечения файлов и контрактов.
+11. При лимите или прерывании записать точное состояние для продолжения:
+    Issue/task, branch, worktree, PR и head SHA, пройденные проверки, blocker и
+    следующее действие. Продолжать те же Issue/task/branch/worktree/PR без
+    дубликатов и сверять актуальные SHA до дальнейших действий.
+12. Только orchestrator выполняет merge gate, checkpoint и закрытие Issue после
+    подтверждения. `publisher` останавливается после публикации PR;
+    `github-reviewer` проверяет опубликованный PR и не выполняет merge или
+    закрытие Issue.
