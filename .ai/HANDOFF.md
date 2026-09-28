@@ -19,11 +19,14 @@
 - Остаточные риски reviewer: нет прямого integration-теста
   `restorePaperTrade` и несовпадения symbol. CI на точном опубликованном head
   является отдельным gate для github-reviewer.
-- Публикация: Issue commit, push и PR пока не выполнены; после GREEN handoff
-  разрешено публиковать только пять одобренных файлов и этот handoff. После
-  успешного создания PR здесь будет записано `PR открыт`, его URL и проверенный
-  head SHA.
-- Блокеров до публикации не обнаружено. Merge и post-merge verification не
+- Issue commit: `6c985a59d809f9b655ee863ce5c556372eb13b22`; push текущей ветки
+  выполнен без force. Persisted GitHub readback подтвердил открытый PR в
+  `master`: [PR #47](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/47),
+  head `6c985a59d809f9b655ee863ce5c556372eb13b22`, base
+  `ab81f56c31b8e1ca87738b7cf7df80532e3db611`.
+- PR открыт. Выполняется отдельный handoff-only commit; после его push необходимо
+  повторно проверить PR URL, текущий head SHA и CI именно на новом head.
+- Блокеров публикации не обнаружено. Merge и post-merge verification не
   выполнять; следующий Issue выбирает orchestrator.
 
 ## 2026-09-27: Issue #17 — Сжать handoff и удалить устаревший CURRENT_TASK
