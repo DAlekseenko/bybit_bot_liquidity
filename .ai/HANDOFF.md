@@ -351,10 +351,14 @@
 - Остаточные риски: exact-head CI ещё не проверен; детерминированного теста
   конкурентного writer нет. Изменение остаётся аналитическим и read-only; режим
   Testnet и финансовые ограничения не меняются.
-- Перед публикацией PR поиска по head branch во всех состояниях не найдено.
-  `git diff --check` publisher проходит. Незакоммиченные файлы: четыре
-  reviewer-approved Issue-файла и этот handoff. Публикация ожидает Issue-коммит,
-  обычный push только текущей ветки и PR к `master`; после создания проверить
-  сохранённые URL, base/head SHA и точный состав PR-файлов, затем передать
-  `github-reviewer`. PR открыт после успешного создания; merge и post-merge
-  verification не выполнять.
+- Перед публикацией PR поиск по head branch во всех состояниях не нашёл
+  дубликат. `git diff --check` publisher прошёл. Issue-коммит
+  `52e2683f8349ee6830a944807689529ba6ab80fd` отправлен обычным push только
+  текущей ветки. `PR открыт`: [#46](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/46)
+  к `master`. GitHub readback подтвердил URL, базу
+  `f62851056940bc0d6e846bd9e3638ee440c3cb2e`, первоначальный head
+  `52e2683f8349ee6830a944807689529ba6ab80fd` и ровно пять файлов: четыре
+  reviewer-approved Issue-файла плюс `.ai/HANDOFF.md`. После handoff-only
+  commit/push повторно сверить PR URL, base/head SHA и список файлов; передать
+  подтверждённый финальный head вместе с GREEN reviewer handoff
+  `github-reviewer`. Merge и post-merge verification не выполнять.
