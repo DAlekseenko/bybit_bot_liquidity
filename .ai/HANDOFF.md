@@ -283,9 +283,16 @@
   `go test ./...`, `go vet ./...`, gofmt и diff checks.
 - Остаточный риск: аналитический gate не подключён к runtime; при будущем
   wiring потребуется повторно проверить актуальность readiness/лимитов.
-- Публикация: ожидаются commit, push текущей ветки без force и один replacement
-  PR к `master`. После создания подтвердить GitHub readback URL, base/head SHA,
-  список файлов и CI на точном head; затем передать точное состояние
-  github-reviewer. Старую ветку и PR #12 не изменять.
-- Незакоммиченные файлы до публикации: два approved Issue-файла и этот handoff.
-  Блокеров пока нет; merge и post-merge verification не выполнять.
+- Issue-коммит `c1697632904bb48de8f01bf1e4324e13e2ee45de` отправлен в origin
+  обычным push текущей ветки без force. `PR открыт`: [#44](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/44)
+  к `master`. GitHub readback подтвердил URL, base SHA
+  `8900720fb490b8004a0e88580d09842c12e72326`, head SHA
+  `c1697632904bb48de8f01bf1e4324e13e2ee45de` и ровно три PR-файла:
+  `.ai/HANDOFF.md` плюс два approved Issue-файла. PR открыт, не слит.
+- CI `CI` run `36380614841` (#131) на Issue-коммите был `in_progress`; combined
+  status пуст. Этот handoff-only publication update создаёт следующий head;
+  после push сверить PR URL/base/head и CI для финального SHA, затем передать
+  это состояние github-reviewer. Старую ветку и PR #12 не изменять.
+- Рабочее дерево после Issue-коммита было чистым; текущая единственная
+  незакоммиченная правка — этот handoff. Блокеров пока нет; merge и
+  post-merge verification не выполнять.
