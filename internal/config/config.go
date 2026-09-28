@@ -225,7 +225,27 @@ func Default() Config {
 	}
 }
 
+// Validate проверяет конфигурацию в фиксированном порядке групп.
 func Validate(cfg Config) error {
+	checks := []func(Config) error{
+		validateExchange,
+		validateSymbol,
+		validateStrategy,
+		validateRisk,
+		validateTrading,
+		validateStorage,
+		validateLogging,
+	}
+	for _, check := range checks {
+		if err := check(cfg); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateExchange проверяет Testnet endpoints и парность credentials.
+func validateExchange(cfg Config) error {
 	if !cfg.Exchange.Testnet {
 		return errors.New("exchange.testnet must be true: mainnet is not supported")
 	}
@@ -238,12 +258,22 @@ func Validate(cfg Config) error {
 	if (cfg.Exchange.Credentials.apiKey == "") != (cfg.Exchange.Credentials.apiSecret == "") {
 		return fmt.Errorf("%s and %s must be set together", BybitAPIKeyEnvironment, BybitAPISecretEnvironment)
 	}
+	return nil
+}
+
+// validateSymbol проверяет формат единственного символа.
+func validateSymbol(cfg Config) error {
 	if cfg.Symbol == "" {
 		return errors.New("symbol is required")
 	}
 	if strings.TrimSpace(cfg.Symbol) != cfg.Symbol || strings.ToUpper(cfg.Symbol) != cfg.Symbol {
 		return errors.New("symbol must be uppercase without surrounding whitespace")
 	}
+	return nil
+}
+
+// validateStrategy проверяет параметры сигналов и окна ликвидаций.
+func validateStrategy(cfg Config) error {
 	if !supportedOIWindow(cfg.Strategy.OIWindowMinutes) {
 		return errors.New("strategy.oi_window_minutes must be one of 5, 15, 30, 60, 240, 1440")
 	}
@@ -265,6 +295,11 @@ func Validate(cfg Config) error {
 	if !positiveFinite(cfg.Strategy.LiquidationThresholdUSD) {
 		return errors.New("strategy.liquidation_threshold_usd must be positive")
 	}
+	return nil
+}
+
+// validateRisk проверяет риск и резервы комиссий и проскальзывания.
+func validateRisk(cfg Config) error {
 	if !positiveFinite(cfg.Risk.RiskPerTradePercent) {
 		return errors.New("risk.risk_per_trade_percent must be positive")
 	}
@@ -280,6 +315,11 @@ func Validate(cfg Config) error {
 	if !nonNegativeFinite(cfg.Risk.SlippageAllowancePercent) {
 		return errors.New("risk.slippage_allowance_percent must be non-negative")
 	}
+	return nil
+}
+
+// validateTrading проверяет виртуальный баланс и лимиты paper-trade.
+func validateTrading(cfg Config) error {
 	if cfg.Trading.MaxOpenPositions != 1 {
 		return errors.New("trading.max_open_positions must be 1 for the single-symbol MVP")
 	}
@@ -295,12 +335,22 @@ func Validate(cfg Config) error {
 	if cfg.Trading.MaxTradesPerDay <= 0 {
 		return errors.New("trading.max_trades_per_day must be positive")
 	}
+	return nil
+}
+
+// validateStorage проверяет драйвер и DSN хранилища.
+func validateStorage(cfg Config) error {
 	if cfg.Storage.Driver != "sqlite" {
 		return errors.New("storage.driver must be sqlite")
 	}
 	if strings.TrimSpace(cfg.Storage.DSN) == "" {
 		return errors.New("storage.dsn is required")
 	}
+	return nil
+}
+
+// validateLogging проверяет допустимый уровень логирования.
+func validateLogging(cfg Config) error {
 	switch strings.ToLower(cfg.Logging.Level) {
 	case "debug", "info", "warn", "error":
 	default:

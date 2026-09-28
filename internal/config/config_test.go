@@ -384,6 +384,51 @@ func TestValidateRejectsInvalidParameters(t *testing.T) {
 	}
 }
 
+// TestValidateReturnsFirstErrorByPrecedence фиксирует порядок проверок полей.
+func TestValidateReturnsFirstErrorByPrecedence(t *testing.T) {
+	tests := []struct {
+		name string
+		bad  []string
+		want string
+	}{
+		{"exchange before strategy", []string{"mainnet", "bad_oi"}, "exchange.testnet must be true: mainnet is not supported"},
+		{"symbol before strategy", []string{"empty_symbol", "bad_oi"}, "symbol is required"},
+		{"testnet before endpoint", []string{"mainnet", "bad_rest"}, "exchange.testnet must be true: mainnet is not supported"},
+		{"rest endpoint before websocket", []string{"bad_rest", "bad_ws"}, "exchange.base_url must use https://api-testnet.bybit.com"},
+		{"endpoint before credentials", []string{"bad_ws", "partial_credentials"}, "exchange.websocket_url must use wss://stream-testnet.bybit.com"},
+		{"strategy field order", []string{"bad_oi", "bad_growth"}, "strategy.oi_window_minutes must be one of 5, 15, 30, 60, 240, 1440"},
+		{"trading field order", []string{"multiple_positions", "empty_balance"}, "trading.max_open_positions must be 1 for the single-symbol MVP"},
+	}
+	for _, test := range tests {
+		cfg := Default()
+		for _, field := range test.bad {
+			switch field {
+			case "mainnet":
+				cfg.Exchange.Testnet = false
+			case "bad_rest":
+				cfg.Exchange.BaseURL = "https://api.bybit.com"
+			case "bad_ws":
+				cfg.Exchange.WebsocketURL = "wss://stream.bybit.com/v5/public/linear"
+			case "partial_credentials":
+				cfg.Exchange.Credentials.apiKey = "key"
+			case "empty_symbol":
+				cfg.Symbol = ""
+			case "bad_oi":
+				cfg.Strategy.OIWindowMinutes = 10
+			case "bad_growth":
+				cfg.Strategy.OIGrowthPercent = 0
+			case "multiple_positions":
+				cfg.Trading.MaxOpenPositions = 2
+			case "empty_balance":
+				cfg.Trading.VirtualBalanceUSD = 0
+			}
+		}
+		if err := Validate(cfg); err == nil || err.Error() != test.want {
+			t.Errorf("%s: Validate() error = %v, want %q", test.name, err, test.want)
+		}
+	}
+}
+
 func TestLoadReadsCredentialsOnlyFromEnvironment(t *testing.T) {
 	path := writeConfig(t, "symbol: BTCUSDT\n")
 	environment := map[string]string{

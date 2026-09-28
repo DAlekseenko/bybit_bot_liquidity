@@ -236,3 +236,31 @@
   GitHub connector и обычный git push. Github-reviewer должен проверить PR #42
   и CI для финального head SHA. Не выполнять merge, выбор следующего Issue или
   post-merge verification.
+
+## Issue #38 — порядок первой ошибки конфигурации
+
+- Контракт: [Issue #38](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/38).
+  Ветка `codex/38-config-validation-focused`; reviewer base и `origin/master`:
+  `2b615eb4bc90b050d93129ce80edffe2bb8485e0`.
+- Независимый read-only reviewer: GREEN, blockers отсутствуют. Одобрены ровно
+  `internal/config/config.go` и `internal/config/config_test.go`; добавлено 50
+  production и 45 test lines. Сохранены порядок проверок, тексты ошибок,
+  Testnet-only endpoints и запрет секретов в YAML. Таблица фиксирует precedence
+  для семи пар одновременно невалидных полей.
+- Проверки reviewer: targeted config tests, `go test ./...`, `go vet ./...`,
+  gofmt check и `git diff --check` — green. Перед публикацией HEAD совпал с
+  base, незакоммиченные изменения были только в двух approved Issue-файлах;
+  GitHub readback не нашёл удалённой ветки или PR для имени ветки.
+- Остаточный риск: precedence table покрывает семь пар; live API и trade tests
+  не запускались, они вне scope Issue.
+- Локальная проверка перед публикацией: текущая ветка и HEAD/base сверены;
+  staged были только два approved Issue-файла и этот handoff, иных изменений
+  нет. Проверки `git diff --check` пройдены.
+- Issue-коммит `fe4ed7f4ad04d25ae940357f4a9ad59e832375ba` отправлен в origin без
+  force. `PR открыт`: [#43](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/43)
+  к `master`; GitHub readback подтвердил base
+  `2b615eb4bc90b050d93129ce80edffe2bb8485e0` и первоначальный head Issue-коммита.
+  После handoff-only commit сверить и передать окончательный head SHA и точный
+  список файлов github-reviewer.
+- Блокеров нет. Не выполнять merge, закрытие Issue или PR #13, выбор следующей
+  Issue или post-merge verification.
