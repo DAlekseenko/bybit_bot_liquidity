@@ -7,7 +7,7 @@
 - Проверки reviewer: контракт и локальная ссылка сверены; `git diff --check`; `docker compose config -q` и итоговый config профиля `tools`: оба data mount указывают `/srv/bybit-bot/data`, SQLite mount read-only, опубликованных портов нет, credentials пусты, metrics bind — `127.0.0.1:8080`. Запуск бота и backup не выполнялись.
 - Publisher сверил ветку `codex/32-testnet-operations`, HEAD и `origin/master` на `978b75c20e20faf56237b06945645cfc8b2b36d9`; дерево до handoff содержало ровно четыре одобренных Issue-файла, иных изменений нет. Локальный `git diff --check` прошёл. Хост должен отдельно подготовить `BOT_DATA_DIR` и приватный env-файл.
 - Остаточные риски: инструкция предполагает корректные права/владельца данных и ручную подготовку host env; runtime запуск и backup не проверялись. CI на опубликованном точном head ожидает GitHub Actions.
-- Публикация ожидает Issue-коммит, push текущей ветки без force и PR в `master`. После создания проверить URL, base, список файлов, head SHA и CI; затем передать точный head github-reviewer. Merge и post-merge verification не выполнять.
+- Issue-коммит `6c2b9144b7dc6fa728eb17e04b1e3964162c6e12`; push ветки выполнен без force. [PR #49](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/49) открыт в `master`; GitHub readback подтвердил base SHA `978b75c20e20faf56237b06945645cfc8b2b36d9`, head SHA `6c2b9144b7dc6fa728eb17e04b1e3964162c6e12` и ровно четыре Issue-файла плюс этот handoff. CI run `36522043435` на этом head был `in_progress` при последнем readback; после handoff-коммита проверить итоговый PR head и CI и передать точный SHA github-reviewer. PR открыт. Merge и post-merge verification не выполнять.
 - Блокеров перед публикацией нет.
 
 ## Issue #36 — восстановление однозначной paper-позиции
