@@ -24,11 +24,16 @@
 - Остаточные риски: вызывающая сторона отвечает за уникальный стабильный
   `intentID`; нет persistence, conflict detection, Bybit reconciliation или
   execution authority; остаётся теоретическая вероятность hash collision.
-- Публикация: проверены ветка и свежий `origin/master`; Issue-коммит и PR ещё
-  не созданы. Следующий шаг — опубликовать одобренные файлы и этот handoff;
-  после создания PR повторно проверить URL, base, head SHA, состав файлов и CI,
-  затем передать точный head `github-reviewer`. PR открыт после подтверждения.
-  Merge и post-merge verification не выполнять.
+- Публикация: Issue-коммит `b36d3f19e6bb8e154e928d85a58236f3883cd713`
+  создан только из четырёх одобренных файлов; ветка отправлена без force.
+  Открыт [PR #50](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/50)
+  в `master`. GitHub readback подтвердил base SHA
+  `e29b6ddaf9821d481ff348af1889a4236b542d1a`, head SHA
+  `b36d3f19e6bb8e154e928d85a58236f3883cd713`, пять файлов (четыре Issue-файла
+  и `.ai/HANDOFF.md`); PR открыт, не слит. Текущий handoff-only commit изменит
+  head; после его push повторно проверить PR URL, base/head, состав файлов и CI
+  на новом SHA, затем передать точный head `github-reviewer`. Merge и
+  post-merge verification не выполнять.
 
 ## Issue #32 — эксплуатация Testnet на сервере
 
