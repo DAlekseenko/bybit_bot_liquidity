@@ -19,7 +19,7 @@
 | `GetLeverage(ctx, symbol)` | получить текущее one-way leverage | signed read-only REST реализован |
 | `GetAccountInfo(ctx)` | получить Unified status и margin mode | signed read-only REST реализован |
 | `GetAccountBalance(ctx)` | получить available/equity/wallet USD | signed read-only REST реализован |
-| `PlaceOrder(ctx, OrderRequest)` | открыть позицию с Qty, SL и TP | `ErrNotImplemented` |
+| `PlaceOrder(ctx, OrderRequest)` | контракт будущей заявки с Qty, SL, TP и `LinkID` | `ErrNotImplemented` |
 | `GetPosition(ctx, symbol)` | вернуть one-way позицию либо `nil` | signed read-only REST реализован |
 | `ClosePosition(ctx, symbol)` | закрыть позицию | `ErrNotImplemented` |
 
@@ -84,6 +84,13 @@ REST-контракт намеренно фиксирован под MVP:
 - `execution.SignalStore`: `SaveSignal`.
 
 Это позволяет тестировать бизнес-логику fake-реализациями без сетевого API.
+
+`OpeningOrderLinkID(intentID, order)` кодирует поля без неоднозначности и строит
+SHA-256 `LinkID`. Вызывающая сторона сохраняет `intentID` при retry и задаёт
+разные ID для разных intents. Это только детерминированный ключ: функция не
+является разрешением на исполнение, не создаёт `TradePlan` или human confirmation,
+не хранит ключ, не обнаруживает конфликты и не выполняет reconciliation. Ключ не
+доказывает acceptance, fill или биржевую idempotence.
 
 ### Конфигурация credentials
 
