@@ -1,5 +1,15 @@
 # Передача работы
 
+## Issue #32 — эксплуатация Testnet на сервере
+
+- Контракт: [Issue #32](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/32), шаг родительской Issue #22. Ветка `codex/32-testnet-operations`; reviewer base, `origin/master` и стартовый HEAD — `978b75c20e20faf56237b06945645cfc8b2b36d9` (после merge PR #48).
+- Независимый read-only reviewer вернул GREEN и одобрил ровно `README.md`, `docs/OPERATIONS.md`, `ops/docker-compose.server.yml`, `ops/server.env.example`; diff 72 additions / 0 deletions. Изменений Go, тестов и runtime-кода нет.
+- Проверки reviewer: контракт и локальная ссылка сверены; `git diff --check`; `docker compose config -q` и итоговый config профиля `tools`: оба data mount указывают `/srv/bybit-bot/data`, SQLite mount read-only, опубликованных портов нет, credentials пусты, metrics bind — `127.0.0.1:8080`. Запуск бота и backup не выполнялись.
+- Publisher сверил ветку `codex/32-testnet-operations`, HEAD и `origin/master` на `978b75c20e20faf56237b06945645cfc8b2b36d9`; дерево до handoff содержало ровно четыре одобренных Issue-файла, иных изменений нет. Локальный `git diff --check` прошёл. Хост должен отдельно подготовить `BOT_DATA_DIR` и приватный env-файл.
+- Остаточные риски: инструкция предполагает корректные права/владельца данных и ручную подготовку host env; runtime запуск и backup не проверялись. CI на опубликованном точном head ожидает GitHub Actions.
+- Публикация ожидает Issue-коммит, push текущей ветки без force и PR в `master`. После создания проверить URL, base, список файлов, head SHA и CI; затем передать точный head github-reviewer. Merge и post-merge verification не выполнять.
+- Блокеров перед публикацией нет.
+
 ## Issue #36 — восстановление однозначной paper-позиции
 
 - Контракт: [Issue #36](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/36).
