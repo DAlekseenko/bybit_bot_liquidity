@@ -113,12 +113,15 @@ type Liquidation struct {
 	Time time.Time
 }
 
+// USDValue возвращает номинал ликвидации в котируемой валюте.
 func (l Liquidation) USDValue() float64 {
 	return l.Price * l.Qty
 }
 
 // OrderRequest содержит параметры заявки, которую executor передает бирже.
 type OrderRequest struct {
+	// LinkID хранит вычисленный стабильный ключ opening intent.
+	LinkID string
 	// Symbol - торговый инструмент.
 	Symbol string
 	// Side - направление сделки.

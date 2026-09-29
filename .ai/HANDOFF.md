@@ -1,5 +1,41 @@
 # Передача работы
 
+## Актуальный handoff — Issue #35
+
+- Issue #32 завершена: PR #49 merged `2026-09-29T04:37:46Z`; merge commit
+  `e29b6ddaf9821d481ff348af1889a4236b542d1a` подтверждён и достижим из
+  `origin/master`.
+- Issue [#35](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/35),
+  ветка `codex/35-trade-plan-types`; свежая база reviewer и `origin/master` —
+  `e29b6ddaf9821d481ff348af1889a4236b542d1a`. Рабочее дерево содержит ровно
+  четыре одобренных файла: `docs/API.md`, `internal/exchange/types.go`,
+  `internal/execution/order_contract.go`,
+  `internal/execution/order_contract_test.go`; staged-файлов нет.
+- Независимый read-only reviewer вернул GREEN: 145 additions / 1 deletion
+  (76 production/docs, 69 tests). Одобрены только четыре файла выше. Инвариант:
+  одинаковые `intentID` и поля дают стабильный `LinkID`, разные ID либо Qty —
+  разные ключи; входной LinkID игнорируется, вход не изменяется. Lifecycle и
+  `UNKNOWN` status API, runtime execution, confirmation authority и биржевая
+  idempotence в изменение не входят.
+- Проверки reviewer: `GOTOOLCHAIN=auto go test -count=1 ./internal/execution
+  ./internal/exchange ./internal/exchange/bybit`, `GOTOOLCHAIN=auto go test
+  ./...`, `GOTOOLCHAIN=auto go vet ./...`, `gofmt -l` по изменённым Go-файлам
+  пуст, `git diff --check origin/master` прошёл.
+- Остаточные риски: вызывающая сторона отвечает за уникальный стабильный
+  `intentID`; нет persistence, conflict detection, Bybit reconciliation или
+  execution authority; остаётся теоретическая вероятность hash collision.
+- Публикация: Issue-коммит `b36d3f19e6bb8e154e928d85a58236f3883cd713`
+  содержит только четыре одобренных файла; ветка отправлена без force. Открыт
+  [PR #50](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/50) в
+  `master`. Последний GitHub readback до этой handoff-коррекции подтвердил PR
+  открыт и не слит, base SHA
+  `e29b6ddaf9821d481ff348af1889a4236b542d1a`, head SHA
+  `368fcccf3861b483eb39e0ea500b0dc646c83d71`, пять файлов (четыре Issue-файла
+  и `.ai/HANDOFF.md`); CI run `36529788159` завершился GREEN на этом точном
+  head. Эта коррекция handoff меняет head; после её push проверить PR URL,
+  base/head, состав файлов и CI на новом SHA, затем передать точный head
+  `github-reviewer`. Merge и post-merge verification не выполнять.
+
 ## Issue #32 — эксплуатация Testnet на сервере
 
 - Контракт: [Issue #32](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/32), шаг родительской Issue #22. Ветка `codex/32-testnet-operations`; reviewer base, `origin/master` и стартовый HEAD — `978b75c20e20faf56237b06945645cfc8b2b36d9` (после merge PR #48).
