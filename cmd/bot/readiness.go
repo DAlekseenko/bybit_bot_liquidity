@@ -9,15 +9,23 @@ import (
 )
 
 type executionReadinessChecker interface {
+	// Check выполняет read-only проверку готовности аккаунта.
 	Check(ctx context.Context, symbol string) (execution.ExecutionReadiness, error)
 }
 
+type readinessMetrics interface {
+	// SetReadiness сохраняет ограниченное состояние проверки.
+	SetReadiness(ready bool)
+}
+
+// reportExecutionReadiness проверяет готовность и сообщает безопасный результат.
 func reportExecutionReadiness(
 	ctx context.Context,
 	log *slog.Logger,
 	enabled bool,
 	checker executionReadinessChecker,
 	symbol string,
+	metrics readinessMetrics,
 ) {
 	if !enabled {
 		return
@@ -26,6 +34,7 @@ func reportExecutionReadiness(
 		log = slog.Default()
 	}
 	if checker == nil {
+		setExecutionReadiness(metrics, false)
 		log.Warn(
 			"execution readiness failed",
 			"symbol", symbol,
@@ -35,6 +44,7 @@ func reportExecutionReadiness(
 	}
 
 	if _, err := checker.Check(ctx, symbol); err != nil {
+		setExecutionReadiness(metrics, false)
 		log.Warn(
 			"execution readiness failed",
 			"symbol", symbol,
@@ -42,9 +52,18 @@ func reportExecutionReadiness(
 		)
 		return
 	}
+	setExecutionReadiness(metrics, true)
 	log.Info("execution readiness confirmed", "symbol", symbol)
 }
 
+// setExecutionReadiness обновляет метрику при наличии получателя.
+func setExecutionReadiness(metrics readinessMetrics, ready bool) {
+	if metrics != nil {
+		metrics.SetReadiness(ready)
+	}
+}
+
+// classifyExecutionReadinessError сводит ошибки проверки к безопасным категориям.
 func classifyExecutionReadinessError(err error) string {
 	switch {
 	case err == nil:
