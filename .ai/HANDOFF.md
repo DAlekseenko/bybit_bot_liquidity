@@ -24,13 +24,14 @@
   trading и не меняет риск-лимиты.
 - Issue-коммит `b2ce0d412a6c040bc4850a020bd8ba9e223d5c3a`; ветка отправлена в
   `origin` без force. PR [#52](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/52)
-  создан в `master`. GitHub readback подтвердил PR открыт, base SHA
-  `9da4b43fd03254bb8ad3b93e96029a01c7e1c99a`, head SHA
-  `b2ce0d412a6c040bc4850a020bd8ba9e223d5c3a` и diff из шести одобренных
-  Issue-файлов плюс `.ai/HANDOFF.md`. CI run `36775305801` на этом точном SHA
-  был `in_progress`; после handoff-only commit снова проверить URL, base/head,
-  файлы и CI именно на новом head, затем передать точный SHA и GREEN evidence
-  `github-reviewer`. Merge, deploy и post-merge проверки не выполнять.
+  открыт в `master`. После handoff-only публикационного commit
+  `6aebd341812329e3308d8f3ac529ce5f7fc94fa2` GitHub readback подтвердил PR URL,
+  base SHA `9da4b43fd03254bb8ad3b93e96029a01c7e1c99a`, head SHA
+  `6aebd341812329e3308d8f3ac529ce5f7fc94fa2` и ровно шесть одобренных
+  Issue-файлов плюс `.ai/HANDOFF.md`. CI run `36775447306` на этом точном SHA
+  был `pending` (combined statuses пусты); требуется дождаться результата CI на
+  финальном head перед post-publication передачей `github-reviewer`. PR открыт,
+  merge не выполнялся. Deploy и post-merge проверки не выполнять.
 
 ## Актуальный handoff — Issue #35
 
