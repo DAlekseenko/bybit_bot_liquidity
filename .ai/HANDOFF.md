@@ -1,5 +1,35 @@
 # Передача работы
 
+## Issue #51 — параметризованный Testnet deploy
+
+- Контракт: [Issue #51](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/51).
+- Ветка `codex/51-testnet-deploy`; `HEAD` и `origin/master` перед публикацией
+  совпадают на `9da4b43fd03254bb8ad3b93e96029a01c7e1c99a`.
+- Независимый read-only reviewer вернул GREEN и одобрил ровно шесть Issue-файлов:
+  `.github/workflows/testnet-deploy.yml`, `ops/docker-compose.release.yml`,
+  `ops/deploy-testnet.sh`, `ops/deploy-testnet_test.sh`,
+  `docs/OPERATIONS.md`, `README.md`. До публикационного handoff-коммита
+  рабочее дерево содержало только эти шесть одобренных файлов; иных tracked,
+  staged или untracked изменений не было.
+- Reviewer подтвердил shell syntax и fake SSH/Docker сценарии, Compose config,
+  `go test ./...`, `go vet ./...` и `git diff --check`. Сценарии покрывают
+  rootless refusal, отсутствующую БД до backup/switch, первый backup,
+  недоступность метрики с повторной проверкой, pull/up/health ошибки и rollback.
+- Остаточные риски и условия: реальный deploy, VPS и сервер не запускались.
+  До deploy владелец должен подтвердить доступность GitHub Environment Required
+  Reviewers для private repository, защиту Environment и подготовить отдельный
+  rootful Testnet host, пользователя/данные, проверенный host key, secrets и
+  пустую SQLite при первом запуске. Rootful Docker socket эквивалентен root;
+  SQLite bootstrap/restore остаётся ручным. Автоматизация не включает live
+  trading и не меняет риск-лимиты.
+- Публикация пока не начата: commit, push и PR отсутствуют; PR URL/head SHA/CI
+  ещё не подтверждены. Следующий шаг — добавить только шесть reviewer-approved
+  файлов и этот handoff, создать Issue-коммит и выполнить fast-forward push этой
+  ветки; затем открыть один PR в `master` и проверить persisted URL, base/head,
+  список файлов и CI на точном опубликованном SHA. После этого передать точный
+  head и GREEN evidence `github-reviewer`. Merge, deploy и post-merge проверки
+  не выполнять.
+
 ## Актуальный handoff — Issue #35
 
 - Issue #32 завершена: PR #49 merged `2026-09-29T04:37:46Z`; merge commit

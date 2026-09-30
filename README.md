@@ -172,7 +172,7 @@ executor не подключён, поэтому даже `dry_run: false` не 
 - [Разработка](docs/DEVELOPMENT.md) — окружение, запуск, тесты и миграции.
 - [API и интеграции](docs/API.md) — Go-контракты, события и Bybit.
 - [Решения](docs/DECISIONS.md) — принятые ограничения и открытые вопросы.
-- [Эксплуатация](docs/OPERATIONS.md) — ручной запуск Testnet, диагностика и резервная копия SQLite.
+- [Эксплуатация](docs/OPERATIONS.md) — ручной запуск, gated Testnet image deploy, диагностика и SQLite backup/restore.
 - [Roadmap](docs/ROADMAP.md) — следующие безопасные этапы развития.
 - [Инструкции участникам](AGENTS.md) — правила изменения проекта.
 - [Краткий контекст](.ai/CONTEXT.md) и [передача работы](.ai/HANDOFF.md).
