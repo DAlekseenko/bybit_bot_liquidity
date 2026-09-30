@@ -22,13 +22,15 @@
   пустую SQLite при первом запуске. Rootful Docker socket эквивалентен root;
   SQLite bootstrap/restore остаётся ручным. Автоматизация не включает live
   trading и не меняет риск-лимиты.
-- Публикация пока не начата: commit, push и PR отсутствуют; PR URL/head SHA/CI
-  ещё не подтверждены. Следующий шаг — добавить только шесть reviewer-approved
-  файлов и этот handoff, создать Issue-коммит и выполнить fast-forward push этой
-  ветки; затем открыть один PR в `master` и проверить persisted URL, base/head,
-  список файлов и CI на точном опубликованном SHA. После этого передать точный
-  head и GREEN evidence `github-reviewer`. Merge, deploy и post-merge проверки
-  не выполнять.
+- Issue-коммит `b2ce0d412a6c040bc4850a020bd8ba9e223d5c3a`; ветка отправлена в
+  `origin` без force. PR [#52](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/52)
+  создан в `master`. GitHub readback подтвердил PR открыт, base SHA
+  `9da4b43fd03254bb8ad3b93e96029a01c7e1c99a`, head SHA
+  `b2ce0d412a6c040bc4850a020bd8ba9e223d5c3a` и diff из шести одобренных
+  Issue-файлов плюс `.ai/HANDOFF.md`. CI run `36775305801` на этом точном SHA
+  был `in_progress`; после handoff-only commit снова проверить URL, base/head,
+  файлы и CI именно на новом head, затем передать точный SHA и GREEN evidence
+  `github-reviewer`. Merge, deploy и post-merge проверки не выполнять.
 
 ## Актуальный handoff — Issue #35
 
