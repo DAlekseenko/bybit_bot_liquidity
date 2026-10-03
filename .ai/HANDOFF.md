@@ -24,13 +24,13 @@
   `codex-archive-08-telegram-control-20261003`; грязная исходная копия осталась
   на том же commit, staged/unstaged/untracked hashes совпали до и после удаления
   локальной ветки. Старые пользовательские изменения сохранены.
-- Publisher: `git diff --check` прошёл. Далее staged должны быть только эти 12
-  файлов и `.ai/HANDOFF.md`; commit и push без force ещё не выполнены. PR для
-  `codex/53-telegram-personal-control` не найден; после push открыть один PR в
-  `master`, сверить URL, head SHA и состав 13 файлов, затем проверить CI на
-  точном head и передать `github-reviewer`. Остаточный риск до этого — CI
-  опубликованного head не проверен. Блокеров пока нет. Merge, deploy и
-  post-merge verification не выполнять.
+- Publisher: `git diff --check` прошёл; staged были только эти 12 файлов и
+  `.ai/HANDOFF.md`. Issue-коммит `0074a3952d2e48bdcd7bc9d7791d3dd032cb8a5d`
+  создан. Это handoff-only обновление фиксирует его SHA; далее push обоих
+  коммитов без force, один PR в `master`, readback URL/head/ровно 13 файлов и
+  передача `github-reviewer` для проверки CI точного опубликованного head.
+  Остаточный риск: CI опубликованного head не проверен. Блокеров пока нет.
+  Merge, deploy и post-merge verification не выполнять.
 
 ## Issue #51 — параметризованный Testnet deploy
 
