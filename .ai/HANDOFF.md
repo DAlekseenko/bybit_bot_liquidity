@@ -1,5 +1,37 @@
 # Передача работы
 
+## Issue #53 — личный Telegram read-only интерфейс
+
+- Контракт: [Issue #53](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/53).
+  Ветка `codex/53-telegram-personal-control`; база, стартовый `HEAD` и
+  `origin/master` — `330a49688a4a021dec442a570a2a6fbc43d028fe`.
+- Независимый reviewer вернул GREEN и одобрил ровно 12 файлов: `README.md`,
+  `cmd/bot/main.go`, `cmd/bot/telegram.go`, `cmd/bot/telegram_test.go`,
+  `docker-compose.yml`, `docs/DECISIONS.md`, `docs/DOMAIN.md`,
+  `internal/storage/storage.go`, `internal/storage/storage_test.go`,
+  `internal/telegram/bot.go`, `internal/telegram/bot_test.go` и
+  `ops/docker-compose.release.yml`. Diff reviewer: 459 production, 296 test и
+  31 documentation/config lines; удалений нет.
+- Проверки reviewer и developer прошли: целевые тесты и race, полный
+  `go test -count=1 ./...`, полный race, `go vet ./...`, `go build ./...`,
+  gofmt, diff check и проверка Compose конфигураций. Реальные Telegram,
+  Testnet и deploy не проверялись. Exactly-once после рестарта не гарантируется;
+  execution не менялся.
+- Перед handoff-only правкой publisher сверил текущую ветку и базу. Незакоммичены
+  только 12 одобренных Issue-файлов; иных/staged изменений нет. Удалённая
+  ветка не обнаружена поиском GitHub; локальный `git ls-remote` ограничен DNS.
+  Старый commit `bd7e8a8` сохранён тегом
+  `codex-archive-08-telegram-control-20261003`; грязная исходная копия осталась
+  на том же commit, staged/unstaged/untracked hashes совпали до и после удаления
+  локальной ветки. Старые пользовательские изменения сохранены.
+- Publisher: `git diff --check` прошёл. Далее staged должны быть только эти 12
+  файлов и `.ai/HANDOFF.md`; commit и push без force ещё не выполнены. PR для
+  `codex/53-telegram-personal-control` не найден; после push открыть один PR в
+  `master`, сверить URL, head SHA и состав 13 файлов, затем проверить CI на
+  точном head и передать `github-reviewer`. Остаточный риск до этого — CI
+  опубликованного head не проверен. Блокеров пока нет. Merge, deploy и
+  post-merge verification не выполнять.
+
 ## Issue #51 — параметризованный Testnet deploy
 
 - Контракт: [Issue #51](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/51).
