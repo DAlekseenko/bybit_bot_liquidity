@@ -1,5 +1,25 @@
 # Передача работы
 
+## Issue #56 — CM-001: проект контрактов Crypto Momentum
+
+- База: `330a49688a4a021dec442a570a2a6fbc43d028fe`, ветка
+  `codex/56-cm001-contract`, отдельный чистый worktree. Контракт:
+  [Issue #56](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/56),
+  полное ТЗ: [#55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55).
+- Только docs-only область: `docs/crypto-momentum/SPEC.md`,
+  `docs/crypto-momentum/DECISIONS.md`, `docs/DECISIONS.md`, `.ai/HANDOFF.md`.
+  Нет Go-кода, заявок, миграций или изменения legacy runtime.
+- D-01 cutoff/reserve и D-03 прежние тестовые данные остаются вопросами владельцу;
+  D-06 фактическая среда/счёт и D-11 live/risk authority также не подтверждены.
+  Формулы, арифметика и event ordering помечены предложениями, не торговым
+  разрешением. Baseline planner зависит от ответа D-01.
+- Независимый read-only reviewer вернул GREEN для этих четырёх файлов; примеры
+  `Qt` для `Q0=0/10/40` пересчитаны, локальные ссылки проверены,
+  `git diff --check` прошёл. Go-проверки не запускались: изменение docs-only.
+- На момент этого handoff файлы не закоммичены, PR не создан; публикацию и CI
+  необходимо подтвердить отдельно по точному head SHA. Этот документ не
+  доказывает merge или готовность к торговле.
+
 ## Issue #51 — параметризованный Testnet deploy
 
 - Контракт: [Issue #51](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/51).
