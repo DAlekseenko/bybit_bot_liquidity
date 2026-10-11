@@ -1,5 +1,26 @@
 # Передача работы
 
+## Issue #119 — обновление поддерживаемого toolchain Go
+
+- Контракт: Issue #119; ветка `codex/119-go-1.26.9`, база и стартовый HEAD —
+  `origin/master` `330a49688a4a021dec442a570a2a6fbc43d028fe`.
+- Изменены только `go.mod`, `Dockerfile`, `README.md`, `docs/DEVELOPMENT.md`,
+  `docs/DECISIONS.md` и этот handoff. Toolchain обновлён до Go 1.26.9; директива
+  совместимости `go 1.24.13` сохранена. CI workflow и vulnerability gate не
+  менялись.
+- Проверено точным Go 1.26.9: `go test ./...`, `go test -race ./...`,
+  `go vet ./...`, `go build ./...` — PASS. `govulncheck@v1.1.4 ./...` — PASS:
+  у вызываемого кода 0 уязвимостей; одна уязвимость найдена в требуемом модуле,
+  но проверка не обнаружила вызов уязвимого кода. `git diff --check` — PASS;
+  Go-файлы не менялись.
+- Docker build не подтверждён: клиент установлен, но локальный Docker daemon
+  не запущен/недоступен. Реальный сетевой или Testnet запуск не выполнялся.
+- Независимый read-only reviewer вернул GREEN для этих шести файлов и повторил
+  Go-проверки, включая `govulncheck`; достижимых уязвимостей не найдено.
+  Docker build остаётся непроверенным из-за недоступного daemon.
+- До публикации коммита и PR нет. Перед merge обязателен зелёный CI на точном
+  PR head; после подтверждённого merge повторить CI заблокированного PR #118.
+
 ## Issue #51 — параметризованный Testnet deploy
 
 - Контракт: [Issue #51](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/51).
