@@ -2,8 +2,9 @@
 
 ## Issue #56 — CM-001: проект контрактов Crypto Momentum
 
-- База: `330a49688a4a021dec442a570a2a6fbc43d028fe`, ветка
-  `codex/56-cm001-contract`, отдельный чистый worktree. Контракт:
+- Ветка `codex/56-cm001-contract`, отдельный worktree. После подтверждённого
+  merge Issue #119 обновлена база до `origin/master`
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Контракт:
   [Issue #56](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/56),
   полное ТЗ: [#55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55).
 - Только docs-only область: `docs/crypto-momentum/SPEC.md`,
@@ -13,19 +14,34 @@
   D-06 фактическая среда/счёт и D-11 live/risk authority также не подтверждены.
   Формулы, арифметика и event ordering помечены предложениями, не торговым
   разрешением. Baseline planner зависит от ответа D-01.
-- Независимый read-only reviewer вернул GREEN для этих четырёх файлов; примеры
+- Предыдущий независимый read-only review исходных документов был GREEN; примеры
   `Qt` для `Q0=0/10/40` пересчитаны, локальные ссылки проверены,
-  `git diff --check` прошёл. Go-проверки не запускались: изменение docs-only.
-- Issue-коммит `c53850762e29cc368eb5c9d5368eb8e5a541ebc3` опубликован без
-  force в [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118).
-  GitHub подтвердил: PR открыт, не draft, base `master` на `330a496`, head
-  `c538507`, ровно четыре одобренных файла. Это не merge и не готовность к торговле.
-- CI PR #118 для head `c538507` проверял merge ref `414fd0c` и завершился
-  FAILURE: format, unit tests и coverage прошли; `govulncheck` на Go 1.26.7
-  сообщил о 9 достижимых stdlib-уязвимостях, исправленных в Go 1.26.9, и
-  остановил следующие шаги. Причину необходимо устранить отдельной узкой Issue;
-  до зелёного CI merge запрещён.
-  После изменения этого handoff повторно сверить точный PR head и CI.
+  `git diff --check` прошёл. Текущая merge-resolution также получила независимый GREEN review;
+  security fix и оба handoff сохранены. Go-проверки не запускались: изменение docs-only.
+- [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118)
+  открыт, не слит. Предыдущий head `e23f53a1ad353c0e16205c74f1b97f99cedcc2b0`
+  был заблокирован CI на Go 1.26.7 и конфликтом handoff с новым master.
+  Конфликт разрешён с сохранением обоих handoff; после commit/push этого merge
+  обязательно подтвердить новый точный head, состав PR и зелёный CI. До этого
+  merge #118 запрещён. Это не разрешение на торговлю.
+
+## Issue #119 — обновление поддерживаемого toolchain Go
+
+- [PR #120](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/120)
+  прошёл независимый GREEN review и exact-head CI, merged в `master`
+  `2026-10-11T20:03:26Z` коммитом
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. GitHub mergedAt/mergeCommit
+  подтверждены, commit достижим из обновлённого `origin/master`, Issue #119 закрыта.
+- Область #119 сохранена: `go.mod`, `Dockerfile`, `README.md`,
+  `docs/DEVELOPMENT.md`, `docs/DECISIONS.md` и `.ai/HANDOFF.md`.
+  Директива совместимости `go 1.24.13` и CI workflow не менялись.
+- Проверки точным Go 1.26.9: `go test ./...`, `go test -race ./...`,
+  `go vet ./...`, `go build ./...` и `git diff --check` — PASS.
+  `govulncheck@v1.1.4 ./...` — PASS: 0 достижимых уязвимостей; одна
+  уязвимость требуемого модуля не вызывается кодом. Независимый read-only
+  reviewer подтвердил GREEN шести файлов и повторил Go/vulnerability checks.
+- Go toolchain 1.26.9 и vulnerability gate остаются включены; Docker build
+  локально не подтверждён из-за недоступного daemon. Deploy не выполнялся.
 
 ## Issue #51 — параметризованный Testnet deploy
 
