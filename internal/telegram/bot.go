@@ -244,6 +244,9 @@ func (b *Bot) request(ctx context.Context, method, operation string, query url.V
 		return &apiError{}
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusConflict {
+		return errorForAPI(response.StatusCode, 0)
+	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
 	if err != nil || len(data) > maxResponseBytes {
 		return &apiError{}
@@ -269,7 +272,7 @@ func (b *Bot) request(ctx context.Context, method, operation string, query url.V
 
 // errorForAPI классифицирует только код и retry_after, игнорируя текст ответа API.
 func errorForAPI(code, retryAfterSeconds int) error {
-	err := &apiError{permanent: code == http.StatusUnauthorized || code == http.StatusForbidden || code == http.StatusConflict || code >= 400 && code < 500 && code != http.StatusTooManyRequests}
+	err := &apiError{permanent: code == http.StatusUnauthorized || code == http.StatusForbidden || code == http.StatusConflict}
 	if code == http.StatusTooManyRequests && retryAfterSeconds > 0 {
 		if retryAfterSeconds > int(maxRetryDelay/time.Second) {
 			retryAfterSeconds = int(maxRetryDelay / time.Second)

@@ -154,8 +154,57 @@ func TestRequestSanitizesFailures(t *testing.T) {
 			}
 		})
 	}
-	if !errorForAPI(401, 0).(*apiError).permanent || !errorForAPI(403, 0).(*apiError).permanent || !errorForAPI(409, 0).(*apiError).permanent || errorForAPI(429, 1).(*apiError).permanent {
+	if !errorForAPI(http.StatusUnauthorized, 0).(*apiError).permanent || !errorForAPI(http.StatusForbidden, 0).(*apiError).permanent || !errorForAPI(http.StatusConflict, 0).(*apiError).permanent || errorForAPI(http.StatusTooManyRequests, 1).(*apiError).permanent {
 		t.Fatal("API error classification is incorrect")
+	}
+}
+
+// TestRequestKeepsOtherClientErrorsRetryable проверяет временную классификацию остальных 4xx.
+func TestRequestKeepsOtherClientErrorsRetryable(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusNotFound, http.StatusUnprocessableEntity} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(status, `{"ok":false}`), nil
+			})}
+			bot, err := New(Config{Token: "123:secret", OwnerID: 7}, testProvider{}, client)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = bot.request(context.Background(), http.MethodGet, "getUpdates", nil, nil, &apiResponse[[]update]{})
+			var apiErr *apiError
+			if !errors.As(err, &apiErr) || apiErr.permanent {
+				t.Fatalf("HTTP %d error should remain retryable: %v", status, err)
+			}
+		})
+	}
+}
+
+// TestRequestUsesPermanentStatusBeforeBody проверяет 401/403/409 независимо от тела ответа.
+func TestRequestUsesPermanentStatusBeforeBody(t *testing.T) {
+	bodyCases := []struct {
+		name string
+		body string
+	}{
+		{name: "malformed", body: `{"description":"secret`},
+		{name: "oversized", body: strings.Repeat("secret", maxResponseBytes/len("secret")+1)},
+	}
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusConflict} {
+		for _, bodyCase := range bodyCases {
+			t.Run(http.StatusText(status)+"/"+bodyCase.name, func(t *testing.T) {
+				client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+					return jsonResponse(status, bodyCase.body), nil
+				})}
+				bot, err := New(Config{Token: "123:secret", OwnerID: 7}, testProvider{}, client)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = bot.request(context.Background(), http.MethodGet, "getUpdates", nil, nil, &apiResponse[[]update]{})
+				var apiErr *apiError
+				if !errors.As(err, &apiErr) || !apiErr.permanent || err.Error() != "Telegram API request failed" || strings.Contains(err.Error(), "secret") {
+					t.Fatalf("HTTP %d status was not handled safely: %v", status, err)
+				}
+			})
+		}
 	}
 }
 

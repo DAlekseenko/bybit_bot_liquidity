@@ -7,7 +7,7 @@
 
 Обязательно:
 
-- toolchain Go 1.26.7; директива `go 1.24.13` в [go.mod](../go.mod) сохраняет
+- toolchain Go 1.26.9; директива `go 1.24.13` в [go.mod](../go.mod) сохраняет
   совместимость исходников с Go 1.24, а `toolchain` выбирает поддерживаемую
   версию стандартной библиотеки;
 - POSIX-совместимая командная строка для приведённых примеров.
@@ -143,7 +143,7 @@ sqlite3 -readonly -header -column ./data/trades.backup.db \
 Контейнер работает от непривилегированного пользователя, с read-only root
 filesystem, `no-new-privileges`, writable bind mount `/app/data` и временным
 `tmpfs /tmp`. `Dockerfile` собирает CGo-free бинарник в
-`golang:1.26.7-alpine`, копирует CA bundle для HTTPS в runtime без дополнительных
+`golang:1.26.9-alpine`, копирует CA bundle для HTTPS в runtime без дополнительных
 сетевых установок и запускает его в `alpine:3.22`.
 
 Опциональные read-only credentials:

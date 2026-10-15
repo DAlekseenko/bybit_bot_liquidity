@@ -1,5 +1,36 @@
 # Передача работы
 
+## Продолжение Issue #53 — обновление PR #54, 2026-10-15
+
+- Существующие worktree `/Users/alekseenkodenis/.codex/worktrees/f699/bybit_bot_liquidity`,
+  ветка `codex/53-telegram-personal-control`, PR [#54](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/54).
+  Стартовый чистый HEAD: `8b370dcd1b6e280870267e4894ff9887d11949e5`.
+- После обычного fetch выполнен merge без rebase из `origin/master`
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Единственный конфликт —
+  этот handoff; сохранены независимые записи Issue #53 и #119. Security fix
+  Go 1.26.9 сохранён целиком. В DOMAIN уточнено исключение личного read-only
+  Telegram-интерфейса по D-028 из общего запрета Telegram-бота.
+- Developer подтвердил Go 1.26.9: целевые tests/race, полные tests/race,
+  vet/build, gofmt и diff check — PASS. `govulncheck@v1.1.4 ./...` — PASS:
+  0 достижимых уязвимостей; 1 уязвимость требуемого модуля без вызова кода.
+  Оба Compose config -q прошли с фиктивным окружением без вывода секретов.
+- Diff относительно нового master: 12 исходных Issue-файлов плюс handoff,
+  462 production Go additions и 345 test additions; бюджет не превышен.
+  Независимый review выявил два P2: лишние permanent-коды 4xx и потерю
+  terminal HTTP status при ошибке тела ответа. Developer исправил оба в
+  internal/telegram/bot.go; fake HTTP regression tests проверяют 400/404/422
+  и malformed/oversized 401/403/409. Все перечисленные проверки повторены
+  после исправлений и прошли. Повторный независимый reviewer вернул GREEN:
+  целевые tests, полные tests/race -count=1, vet/build, gofmt/diff — PASS.
+- Независимый reviewer одобрил 12 Issue-файлов и этот handoff; blocker нет.
+  Следующий gate: publisher коммитит merge и отправляет текущую ветку без force.
+  Использовать существующий PR #54, сверить точный
+  head/base/набор файлов и CI финального head, затем github-reviewer.
+- Реальные Telegram/Bybit запросы, Docker build, deploy и активация сервера не
+  выполнялись. Exactly-once после рестарта не гарантируется. Merge самого PR,
+  закрытие Issue и post-merge gate не разрешены этим handoff. Основной грязный
+  checkout сохранён; #56/#57/D-01 не изменялись.
+
 ## Issue #53 — личный Telegram read-only интерфейс
 
 - Контракт: [Issue #53](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/53).
@@ -31,6 +62,27 @@
   передача `github-reviewer` для проверки CI точного опубликованного head.
   Остаточный риск: CI опубликованного head не проверен. Блокеров пока нет.
   Merge, deploy и post-merge verification не выполнять.
+
+## Issue #119 — обновление поддерживаемого toolchain Go
+
+- Контракт: Issue #119; ветка `codex/119-go-1.26.9`, база и стартовый HEAD —
+  `origin/master` `330a49688a4a021dec442a570a2a6fbc43d028fe`.
+- Изменены только `go.mod`, `Dockerfile`, `README.md`, `docs/DEVELOPMENT.md`,
+  `docs/DECISIONS.md` и этот handoff. Toolchain обновлён до Go 1.26.9; директива
+  совместимости `go 1.24.13` сохранена. CI workflow и vulnerability gate не
+  менялись.
+- Проверено точным Go 1.26.9: `go test ./...`, `go test -race ./...`,
+  `go vet ./...`, `go build ./...` — PASS. `govulncheck@v1.1.4 ./...` — PASS:
+  у вызываемого кода 0 уязвимостей; одна уязвимость найдена в требуемом модуле,
+  но проверка не обнаружила вызов уязвимого кода. `git diff --check` — PASS;
+  Go-файлы не менялись.
+- Docker build не подтверждён: клиент установлен, но локальный Docker daemon
+  не запущен/недоступен. Реальный сетевой или Testnet запуск не выполнялся.
+- Независимый read-only reviewer вернул GREEN для этих шести файлов и повторил
+  Go-проверки, включая `govulncheck`; достижимых уязвимостей не найдено.
+  Docker build остаётся непроверенным из-за недоступного daemon.
+- До публикации коммита и PR нет. Перед merge обязателен зелёный CI на точном
+  PR head; после подтверждённого merge повторить CI заблокированного PR #118.
 
 ## Issue #51 — параметризованный Testnet deploy
 
