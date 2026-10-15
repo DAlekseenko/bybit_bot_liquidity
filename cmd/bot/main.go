@@ -39,6 +39,11 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+	telegramCfg, telegramEnabled, err := telegramConfigFromEnv(telegramEnvironment)
+	if err != nil {
+		slog.Error("invalid Telegram control configuration")
+		os.Exit(1)
+	}
 
 	log := applogger.New(os.Stdout, cfg.Logging.Level)
 	log.Info("bot initialized", "symbol", cfg.Symbol, "testnet", cfg.Exchange.Testnet)
@@ -144,6 +149,14 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("paper trading initialized", "virtual_balance_usd", cfg.Trading.VirtualBalanceUSD)
+	if telegramEnabled {
+		background.Add(1)
+		if err := startTelegramControl(ctx, log, telegramCfg, cfg, store, background.Done); err != nil {
+			log.Error("failed to initialize Telegram control")
+			os.Exit(1)
+		}
+		log.Info("Telegram read-only control enabled")
+	}
 
 	candleLimit := cfg.Strategy.VolumeSMAPeriod + 2
 	runner := newReadOnlyRunner(log, cfg.Symbol, collector, signalStrategy, store, paper, liquidations, candleLimit, metrics)

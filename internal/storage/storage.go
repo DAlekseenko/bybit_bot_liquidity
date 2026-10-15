@@ -48,6 +48,17 @@ type VirtualOutcome struct {
 	ClosedAt   time.Time
 }
 
+// LatestSignal содержит только публичные поля последнего сохранённого сигнала.
+type LatestSignal struct {
+	ID             int64
+	Symbol         string
+	Type           string
+	Reason         string
+	CreatedAt      time.Time
+	CurrentOIAt    *time.Time
+	SignalCandleAt *time.Time
+}
+
 // OpenVirtualSignal содержит данные одной незакрытой виртуальной позиции.
 type OpenVirtualSignal struct {
 	SignalID int64
@@ -287,6 +298,44 @@ ORDER BY id ASC`)
 func (s *Store) SaveSignal(ctx context.Context, signal strategy.Signal) error {
 	_, err := s.SaveSignalRecord(ctx, SignalRecord{Signal: signal})
 	return err
+}
+
+// LatestSignalBySymbol читает последний сохранённый снимок сигнала для символа.
+func (s *Store) LatestSignalBySymbol(ctx context.Context, symbol string) (*LatestSignal, error) {
+	var item LatestSignal
+	var createdAt string
+	var currentOIAt, signalCandleAt sql.NullString
+	err := s.db.QueryRowContext(ctx, `
+SELECT id, symbol, signal_type, reason, created_at, current_oi_at, signal_candle_at
+FROM signals WHERE symbol = ? ORDER BY id DESC LIMIT 1`, symbol).Scan(
+		&item.ID, &item.Symbol, &item.Type, &item.Reason, &createdAt, &currentOIAt, &signalCandleAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read latest signal: %w", err)
+	}
+	item.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse latest signal time: %w", err)
+	}
+	for _, field := range []struct {
+		value  sql.NullString
+		target **time.Time
+	}{{currentOIAt, &item.CurrentOIAt}, {signalCandleAt, &item.SignalCandleAt}} {
+		if !field.value.Valid {
+			continue
+		}
+		parsed, parseErr := time.Parse(time.RFC3339Nano, field.value.String)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse latest signal timestamp: %w", parseErr)
+		}
+		parsed = parsed.UTC()
+		*field.target = &parsed
+	}
+	item.CreatedAt = item.CreatedAt.UTC()
+	return &item, nil
 }
 
 // SaveSignalRecord сохраняет сигнал, индикаторы и виртуальный план.

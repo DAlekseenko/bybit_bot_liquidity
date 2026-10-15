@@ -17,6 +17,8 @@ services:
     environment:
       BYBIT_API_KEY: ${BYBIT_API_KEY:-}
       BYBIT_API_SECRET: ${BYBIT_API_SECRET:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_OWNER_USER_ID: ${TELEGRAM_OWNER_USER_ID:-}
       SSL_CERT_DIR: /etc/ssl/certs:/app/certs
     volumes:
       - ${DEPLOY_PATH:?Set DEPLOY_PATH}/config.yaml:/app/configs/config.yaml:ro
