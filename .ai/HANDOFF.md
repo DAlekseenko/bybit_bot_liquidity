@@ -22,10 +22,23 @@
   и malformed/oversized 401/403/409. Все перечисленные проверки повторены
   после исправлений и прошли. Повторный независимый reviewer вернул GREEN:
   целевые tests, полные tests/race -count=1, vet/build, gofmt/diff — PASS.
-- Независимый reviewer одобрил 12 Issue-файлов и этот handoff; blocker нет.
-  Следующий gate: publisher коммитит merge и отправляет текущую ветку без force.
-  Использовать существующий PR #54, сверить точный
-  head/base/набор файлов и CI финального head, затем github-reviewer.
+- Независимый reviewer одобрил 12 Issue-файлов и handoff. Оба publisher были
+  остановлены до Git-записи из-за отсутствия ответа; coordinator завершил
+  публикацию после GREEN. Merge-коммит:
+  `0d1ea02ffb8e90d5557d5f4e4f069bd7553bb111`, родители — стартовый HEAD и
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Обычный push без force успешен.
+- SSH port 22 зависал на banner exchange; SSH 443 через ssh.github.com с
+  HostKeyAlias=github.com и StrictHostKeyChecking=yes прошёл по существующему
+  закреплённому ключу, без изменения remote/config/known_hosts.
+  Readback refs/heads текущей ветки и refs/pull/54/head подтвердил merge-коммит;
+  master остался `53f752d9414bb7d0caa79c1714857d6229f8bd55`.
+- GitHub connector первоначально вернул transport HTTP error; позже доступ
+  восстановлен. Github-reviewer подтвердил PR #54 open, base master
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`, head merge-коммита, 13 файлов.
+  CI run `38794689091` этого head ещё in_progress, GREEN CI не подтверждён.
+  Следующий шаг — проверить PR #54 и CI на финальном head после этого
+  handoff-only commit (получить SHA через git rev-parse HEAD и remote readback),
+  затем завершить github-reviewer. PR не merge, Issue не закрывать.
 - Реальные Telegram/Bybit запросы, Docker build, deploy и активация сервера не
   выполнялись. Exactly-once после рестарта не гарантируется. Merge самого PR,
   закрытие Issue и post-merge gate не разрешены этим handoff. Основной грязный
