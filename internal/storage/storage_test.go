@@ -79,6 +79,47 @@ func TestStoreMigrateAndSaveSignal(t *testing.T) {
 	}
 }
 
+// TestLatestSignalBySymbol читает последнее состояние, фильтрует символ и сохраняет результат после открытия БД.
+func TestLatestSignalBySymbol(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "latest.db")
+	store, err := Open(DriverName, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range []struct{ symbol, kind, reason string }{{"BTCUSDT", "LONG", "old"}, {"ETHUSDT", "SHORT", "other"}, {"BTCUSDT", "NONE", "latest"}} {
+		if err := store.SaveSignal(ctx, strategy.Signal{Symbol: row.symbol, Type: strategy.SignalType(row.kind), Reason: row.reason}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.LatestSignalBySymbol(ctx, "BTCUSDT")
+	if err != nil || got == nil || got.Type != "NONE" || got.Reason != "latest" || got.CreatedAt.Location() != time.UTC {
+		t.Fatalf("LatestSignalBySymbol() = %#v, %v", got, err)
+	}
+	if other, err := store.LatestSignalBySymbol(ctx, "XRPUSDT"); err != nil || other != nil {
+		t.Fatalf("missing signal = %#v, %v", other, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LatestSignalBySymbol(ctx, "BTCUSDT"); err == nil {
+		t.Fatal("LatestSignalBySymbol() succeeded after database close")
+	}
+	store, err = Open(DriverName, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got, err = store.LatestSignalBySymbol(ctx, "BTCUSDT")
+	if err != nil || got == nil || got.Reason != "latest" {
+		t.Fatalf("reopened signal = %#v, %v", got, err)
+	}
+}
+
 // TestStoreOpenVirtualSignalsFailClosed проверяет пустое, однозначное и неоднозначное состояние.
 func TestStoreOpenVirtualSignalsFailClosed(t *testing.T) {
 	t.Parallel()

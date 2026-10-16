@@ -2,28 +2,115 @@
 
 ## Issue #56 — CM-001: проект контрактов Crypto Momentum
 
-- Ветка `codex/56-cm001-contract`, отдельный worktree. После подтверждённого
-  merge Issue #119 обновлена база до `origin/master`
-  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Контракт:
-  [Issue #56](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/56),
+- Ветка `codex/56-cm001-contract`, тот же отдельный worktree и
+  [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118).
+  После подтверждённого merge #54 база обновлена обычным merge до `origin/master`
+  `bcb97e130e97f31c1cbf3f7b718d2102358cd00a` без rebase/force.
+  Контракт: [#56](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/56),
   полное ТЗ: [#55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55).
-- Только docs-only область: `docs/crypto-momentum/SPEC.md`,
-  `docs/crypto-momentum/DECISIONS.md`, `docs/DECISIONS.md`, `.ai/HANDOFF.md`.
-  Нет Go-кода, заявок, миграций или изменения legacy runtime.
-- D-01 cutoff/reserve и D-03 прежние тестовые данные остаются вопросами владельцу;
-  D-06 фактическая среда/счёт и D-11 live/risk authority также не подтверждены.
-  Формулы, арифметика и event ordering помечены предложениями, не торговым
-  разрешением. Baseline planner зависит от ответа D-01.
-- Предыдущий независимый read-only review исходных документов был GREEN; примеры
-  `Qt` для `Q0=0/10/40` пересчитаны, локальные ссылки проверены,
-  `git diff --check` прошёл. Текущая merge-resolution также получила независимый GREEN review;
-  security fix и оба handoff сохранены. Go-проверки не запускались: изменение docs-only.
-- [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118)
-  открыт, не слит. Предыдущий head `e23f53a1ad353c0e16205c74f1b97f99cedcc2b0`
-  был заблокирован CI на Go 1.26.7 и конфликтом handoff с новым master.
-  Конфликт разрешён с сохранением обоих handoff; после commit/push этого merge
-  обязательно подтвердить новый точный head, состав PR и зелёный CI. До этого
-  merge #118 запрещён. Это не разрешение на торговлю.
+- Итоговая область относительно master — ровно четыре docs-only файла:
+  `docs/crypto-momentum/SPEC.md`, `docs/crypto-momentum/DECISIONS.md`,
+  `docs/DECISIONS.md`, `.ai/HANDOFF.md`. Telegram и Go 1.26.9 сохранены;
+  Изменений кода, торгового исполнения или риск-лимитов нет; формула D-01
+  в SPEC остаётся неутверждённым предложением и при этой resolution не менялась.
+- Владелец разрешил обновить и объединить docs-only PR #118 с открытым D-01.
+  Это не утверждение cutoff/reserve: baseline planner и golden targets
+  остаются заблокированы до отдельного ответа D-01. D-03 прежние данные,
+  D-06 среда/счёт и D-11 live/risk authority также открыты.
+- Предыдущий head `fdc81fdb9e8ba27e7a2fde736a4d22ebdd3d9018` имел независимый
+  GREEN и CI run `38625655081` success на прежней базе `53f752d`.
+  Текущая resolution после #54 получила независимый GREEN review;
+  publisher завершает merge-коммит и push в эту же ветку без force.
+  Go-проверки локально не повторялись: итоговое изменение docs-only; после push
+  обязательны новый CI на финальном head/актуальной базе и github-reviewer.
+- Сам PR в этом чате не объединять: exact head/base, четыре файла, GREEN и CI
+  передать управляющему чату для разрешённого merge и post-merge verification.
+  Основной dirty checkout не изменять; к #57 не переходить.
+
+## Итог Issue #53 — подтверждённый merge
+
+- [PR #54](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/54) merged
+  `2026-10-15T19:38:10Z`, commit
+  `bcb97e130e97f31c1cbf3f7b718d2102358cd00a`; GitHub mergedAt/mergeCommit
+  и достижимость в обновлённом `origin/master` подтверждены. Issue #53 закрыта.
+- Личный Telegram-интерфейс остаётся Testnet/read-only/paper; Telegram activation
+  и deploy не выполнялись. Следующие разделы #53 — исторический handoff до merge.
+
+## Продолжение Issue #53 — обновление PR #54, 2026-10-15
+
+- Существующие worktree `/Users/alekseenkodenis/.codex/worktrees/f699/bybit_bot_liquidity`,
+  ветка `codex/53-telegram-personal-control`, PR [#54](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/54).
+  Стартовый чистый HEAD: `8b370dcd1b6e280870267e4894ff9887d11949e5`.
+- После обычного fetch выполнен merge без rebase из `origin/master`
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Единственный конфликт —
+  этот handoff; сохранены независимые записи Issue #53 и #119. Security fix
+  Go 1.26.9 сохранён целиком. В DOMAIN уточнено исключение личного read-only
+  Telegram-интерфейса по D-028 из общего запрета Telegram-бота.
+- Developer подтвердил Go 1.26.9: целевые tests/race, полные tests/race,
+  vet/build, gofmt и diff check — PASS. `govulncheck@v1.1.4 ./...` — PASS:
+  0 достижимых уязвимостей; 1 уязвимость требуемого модуля без вызова кода.
+  Оба Compose config -q прошли с фиктивным окружением без вывода секретов.
+- Diff относительно нового master: 12 исходных Issue-файлов плюс handoff,
+  462 production Go additions и 345 test additions; бюджет не превышен.
+  Независимый review выявил два P2: лишние permanent-коды 4xx и потерю
+  terminal HTTP status при ошибке тела ответа. Developer исправил оба в
+  internal/telegram/bot.go; fake HTTP regression tests проверяют 400/404/422
+  и malformed/oversized 401/403/409. Все перечисленные проверки повторены
+  после исправлений и прошли. Повторный независимый reviewer вернул GREEN:
+  целевые tests, полные tests/race -count=1, vet/build, gofmt/diff — PASS.
+- Независимый reviewer одобрил 12 Issue-файлов и handoff. Оба publisher были
+  остановлены до Git-записи из-за отсутствия ответа; coordinator завершил
+  публикацию после GREEN. Merge-коммит:
+  `0d1ea02ffb8e90d5557d5f4e4f069bd7553bb111`, родители — стартовый HEAD и
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. Обычный push без force успешен.
+- SSH port 22 зависал на banner exchange; SSH 443 через ssh.github.com с
+  HostKeyAlias=github.com и StrictHostKeyChecking=yes прошёл по существующему
+  закреплённому ключу, без изменения remote/config/known_hosts.
+  Readback refs/heads текущей ветки и refs/pull/54/head подтвердил merge-коммит;
+  master остался `53f752d9414bb7d0caa79c1714857d6229f8bd55`.
+- GitHub connector первоначально вернул transport HTTP error; позже доступ
+  восстановлен. Github-reviewer подтвердил PR #54 open, base master
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`, head merge-коммита, 13 файлов.
+  CI run `38794689091` этого head ещё in_progress, GREEN CI не подтверждён.
+  Следующий шаг — проверить PR #54 и CI на финальном head после этого
+  handoff-only commit (получить SHA через git rev-parse HEAD и remote readback),
+  затем завершить github-reviewer. PR не merge, Issue не закрывать.
+- Реальные Telegram/Bybit запросы, Docker build, deploy и активация сервера не
+  выполнялись. Exactly-once после рестарта не гарантируется. Merge самого PR,
+  закрытие Issue и post-merge gate не разрешены этим handoff. Основной грязный
+  checkout сохранён; #56/#57/D-01 не изменялись.
+
+## Issue #53 — личный Telegram read-only интерфейс
+
+- Контракт: [Issue #53](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/53).
+  Ветка `codex/53-telegram-personal-control`; база, стартовый `HEAD` и
+  `origin/master` — `330a49688a4a021dec442a570a2a6fbc43d028fe`.
+- Независимый reviewer вернул GREEN и одобрил ровно 12 файлов: `README.md`,
+  `cmd/bot/main.go`, `cmd/bot/telegram.go`, `cmd/bot/telegram_test.go`,
+  `docker-compose.yml`, `docs/DECISIONS.md`, `docs/DOMAIN.md`,
+  `internal/storage/storage.go`, `internal/storage/storage_test.go`,
+  `internal/telegram/bot.go`, `internal/telegram/bot_test.go` и
+  `ops/docker-compose.release.yml`. Diff reviewer: 459 production, 296 test и
+  31 documentation/config lines; удалений нет.
+- Проверки reviewer и developer прошли: целевые тесты и race, полный
+  `go test -count=1 ./...`, полный race, `go vet ./...`, `go build ./...`,
+  gofmt, diff check и проверка Compose конфигураций. Реальные Telegram,
+  Testnet и deploy не проверялись. Exactly-once после рестарта не гарантируется;
+  execution не менялся.
+- Перед handoff-only правкой publisher сверил текущую ветку и базу. Незакоммичены
+  только 12 одобренных Issue-файлов; иных/staged изменений нет. Удалённая
+  ветка не обнаружена поиском GitHub; локальный `git ls-remote` ограничен DNS.
+  Старый commit `bd7e8a8` сохранён тегом
+  `codex-archive-08-telegram-control-20261003`; грязная исходная копия осталась
+  на том же commit, staged/unstaged/untracked hashes совпали до и после удаления
+  локальной ветки. Старые пользовательские изменения сохранены.
+- Publisher: `git diff --check` прошёл; staged были только эти 12 файлов и
+  `.ai/HANDOFF.md`. Issue-коммит `0074a3952d2e48bdcd7bc9d7791d3dd032cb8a5d`
+  создан. Это handoff-only обновление фиксирует его SHA; далее push обоих
+  коммитов без force, один PR в `master`, readback URL/head/ровно 13 файлов и
+  передача `github-reviewer` для проверки CI точного опубликованного head.
+  Остаточный риск: CI опубликованного head не проверен. Блокеров пока нет.
+  Merge, deploy и post-merge verification не выполнять.
 
 ## Issue #119 — обновление поддерживаемого toolchain Go
 
