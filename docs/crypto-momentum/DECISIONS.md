@@ -1,0 +1,27 @@
+# Crypto Momentum: решения и вопросы
+
+Статус CM-001: **предложения к review**, не применённые runtime-решения.
+Каноническое ТЗ — [Issue #55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55),
+локальный контракт — [SPEC.md](SPEC.md). Исторические решения legacy MVP в
+[общем журнале](../DECISIONS.md) не отменены и не распространяются автоматически
+на Momentum.
+
+| ID | Предложение / требуемый ответ | Блокирует |
+| --- | --- | --- |
+| D-01 | **Владелец:** подтвердить baseline cutoff и резерв на дельту/будущее закрытие существующей позиции; численные кандидаты в SPEC. | Baseline planner и golden targets. |
+| D-02 | **Владелец:** подтвердить post-close equity для reset и сопоставимость с прежним тестом. | Reset golden comparison, не первый baseline replay. |
+| D-03 | **Владелец:** предоставить прежние исходники, данные, период, расходы, funding, rounding, event order и допуски. До этого `NOT_VERIFIED`. | Утверждение исторической эквивалентности. |
+| D-04 | **Владелец/оператор:** численные fee, slippage, freshness, REST/RPC deadlines и fallback для версии профиля. | Реалистичный paper и Testnet gate. |
+| D-05 | **Владелец:** stop по умолчанию disabled; threshold/action и resume требуют отдельного решения. | Активация stop на бирже. |
+| D-06 | **Владелец/оператор:** выделенный subaccount, isolated/one-way, фактическая доступность BTC/ETH/HYPE на нужной среде и географическая применимость; adapter повторно проверяет API. | Ручная Testnet проверка. |
+| D-07 | **Инженерное предложение:** funding старой позиции → mark/equity → stop → rebalance; tie-breaks и manifest в SPEC. Требуется review до golden fixtures. | Эталон backtest. |
+| D-08 | **Инженерное предложение:** timeout отправки = `UNKNOWN`, без слепого retry; численный stale-plan/absence contract ещё открыт. | Private отправки и recovery. |
+| D-09 | **Инженерный выбор в отдельной Issue:** PostgreSQL driver/version, точный NUMERIC scale, migrations и rollback без потери данных. | Storage реализация. |
+| D-10 | **Владелец + инженер:** значение «вход», модель liquidation, допуск P&L и cutoff. | Итоговый report. |
+| D-11 | **Только владелец:** mainnet eligibility, отдельное явное разрешение live и изменений risk limits. Ни ТЗ, ни CM-001 их не дают. | Любой live этап. |
+
+Инженерное предложение для арифметики: точные decimal strings → `math/big.Rat`
+в вычислении → канонические рациональные промежуточные значения и Qty, округлённые
+вниз по шагу. Ни одно предложение не снимает Testnet/read-only guard. Дальнейший
+код допускается только в отдельных Issues с явным утверждённым контрактом;
+вопросы владельцу остаются открытыми до его ответа и проверенного readback.

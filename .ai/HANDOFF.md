@@ -1,5 +1,41 @@
 # Передача работы
 
+## Issue #56 — CM-001: проект контрактов Crypto Momentum
+
+- Ветка `codex/56-cm001-contract`, тот же отдельный worktree и
+  [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118).
+  После подтверждённого merge #54 база обновлена обычным merge до `origin/master`
+  `bcb97e130e97f31c1cbf3f7b718d2102358cd00a` без rebase/force.
+  Контракт: [#56](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/56),
+  полное ТЗ: [#55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55).
+- Итоговая область относительно master — ровно четыре docs-only файла:
+  `docs/crypto-momentum/SPEC.md`, `docs/crypto-momentum/DECISIONS.md`,
+  `docs/DECISIONS.md`, `.ai/HANDOFF.md`. Telegram и Go 1.26.9 сохранены;
+  Изменений кода, торгового исполнения или риск-лимитов нет; формула D-01
+  в SPEC остаётся неутверждённым предложением и при этой resolution не менялась.
+- Владелец разрешил обновить и объединить docs-only PR #118 с открытым D-01.
+  Это не утверждение cutoff/reserve: baseline planner и golden targets
+  остаются заблокированы до отдельного ответа D-01. D-03 прежние данные,
+  D-06 среда/счёт и D-11 live/risk authority также открыты.
+- Предыдущий head `fdc81fdb9e8ba27e7a2fde736a4d22ebdd3d9018` имел независимый
+  GREEN и CI run `38625655081` success на прежней базе `53f752d`.
+  Текущая resolution после #54 получила независимый GREEN review;
+  publisher завершает merge-коммит и push в эту же ветку без force.
+  Go-проверки локально не повторялись: итоговое изменение docs-only; после push
+  обязательны новый CI на финальном head/актуальной базе и github-reviewer.
+- Сам PR в этом чате не объединять: exact head/base, четыре файла, GREEN и CI
+  передать управляющему чату для разрешённого merge и post-merge verification.
+  Основной dirty checkout не изменять; к #57 не переходить.
+
+## Итог Issue #53 — подтверждённый merge
+
+- [PR #54](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/54) merged
+  `2026-10-15T19:38:10Z`, commit
+  `bcb97e130e97f31c1cbf3f7b718d2102358cd00a`; GitHub mergedAt/mergeCommit
+  и достижимость в обновлённом `origin/master` подтверждены. Issue #53 закрыта.
+- Личный Telegram-интерфейс остаётся Testnet/read-only/paper; Telegram activation
+  и deploy не выполнялись. Следующие разделы #53 — исторический handoff до merge.
+
 ## Продолжение Issue #53 — обновление PR #54, 2026-10-15
 
 - Существующие worktree `/Users/alekseenkodenis/.codex/worktrees/f699/bybit_bot_liquidity`,
@@ -78,24 +114,21 @@
 
 ## Issue #119 — обновление поддерживаемого toolchain Go
 
-- Контракт: Issue #119; ветка `codex/119-go-1.26.9`, база и стартовый HEAD —
-  `origin/master` `330a49688a4a021dec442a570a2a6fbc43d028fe`.
-- Изменены только `go.mod`, `Dockerfile`, `README.md`, `docs/DEVELOPMENT.md`,
-  `docs/DECISIONS.md` и этот handoff. Toolchain обновлён до Go 1.26.9; директива
-  совместимости `go 1.24.13` сохранена. CI workflow и vulnerability gate не
-  менялись.
-- Проверено точным Go 1.26.9: `go test ./...`, `go test -race ./...`,
-  `go vet ./...`, `go build ./...` — PASS. `govulncheck@v1.1.4 ./...` — PASS:
-  у вызываемого кода 0 уязвимостей; одна уязвимость найдена в требуемом модуле,
-  но проверка не обнаружила вызов уязвимого кода. `git diff --check` — PASS;
-  Go-файлы не менялись.
-- Docker build не подтверждён: клиент установлен, но локальный Docker daemon
-  не запущен/недоступен. Реальный сетевой или Testnet запуск не выполнялся.
-- Независимый read-only reviewer вернул GREEN для этих шести файлов и повторил
-  Go-проверки, включая `govulncheck`; достижимых уязвимостей не найдено.
-  Docker build остаётся непроверенным из-за недоступного daemon.
-- До публикации коммита и PR нет. Перед merge обязателен зелёный CI на точном
-  PR head; после подтверждённого merge повторить CI заблокированного PR #118.
+- [PR #120](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/120)
+  прошёл независимый GREEN review и exact-head CI, merged в `master`
+  `2026-10-11T20:03:26Z` коммитом
+  `53f752d9414bb7d0caa79c1714857d6229f8bd55`. GitHub mergedAt/mergeCommit
+  подтверждены, commit достижим из обновлённого `origin/master`, Issue #119 закрыта.
+- Область #119 сохранена: `go.mod`, `Dockerfile`, `README.md`,
+  `docs/DEVELOPMENT.md`, `docs/DECISIONS.md` и `.ai/HANDOFF.md`.
+  Директива совместимости `go 1.24.13` и CI workflow не менялись.
+- Проверки точным Go 1.26.9: `go test ./...`, `go test -race ./...`,
+  `go vet ./...`, `go build ./...` и `git diff --check` — PASS.
+  `govulncheck@v1.1.4 ./...` — PASS: 0 достижимых уязвимостей; одна
+  уязвимость требуемого модуля не вызывается кодом. Независимый read-only
+  reviewer подтвердил GREEN шести файлов и повторил Go/vulnerability checks.
+- Go toolchain 1.26.9 и vulnerability gate остаются включены; Docker build
+  локально не подтверждён из-за недоступного daemon. Deploy не выполнялся.
 
 ## Issue #51 — параметризованный Testnet deploy
 
