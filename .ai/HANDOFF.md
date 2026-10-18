@@ -22,8 +22,13 @@
   уникальность run key и защита от двойного intent/fill остаются вне #58.
 - Проверки независимого reviewer: targeted tests/race; Go 1.26.9 full tests,
   full race, vet, build, gofmt, govulncheck v1.1.4 — PASS; 0 достижимых
-  уязвимостей и 1 advisory в неиспользуемом модуле. CI финального PR head ожидает
-  readback/проверки управляющим чатом. Остаточный риск: snapshot не обеспечивает
+  уязвимостей и 1 advisory в неиспользуемом модуле. Issue-коммит
+  `2ea02e97f90024f44e55369a4c8057455e2ac378` отправлен обычным push. PR
+  [#123](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/123) открыт в
+  `master`; readback подтвердил base `e840f5098ad0581a6b18f4c6bcb350d4097a1a3a`,
+  head `2ea02e97f90024f44e55369a4c8057455e2ac378` и ровно три Issue-файла плюс
+  этот handoff. CI этого head ожидает проверки управляющим чатом. Остаточный риск:
+  snapshot не обеспечивает
   свежесть/полноту входных данных или корректность upstream-классификации.
 - Подтверждённые зависимости: #57 закрыта после merge PR #121
   (`mergedAt=2026-10-18T18:37:03Z`), merge commit
