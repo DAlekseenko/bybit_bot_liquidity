@@ -10,24 +10,28 @@
   `docs/crypto-momentum/issues/CM-003.md`; publisher добавляет только этот handoff.
 - Реализован неизменяемый `PortfolioSnapshot` с копированием входных и выходных
   коллекций, обязательной идентичностью environment/account/config version и
-  конфигурационным hash. Snapshot сам по себе не подтверждает свежесть, полноту
+  каноническим hash снимка. Snapshot сам по себе не подтверждает свежесть, полноту
   или торговую authority. Формулы, бюджеты, ROC и risk rules не рассчитываются.
   D-01 остаётся открытым.
-- Исходная #58 была разделена system-designer до реализации: новый зависимый
+- Исходная #58 была разделена system-designer после оценки черновой реализации
+  и до публикации: новый зависимый
   контракт CM-003B — [Issue #122](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/122)
   для immutable TradePlan, targets и revisions. Черновик плана сохранён вне PR:
   `/private/tmp/issue58-plan-draft`. В реестре родительской #55 и зависимостях
-  прямые потребители TradePlan #59, #63, #78, #79 и #97 должны требовать также
+  прямые потребители TradePlan #59, #63, #78, #79 и #97 теперь требуют также
   #122; #61 и #71 используют только snapshot. A05 покрыт частично; A07,
   уникальность run key и защита от двойного intent/fill остаются вне #58.
-- Проверки независимого reviewer: targeted tests/race; Go 1.26.9 full tests,
-  full race, vet, build, gofmt, govulncheck v1.1.4 — PASS; 0 достижимых
+- Независимый read-only reviewer вернул GREEN и подтвердил targeted tests — PASS.
+  Разработчик подтвердил targeted и full tests, full race, vet, build, gofmt и
+  govulncheck v1.1.4 на Go 1.26.9 — PASS; 0 достижимых
   уязвимостей и 1 advisory в неиспользуемом модуле. Issue-коммит
   `2ea02e97f90024f44e55369a4c8057455e2ac378` отправлен обычным push. PR
   [#123](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/123) открыт в
   `master`; финальный readback подтвердил base `e840f5098ad0581a6b18f4c6bcb350d4097a1a3a`,
-  head `230b21d53de72ebc8733269a2d0e894ffc822814` и ровно три Issue-файла плюс
-  этот handoff. PR открыт, CI exact head ожидает проверки управляющим чатом.
+  промежуточный подтверждённый head `230b21d53de72ebc8733269a2d0e894ffc822814`
+  и ровно три Issue-файла плюс этот handoff. Последующий handoff-only commit
+  обновил PR head; его точный SHA и CI передаются управляющему чату после push.
+  PR открыт.
   Остаточный риск:
   snapshot не обеспечивает
   свежесть/полноту входных данных или корректность upstream-классификации.
@@ -48,7 +52,7 @@
   решения владельца. Ни #57, ни snapshot #58 не утверждают стратегическую
   формулу и не предоставляют торговых полномочий.
 
-## Issue #56 — CM-001: проект контрактов Crypto Momentum
+## Историческая передача Issue #56 — CM-001: проект контрактов Crypto Momentum (до merge)
 
 - Ветка `codex/56-cm001-contract`, тот же отдельный worktree и
   [PR #118](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/118).
@@ -71,9 +75,8 @@
   publisher завершает merge-коммит и push в эту же ветку без force.
   Go-проверки локально не повторялись: итоговое изменение docs-only; после push
   обязательны новый CI на финальном head/актуальной базе и github-reviewer.
-- Сам PR в этом чате не объединять: exact head/base, четыре файла, GREEN и CI
-  передать управляющему чату для разрешённого merge и post-merge verification.
-  Основной dirty checkout не изменять; к #57 не переходить.
+- Исторический следующий шаг той передачи — merge #118 после проверки exact
+  head/base, файлов, GREEN и CI. Указание не описывает текущее состояние.
 
 ## Итог Issue #53 — подтверждённый merge
 
