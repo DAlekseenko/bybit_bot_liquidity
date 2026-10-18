@@ -1,40 +1,46 @@
 # Передача работы
 
-## Issue #57 — CM-002: точные суммы и количества
+## Подтверждённый результат Issue #58 — CM-003 snapshot
 
-- Контракт: [Issue #57](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/57);
-  ветка `codex/57-exact-decimal`, база `origin/master`
-  `27b9500003f8d45d08eb3a7a544833afc21d0fb6` (после merge PR #118 / Issue #56).
-- Реализованы exact decimal парсинг/арифметика на стандартной библиотеке,
-  signed amount/rate, строгие price/Qty guards, floor по qtyStep, проверка
-  min-notional и безопасная десятичная сериализация. Расчёты не используют
-  float. Изменения остаются расчётным примитивом: D-01 и baseline planner/
-  golden targets открыты; торговля и финансовые правила не менялись.
-- Независимый read-only reviewer вернул GREEN; одобрены ровно
-  `internal/momentum/model/decimal.go` (224 строки),
-  `internal/momentum/model/decimal_test.go` (144 строки),
-  `docs/crypto-momentum/issues/CM-002.md` (32 строки) и этот handoff.
-  Reviewer: targeted tests/race на Go 1.26.9 — PASS. Developer: full tests,
-  full race, vet, build, gofmt/diff-check и `govulncheck` v1.1.4 на Go 1.26.9 —
-  PASS; 0 reachable vulnerabilities, 1 advisory в неиспользуемом модуле.
-- Остаточный риск: decimal API пока не задаёт размерность; потребители должны
-  различать единицы и применять биржевые ограничения. A03/A12 покрыты только
-  арифметическим основанием, end-to-end ledger/strategy остаются вне Issue.
-- Первоначальный Issue-коммит `f406be29863c576add27bfa49c6c05957fb88ff0`
-  опубликован обычным push в открытый [PR #121](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/121)
-  в `master`. Handoff обновлён отдельным последующим коммитом; точный финальный
-  head и CI проверяются после push. Merge и закрытие Issue #57 не выполнялись.
+- Контракт: [Issue #58](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/58),
+  ветка `codex/58-portfolio-trade-plan`, база и стартовый HEAD
+  `e840f5098ad0581a6b18f4c6bcb350d4097a1a3a` (`origin/master`). Независимый
+  reviewer вернул GREEN и одобрил ровно `internal/momentum/model/portfolio.go`
+  (130 строк), `internal/momentum/model/portfolio_test.go` (133 строки) и
+  `docs/crypto-momentum/issues/CM-003.md`; publisher добавляет только этот handoff.
+- Реализован неизменяемый `PortfolioSnapshot` с копированием входных и выходных
+  коллекций, обязательной идентичностью environment/account/config version и
+  конфигурационным hash. Snapshot сам по себе не подтверждает свежесть, полноту
+  или торговую authority. Формулы, бюджеты, ROC и risk rules не рассчитываются.
+  D-01 остаётся открытым.
+- Исходная #58 была разделена system-designer до реализации: новый зависимый
+  контракт CM-003B — [Issue #122](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/122)
+  для immutable TradePlan, targets и revisions. Черновик плана сохранён вне PR:
+  `/private/tmp/issue58-plan-draft`. В реестре родительской #55 и зависимостях
+  прямые потребители TradePlan #59, #63, #78, #79 и #97 должны требовать также
+  #122; #61 и #71 используют только snapshot. A05 покрыт частично; A07,
+  уникальность run key и защита от двойного intent/fill остаются вне #58.
+- Проверки независимого reviewer: targeted tests/race; Go 1.26.9 full tests,
+  full race, vet, build, gofmt, govulncheck v1.1.4 — PASS; 0 достижимых
+  уязвимостей и 1 advisory в неиспользуемом модуле. CI финального PR head ожидает
+  readback/проверки управляющим чатом. Остаточный риск: snapshot не обеспечивает
+  свежесть/полноту входных данных или корректность upstream-классификации.
+- Подтверждённые зависимости: #57 закрыта после merge PR #121
+  (`mergedAt=2026-10-18T18:37:03Z`), merge commit
+  `e840f5098ad0581a6b18f4c6bcb350d4097a1a3a`, достижимый из fetched
+  `origin/master`. #56 закрыта после merge PR #118, commit
+  `27b9500003f8d45d08eb3a7a544833afc21d0fb6`; #53 закрыта после PR #54.
 
 ## Подтверждённые зависимости Crypto Momentum
 
 - Issue #56 закрыта после merge PR #118 (`2026-10-16T05:40:01Z`), commit
   `27b9500003f8d45d08eb3a7a544833afc21d0fb6`; merge SHA достижим из обновлённого
-  `origin/master`. Ранее Issue #53 закрыта после merge PR #54
+  `origin/master`. Issue #53 закрыта после merge PR #54
   (`2026-10-15T19:38:10Z`), commit
   `bcb97e130e97f31c1cbf3f7b718d2102358cd00a`.
 - D-01 остаётся открытым: baseline planner и golden targets заблокированы до
-  решения владельца. Контракт #57 не утверждает стратегическую формулу и не
-  предоставляет торговых полномочий.
+  решения владельца. Ни #57, ни snapshot #58 не утверждают стратегическую
+  формулу и не предоставляют торговых полномочий.
 
 ## Issue #56 — CM-001: проект контрактов Crypto Momentum
 
