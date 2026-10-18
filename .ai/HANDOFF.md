@@ -1,5 +1,41 @@
 # Передача работы
 
+## Issue #57 — CM-002: точные суммы и количества
+
+- Контракт: [Issue #57](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/57);
+  ветка `codex/57-exact-decimal`, база `origin/master`
+  `27b9500003f8d45d08eb3a7a544833afc21d0fb6` (после merge PR #118 / Issue #56).
+- Реализованы exact decimal парсинг/арифметика на стандартной библиотеке,
+  signed amount/rate, строгие price/Qty guards, floor по qtyStep, проверка
+  min-notional и безопасная десятичная сериализация. Расчёты не используют
+  float. Изменения остаются расчётным примитивом: D-01 и baseline planner/
+  golden targets открыты; торговля и финансовые правила не менялись.
+- Независимый read-only reviewer вернул GREEN; одобрены ровно
+  `internal/momentum/model/decimal.go` (224 строки),
+  `internal/momentum/model/decimal_test.go` (144 строки),
+  `docs/crypto-momentum/issues/CM-002.md` (32 строки) и этот handoff.
+  Reviewer: targeted tests/race на Go 1.26.9 — PASS. Developer: full tests,
+  full race, vet, build, gofmt/diff-check и `govulncheck` v1.1.4 на Go 1.26.9 —
+  PASS; 0 reachable vulnerabilities, 1 advisory в неиспользуемом модуле.
+- Остаточный риск: decimal API пока не задаёт размерность; потребители должны
+  различать единицы и применять биржевые ограничения. A03/A12 покрыты только
+  арифметическим основанием, end-to-end ledger/strategy остаются вне Issue.
+- Первоначальный Issue-коммит `f406be29863c576add27bfa49c6c05957fb88ff0`
+  опубликован обычным push в открытый [PR #121](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/121)
+  в `master`. Handoff обновлён отдельным последующим коммитом; точный финальный
+  head и CI проверяются после push. Merge и закрытие Issue #57 не выполнялись.
+
+## Подтверждённые зависимости Crypto Momentum
+
+- Issue #56 закрыта после merge PR #118 (`2026-10-16T05:40:01Z`), commit
+  `27b9500003f8d45d08eb3a7a544833afc21d0fb6`; merge SHA достижим из обновлённого
+  `origin/master`. Ранее Issue #53 закрыта после merge PR #54
+  (`2026-10-15T19:38:10Z`), commit
+  `bcb97e130e97f31c1cbf3f7b718d2102358cd00a`.
+- D-01 остаётся открытым: baseline planner и golden targets заблокированы до
+  решения владельца. Контракт #57 не утверждает стратегическую формулу и не
+  предоставляет торговых полномочий.
+
 ## Issue #56 — CM-001: проект контрактов Crypto Momentum
 
 - Ветка `codex/56-cm001-contract`, тот же отдельный worktree и
