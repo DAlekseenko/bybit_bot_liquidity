@@ -8,8 +8,9 @@
   ancestry merge #58 PASS. GitHub PR #123 merged, merge SHA тот же;
   управляющий чат подтвердил `mergedAt=2026-10-19T18:44:06Z`;
   Issue #58 closed проверено заново.
-- Issue #122 open; открытых PR нет, поиск всех PR по 122 нашёл только #123.
-  Локальной ветки #122 до старта не было.
+- Issue #122 open; перед публикацией поиск PR по ветке `codex/122-immutable-trade-plan`
+  совпадений не нашёл. Сейчас открыт только PR
+  [#125](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/125).
 - Разрешённые изменения: `internal/momentum/model/plan.go` (124 production
   строк), `plan_test.go` (150 test строк),
   `docs/crypto-momentum/issues/CM-003B.md` и этот handoff. D-01 открыт; модель
