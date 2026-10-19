@@ -1,5 +1,40 @@
 # Передача работы
 
+## Текущая Issue #122 — CM-003B immutable TradePlan
+
+- Worktree: `/Users/alekseenkodenis/.codex/worktrees/3b6a/bybit_bot_liquidity`;
+  ветка `codex/122-immutable-trade-plan`. Основная dirty копия не изменялась.
+- После fetch `origin/master=298d079dca8966ad95877442d6b4a3d2676528c2`;
+  ancestry merge #58 PASS. GitHub PR #123 merged, merge SHA тот же;
+  управляющий чат подтвердил `mergedAt=2026-10-19T18:44:06Z`;
+  Issue #58 closed проверено заново.
+- Issue #122 open; открытых PR нет, поиск всех PR по 122 нашёл только #123.
+  Локальной ветки #122 до старта не было.
+- Разрешённые изменения: `internal/momentum/model/plan.go` (124 production
+  строк), `plan_test.go` (150 test строк),
+  `docs/crypto-momentum/issues/CM-003B.md` и этот handoff. D-01 открыт; модель
+  сохраняет переданные targets и не выбирает формулу.
+- Независимый read-only reviewer вернул GREEN без блокеров и одобрил ровно
+  `plan.go` (blob `c1b0213837eafc725a455d7abd3351bcf8745ec2`),
+  `plan_test.go` (`4e85bb1ca1bba87d840355c5823cc99dd81d31b6`),
+  `CM-003B.md` (`2c3637e565097e4eb4caa59641d6998616d6d631`) и этот handoff
+  (`c834cb584d873a3fb296bb522ab1ef94364b4449`). Reviewer независимо подтвердил
+  targeted race, full tests, full race, vet, build, gofmt и diff-check — PASS.
+- Реализация проверяет snapshot повторным вызовом `NewPortfolioSnapshot` и
+  сверяет hash, копирует и сортирует targets, нормализует времена к UTC и
+  хеширует snapshot, metadata и точные рациональные количества. Execution и I/O
+  не добавлены.
+- На Go 1.26.9 targeted/full tests, full race, vet, build, gofmt и diff-check —
+  PASS. `govulncheck@v1.1.4` — PASS: 0 достижимых уязвимостей; найденная
+  `GO-2026-5024` в `golang.org/x/sys@v0.36.0` (Windows API) не вызывается.
+  Независимый reviewer подтвердил GREEN. До коммита незакоммичены ровно три
+  одобренных Issue-файла и `.ai/HANDOFF.md`; посторонних изменений нет.
+  Публикация ещё не выполнена. Остаточный риск: модель принимает targets без
+  формулы оценки и не доказывает их торговую пригодность; `GO-2026-5024`
+  относится к недостижимому в этой сборке Windows API. Блокеров публикации нет;
+  следующий шаг — обычный commit, push текущей ветки и PR в `master`. После
+  успешного создания PR записать здесь `PR открыт`. Issue #122 не закрывать.
+
 ## Подтверждённый результат Issue #58 — CM-003 snapshot
 
 - Контракт: [Issue #58](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/58),
