@@ -1,5 +1,45 @@
 # Передача работы
 
+## Issue #59 — CM-004, публикация
+
+- Чат Issue #59, worktree `/Users/alekseenkodenis/.codex/worktrees/6342/bybit_bot_liquidity`,
+  ветка `codex/59-momentum-config-guards`. HEAD и проверенная после fetch база
+  `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`; ancestry PASS.
+  Основная dirty detached копия `bd7e8a8` не изменялась. GitHub зависимости
+  #58/#122/#126 closed, #124 open; открытых PR и дубликата PR #59 не найдено.
+- System-designer уточнил и прочитал обратно контракт GitHub #59, маркер
+  `crypto-momentum-contract:CM-004 v1`. Область ровно шесть файлов:
+  `internal/momentum/config/config.go`, `internal/momentum/config/config_test.go`,
+  `configs/momentum.paper.yaml`, `go.mod`, `go.sum`, `.ai/HANDOFF.md`.
+  Лимиты: 250 production Go строк, 150 test Go строк. yaml.v3 обоснован для
+  strict YAML; legacy config/cmd/bot/SQLite/runtime вне области.
+- Reviewer GREEN по exact #59 v1: 6 approved files, 242 production и 149 test
+  строк до обновления handoff, 443 additions / 0 deletions; targeted + uncached
+  package tests, race, gofmt и diff-check PASS. Developer также подтвердил
+  `go test ./...`, `go test -race ./...`, `go vet ./...`, `go build ./...` PASS;
+  govulncheck завершился с advisory только для неиспользуемого модуля, 0
+  достижимых уязвимостей. Финальная независимая проверка изменений handoff
+  входит в публикационный exact diff.
+- Approved hashes: config.go `fc4bc141ce862a7cfd23bbfa8a0b0ff518a74d0ad8aba9dd2a15007a441f575b`;
+  config_test.go `48c3dff61867a4266938fb8750a3b04fc0d194e2c0d884fb95cdf5a200f4a256`;
+  sample `820c5e80f86790d43259d50decc76448244ff580d0bc2fd8345128f37d22cd29`;
+  go.mod `bdbc751b3edf4f6b7c53b7e523d6d698089b0309231051769b4c629efc134697`;
+  go.sum `17312526da8a9be4df6f551e202aac5df741230cc8609bd4c50607dc4279f684`.
+- Публикация: ожидает commit/push/PR; после создания записать `PR открыт`, URL,
+  head SHA и точный file set. GitHub connector — для проверки/создания PR, `gh`
+  отсутствует. Далее github-reviewer проверяет опубликованный PR и CI на том же
+  SHA. PR не создан на момент этого checkpoint.
+- Residual risk из reviewer handoff: zero-value `Config` может сформировать
+  некорректный snapshot при обходе `Load`/`Parse`; проверенные инварианты hash
+  относятся к результатам этих валидирующих путей. Runtime пока отсутствует.
+- Продолжение: stage только эти пять approved implementation files и handoff,
+  создать Issue commit, push текущей ветки без force и открыть PR в master.
+  После URL/head/files readback и attachment остановиться для github-reviewer.
+- D-01/D-04/D-06/D-08/D-11 открыты. Loader даёт только декларативные guards и
+  безопасный config snapshot/hash; Testnet/live mode отклоняются. Runtime,
+  торговые полномочия, изменение risk limits, deployment и merge/закрытие #59
+  не разрешены этой поставкой; merge/close остаются за основным orchestrator.
+
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
 - Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
