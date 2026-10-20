@@ -131,6 +131,53 @@ outcome. `Stats` последовательно читает только PnL з
 считает агрегаты в памяти. `cmd/bot` открывает настроенный DSN, вызывает
 миграцию при каждом старте и сохраняет каждый вычисленный сигнал.
 
+## Изоляция Liquidity и Crypto Momentum
+
+Текущий runtime — legacy Liquidity: `cmd/bot` использует `internal/config`,
+`marketdata`, `strategy`, `risk`, `papertrade`, `execution` и `storage` с SQLite.
+Сохраняются `configs/config.yaml`, сигналы, paper-состояние и текущий Compose.
+Сейчас Crypto Momentum представлен только моделями в `internal/momentum/model`;
+отдельного запуска Momentum пока нет.
+
+Целевые `cmd/momentum`, config/loader, storage и PostgreSQL, paper/runtime,
+явная Testnet composition и отдельный Compose — планы существующих #59, #65,
+#86, #109 и #112. Они должны иметь независимые entrypoint, конфигурацию и пути
+данных; старт одного приложения не запускает и не переключает другое.
+Зависимость разрешена только через нейтральные узкие технические интерфейсы:
+legacy `cmd/bot` и пакеты `strategy`, `risk`, `execution`, `papertrade`,
+`storage` и `config` не импортируют `internal/momentum`; `internal/momentum` не
+импортирует эти legacy-пакеты.
+Общие logger/transport/adapters допустимы только без торговых правил; текущий
+адаптер автоматически нейтральным целиком не считается.
+
+Momentum PostgreSQL и многосимвольная модель не меняют legacy SQLite и его
+правила. Paper/Testnet задаются явно; credentials сами не открывают отправку,
+а send gate закрыт по умолчанию. Run identity, логи и метрики различают
+стратегию и среду. Legacy Telegram не выдаёт Momentum за legacy-сигнал; его
+интеграция требует отдельного контракта.
+
+Граница будущего исполнения следует
+[SPEC](crypto-momentum/SPEC.md#область-и-разделение-ответственности): planner →
+immutable `TradePlan` → confirmation/authorization → execution engine →
+подтверждённые fills → ledger. Политика confirmation/authorization задаётся
+отдельно; изоляция не вводит ручное подтверждение каждого плана. Модель
+`TradePlan` не означает наличие pipeline и не даёт автоматических live-прав.
+
+Приёмка разделения в #124 требует на актуальном master два независимых
+entrypoint/config/data/Compose, отсутствие cross-imports, fake start/shutdown
+и изоляцию состояния, регрессию legacy-поведения, а также метки observability
+и отсутствие смешения Telegram. Нужны независимый reviewer и точный финальный
+CI для соответствующих runtime PR на проверяемых head SHA. Этот docs-only этап
+фиксирует границы и специфицирует проверки; runtime-доказательства остаются за
+указанными Issues.
+
+- #59: проверить отдельные config/loader, валидацию и неизменность legacy YAML.
+- #65: проверить PostgreSQL Momentum отдельно от SQLite без удаления или
+  переноса legacy данных.
+- #86: fake start/shutdown, config/store isolation и отсутствие trade calls.
+- #109: явная Testnet composition и fail-closed send gate.
+- #112: отдельный opt-in Compose и volumes без изменения legacy Compose.
+
 ## Ключевые границы
 
 - `exchange/bybit` переводит внешние форматы в типы `exchange` и не принимает

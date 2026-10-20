@@ -6,6 +6,12 @@
 ## Суть
 
 - Go-модуль `bybit_bot_liquidity`, версия языка 1.24.
+- Legacy Liquidity остаётся единственным runtime: `cmd/bot`, `configs/config.yaml`,
+  SQLite и текущий Compose. Momentum пока представлен только
+  `internal/momentum/model`; `cmd/momentum` и отдельные config/storage/runtime/
+  Compose запланированы в #59/#65/#86/#109/#112. См. карту в
+  [ARCHITECTURE](../docs/ARCHITECTURE.md#изоляция-liquidity-и-crypto-momentum)
+  и ограничения в [DECISIONS](../docs/DECISIONS.md).
 - Цель: MVP торгового бота для Bybit V5 Testnet, один символ и одна стратегия.
 - Фактически: приложение загружает конфигурацию, мигрирует SQLite, создаёт public
   Bybit REST/WebSocket clients, накапливает ликвидации за настроенное окно
@@ -73,6 +79,12 @@
 Главные ограничения: Testnet, один символ, одна позиция, настраиваемый cooldown
 (`10` минут в примере), никаких реальных API в unit-тестах. Неизвестные детали
 помечать `TODO`.
+
+Для Momentum граница — planner → immutable `TradePlan` →
+confirmation/authorization → execution → подтверждённые fills → ledger;
+политика confirmation/authorization отдельная. Разделение не требует ручного
+подтверждения каждого плана и не даёт live-полномочий. Issue #126 — только
+документированный этап #124; родитель остаётся открытым до runtime-доказательств.
 
 ## Быстрая проверка
 
