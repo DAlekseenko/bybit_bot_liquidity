@@ -3,10 +3,10 @@
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
 - Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
-  ветка `codex/126-liquidity-momentum-isolation`, HEAD и база
+  ветка `codex/126-liquidity-momentum-isolation`; стартовые HEAD и база
   `origin/master` — `d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`; ancestry PASS.
   Контракт #126 перечитан через GitHub: Issue открыта, родитель #124 также
-  открыт. Поиск PR по ветке совпадений не дал.
+  открыт. До публикации поиск PR по ветке совпадений не дал.
 - Обновлены только ARCHITECTURE, DECISIONS, CONTEXT и этот handoff. Описана
   текущая legacy карта и план Momentum (#59/#65/#86/#109/#112), запрет cross-
   import/неявного переключения, изоляция конфигов, данных, Compose, observability
@@ -34,16 +34,17 @@
   Проверено по Issue #126: этот docs-only PR не закрывает родитель #124.
 - Остаточные риски: runtime-изоляция и legacy regression ещё требуют реализации
   и проверок на актуальном master в этапах #59/#65/#86/#109/#112; D-01 остаётся
-  открытым. До публикации блокеров нет. Следующий этап github-reviewer проверит
-  независимый GREEN и CI на точном опубликованном head; publisher после этого
-  handoff остановится.
+  открытым. До публикации блокеров нет. Publisher передал подтверждённые данные
+  PR github-reviewer и остановился; github-reviewer проверит независимый GREEN и
+  CI на точном опубликованном head.
 - Publication state: `PR открыт` —
   https://github.com/DAlekseenko/bybit_bot_liquidity/pull/128, base `master`
-  (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`). PR readback подтвердил ровно
-  четыре одобренных файла; после publisher metadata итоговый diff — 118 additions,
-  0 deletions. Все изменения handoff отправлены обычным push; после push
-  незакоммиченных и посторонних файлов нет. Последний точный URL, base, head SHA
-  и список файлов переданы orchestrator для github-reviewer. CI pending;
+  (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`); readback подтвердил head
+  `e2c46f540b3f546571a6ce5de3fa56abe0c27574` и ровно четыре одобренных файла.
+  Итоговый diff соблюдает лимит Issue #126 — не более 180 содержательных строк.
+  Все изменения handoff отправлены обычным push; после push незакоммиченных и
+  посторонних файлов не было. Точные URL, base, head SHA и список файлов переданы
+  orchestrator для github-reviewer. CI pending;
   github-reviewer проверит GREEN и CI на опубликованном head. Не закрывать #126/#124
   и не выбирать следующую Issue.
 
