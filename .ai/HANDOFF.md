@@ -39,14 +39,13 @@
   handoff остановится.
 - Publication state: `PR открыт` —
   https://github.com/DAlekseenko/bybit_bot_liquidity/pull/128, base `master`
-  (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`), первоначальный head
-  `7a4321a42a82cd78390bf6d47e5c9d30efbfe4d5`. GitHub readback подтвердил 4
-  файла; после handoff-only update опубликовано 116 additions, 0 deletions.
-  Обычный push завершён. Последний GitHub readback подтвердил URL, base `master`,
-  head `4d9c54b68472fa0f7017759a1a8dd586a9fb5796` и точный список четырёх файлов;
-  следующий handoff-only commit обновляет только эту запись. CI pending;
-  github-reviewer проверит GREEN и CI на окончательном опубликованном head.
-  Не закрывать #126/#124 и не выбирать следующую Issue.
+  (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`). PR readback подтвердил ровно
+  четыре одобренных файла; после publisher metadata итоговый diff — 118 additions,
+  0 deletions. Все изменения handoff отправлены обычным push; после push
+  незакоммиченных и посторонних файлов нет. Последний точный URL, base, head SHA
+  и список файлов переданы orchestrator для github-reviewer. CI pending;
+  github-reviewer проверит GREEN и CI на опубликованном head. Не закрывать #126/#124
+  и не выбирать следующую Issue.
 
 ## Текущая Issue #122 — CM-003B immutable TradePlan
 
