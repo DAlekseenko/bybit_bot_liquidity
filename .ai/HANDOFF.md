@@ -41,10 +41,12 @@
   https://github.com/DAlekseenko/bybit_bot_liquidity/pull/128, base `master`
   (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`), первоначальный head
   `7a4321a42a82cd78390bf6d47e5c9d30efbfe4d5`. GitHub readback подтвердил 4
-  файла, 111 additions, 0 deletions. Handoff-only publication update будет
-  отправлен обычным push; затем требуется финально сверить PR URL, base, head SHA
-  и файлы. До сверки финальный head не объявлять. CI pending; github-reviewer
-  проверит GREEN и CI на final head. Не закрывать #126/#124 и не выбирать следующую Issue.
+  файла; после handoff-only update опубликовано 116 additions, 0 deletions.
+  Обычный push завершён. Последний GitHub readback подтвердил URL, base `master`,
+  head `4d9c54b68472fa0f7017759a1a8dd586a9fb5796` и точный список четырёх файлов;
+  следующий handoff-only commit обновляет только эту запись. CI pending;
+  github-reviewer проверит GREEN и CI на окончательном опубликованном head.
+  Не закрывать #126/#124 и не выбирать следующую Issue.
 
 ## Текущая Issue #122 — CM-003B immutable TradePlan
 
