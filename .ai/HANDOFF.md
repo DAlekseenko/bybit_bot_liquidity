@@ -25,16 +25,19 @@
   sample `820c5e80f86790d43259d50decc76448244ff580d0bc2fd8345128f37d22cd29`;
   go.mod `bdbc751b3edf4f6b7c53b7e523d6d698089b0309231051769b4c629efc134697`;
   go.sum `17312526da8a9be4df6f551e202aac5df741230cc8609bd4c50607dc4279f684`.
-- Публикация: ожидает commit/push/PR; после создания записать `PR открыт`, URL,
-  head SHA и точный file set. GitHub connector — для проверки/создания PR, `gh`
-  отсутствует. Далее github-reviewer проверяет опубликованный PR и CI на том же
-  SHA. PR не создан на момент этого checkpoint.
+- Публикация: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/129.
+  GitHub создал PR против `master` с head
+  `7a90482def8e4fd273469597a8e559953e01cd57`; после metadata-коммита ниже
+  перепроверить финальные head/base/files. `gh` отсутствует; использован GitHub
+  connector. Следующий этап — github-reviewer проверяет PR и CI на exact head.
 - Residual risk из reviewer handoff: zero-value `Config` может сформировать
   некорректный snapshot при обходе `Load`/`Parse`; проверенные инварианты hash
   относятся к результатам этих валидирующих путей. Runtime пока отсутствует.
-- Продолжение: stage только эти пять approved implementation files и handoff,
-  создать Issue commit, push текущей ветки без force и открыть PR в master.
-  После URL/head/files readback и attachment остановиться для github-reviewer.
+- Локальная рабочая копия чиста после Issue commit; handoff metadata ожидает
+  отдельный commit/push. После его отправки сверить GitHub URL/head/base/files,
+  прикрепить PR к задаче и передать exact head + GREEN reviewer handoff
+  github-reviewer. Merge/close #59 и выбор следующей Issue остаются за
+  orchestrator; post-merge проверки не выполнялись.
 - D-01/D-04/D-06/D-08/D-11 открыты. Loader даёт только декларативные guards и
   безопасный config snapshot/hash; Testnet/live mode отклоняются. Runtime,
   торговые полномочия, изменение risk limits, deployment и merge/закрытие #59
