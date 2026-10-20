@@ -1,5 +1,46 @@
 # Передача работы
 
+## Issue #126 — документированная изоляция Liquidity/Momentum
+
+- Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
+  ветка `codex/126-liquidity-momentum-isolation`, HEAD и база
+  `origin/master` — `d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`; ancestry PASS.
+  Контракт #126 перечитан через GitHub: Issue открыта, родитель #124 также
+  открыт. Поиск PR по ветке совпадений не дал.
+- Обновлены только ARCHITECTURE, DECISIONS, CONTEXT и этот handoff. Описана
+  текущая legacy карта и план Momentum (#59/#65/#86/#109/#112), запрет cross-
+  import/неявного переключения, изоляция конфигов, данных, Compose, observability
+  и Telegram. Pipeline сохранён как `confirmation/authorization`; ручное
+  подтверждение каждого плана не вводится, live authority не создаётся.
+- Покрытие #124: независимые entrypoint/config/data/Compose и команды запусков —
+  #59/#65/#112; fake lifecycle/state isolation и отсутствие trade calls — #86;
+  явная Testnet composition/send gate — #109; cross-imports, legacy regression,
+  observability и Telegram — условия закрытия родителя, проверяются на актуальном
+  master после runtime этапов. D-01 открыт.
+- Независимый reviewer вернул GREEN и одобрил ровно четыре файла: ARCHITECTURE
+  (`e3f3a1113507574520c466a0aa3a4bd7385757ee`), DECISIONS
+  (`6f0b357b0bb1988f4a4bf0815c2756aebbc8a869`), CONTEXT
+  (`7e9cfcca5ed91ce6aad3ae01d3d3f46e969b0572`) и handoff
+  (`77d982a76231d3a1d941c1f50cd71eddee59bca5`). Независимые проверки: 20
+  относительных ссылок/anchors, diff-check и покрытие #126/#124 и этапов
+  #59/#65/#86/#109/#112 — PASS. Проверки Go пропущены по docs-only контракту.
+  При reviewer review сумма составляла 97 добавленных строк; это исторический
+  размер проверенного diff до publisher metadata, а итоговый размер перепроверен
+  перед коммитом ниже.
+- Перед публикацией проверены branch `codex/126-liquidity-momentum-isolation`,
+  HEAD/base `d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`, ancestry PASS и только
+  четыре reviewer-approved изменённых файла; посторонних и untracked файлов нет.
+  `git diff --check` PASS. Изменения handoff ниже ограничены publication metadata.
+  Проверено по Issue #126: этот docs-only PR не закрывает родитель #124.
+- Остаточные риски: runtime-изоляция и legacy regression ещё требуют реализации
+  и проверок на актуальном master в этапах #59/#65/#86/#109/#112; D-01 остаётся
+  открытым. До публикации блокеров нет. Следующий этап github-reviewer проверит
+  независимый GREEN и CI на точном опубликованном head; publisher после этого
+  handoff остановится.
+- Publication state: PR ещё не открыт; коммит и обычный push ожидают завершения
+  publisher. После создания PR записать `PR открыт`, URL, base, точный head SHA
+  и сверенный список файлов. Не закрывать #126/#124 и не выбирать следующую Issue.
+
 ## Текущая Issue #122 — CM-003B immutable TradePlan
 
 - Worktree: `/Users/alekseenkodenis/.codex/worktrees/3b6a/bybit_bot_liquidity`;
