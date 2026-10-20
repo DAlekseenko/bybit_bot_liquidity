@@ -37,9 +37,14 @@
   открытым. До публикации блокеров нет. Следующий этап github-reviewer проверит
   независимый GREEN и CI на точном опубликованном head; publisher после этого
   handoff остановится.
-- Publication state: PR ещё не открыт; коммит и обычный push ожидают завершения
-  publisher. После создания PR записать `PR открыт`, URL, base, точный head SHA
-  и сверенный список файлов. Не закрывать #126/#124 и не выбирать следующую Issue.
+- Publication state: `PR открыт` —
+  https://github.com/DAlekseenko/bybit_bot_liquidity/pull/128, base `master`
+  (`d1ca54210aff9e37360ee48ccf62a619b7e4b6f9`), первоначальный head
+  `7a4321a42a82cd78390bf6d47e5c9d30efbfe4d5`. GitHub readback подтвердил 4
+  файла, 111 additions, 0 deletions. Handoff-only publication update будет
+  отправлен обычным push; затем требуется финально сверить PR URL, base, head SHA
+  и файлы. До сверки финальный head не объявлять. CI pending; github-reviewer
+  проверит GREEN и CI на final head. Не закрывать #126/#124 и не выбирать следующую Issue.
 
 ## Текущая Issue #122 — CM-003B immutable TradePlan
 
