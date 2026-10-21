@@ -17,10 +17,12 @@
   `docs/crypto-momentum/issues/HM-001.md` (`b56bb7b5d21108b95f64b3cc82e56e095df0acfa`)
   и `.ai/HANDOFF.md` (`63ce651adbee5e0edc8a4509f31f9ef0887f2f69`). Проверки:
   17/17 операций, 11 локальных ссылок, 84 содержательные строки, diff PASS.
-  GitHub Actions runs `39662931125` и `39662923311` FAIL из-за GO-2026-6809
+  Повторный review подтверждает обновлённые blobs `b56bb7b5d21108b95f64b3cc82e56e095df0acfa`
+  и `63ce651adbee5e0edc8a4509f31f9ef0887f2f69`. GitHub Actions runs
+  `39662931125` и `39662923311` FAIL из-за GO-2026-6809
   в `crypto/x509` на закреплённом Go 1.26.9; исправлено upstream в Go 1.26.10.
   Go directive и workflow вне scope, CI blocker остаётся; эти docs правки его не
-  исправляют. Текущий опубликованный head до фиксации изменений: `968a07b`.
+  исправляют. Актуальный published head указан ниже.
 - Официальные страницы SDK/specification и Hermes MCP/Telegram/security
   проверены 2026-10-21. Добавлены: action-kind grant derivation с актуальной
   проверкой отзыва, обязательный и сверяемый run scope backtest и Result meta,
@@ -41,10 +43,12 @@
   совместимость SDK/Hermes **UNVERIFIED**, pin/probe — #131; D-01/D-04/D-06/D-08/D-11
   открыты. Изменения только в утверждённых двух файлах.
 - Publication state: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180,
-  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), head
-  `e10ccc33dc5a60b67ece9250ca5d5315c0d8fb96`; GitHub readback подтвердил ровно
-  два reviewer-approved файла. Это историческая публикация до последующих
-  изменений; актуальный head и CI передать после очередного обычного push.
+  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), актуальный head
+  `559cf212d2eca30168f10ba7b3d59ac616b43945`; GitHub readback подтвердил ровно
+  два reviewer-approved файла. Обычный push успешен; combined status пока пуст.
+  CI blocker GO-2026-6809 и runs `39662931125`/`39662923311` переданы orchestrator
+  для github-reviewer вместе с повторным GREEN. Не закрывать #130 и не выбирать
+  следующую Issue.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
