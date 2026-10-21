@@ -153,8 +153,8 @@ legacy `cmd/bot` и пакеты `strategy`, `risk`, `execution`, `papertrade`,
 Momentum PostgreSQL и многосимвольная модель не меняют legacy SQLite и его
 правила. Paper/Testnet задаются явно; credentials сами не открывают отправку,
 а send gate закрыт по умолчанию. Run identity, логи и метрики различают
-стратегию и среду. Legacy Telegram не выдаёт Momentum за legacy-сигнал; его
-интеграция требует отдельного контракта.
+стратегию и среду. Прямой Telegram-клиент удалён по #177; Gateway/Hermes остаётся
+планом #127 и пока не реализован.
 
 Граница будущего исполнения следует
 [SPEC](crypto-momentum/SPEC.md#область-и-разделение-ответственности): planner →
@@ -165,8 +165,8 @@ immutable `TradePlan` → confirmation/authorization → execution engine →
 
 Приёмка разделения в #124 требует на актуальном master два независимых
 entrypoint/config/data/Compose, отсутствие cross-imports, fake start/shutdown
-и изоляцию состояния, регрессию legacy-поведения, а также метки observability
-и отсутствие смешения Telegram. Нужны независимый reviewer и точный финальный
+и изоляцию состояния, регрессию legacy-поведения, метки observability и
+отсутствие смешения Telegram/Gateway/Hermes между runtime. Нужны независимый reviewer и точный финальный
 CI для соответствующих runtime PR на проверяемых head SHA. Этот docs-only этап
 фиксирует границы и специфицирует проверки; runtime-доказательства остаются за
 указанными Issues.

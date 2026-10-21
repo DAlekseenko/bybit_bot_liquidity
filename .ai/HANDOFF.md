@@ -1,5 +1,52 @@
 # Передача работы
 
+## Issue #177 — удаление direct Telegram, checkpoint 2026-10-21
+
+- Worktree: `/Users/alekseenkodenis/.codex/worktrees/0172/bybit_bot_liquidity`;
+  branch: `codex/177-remove-direct-telegram`; HEAD и подтверждённая после fetch
+  база `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
+  Основная dirty detached копия `bd7e8a8` не изменялась. Отдельный PR #129/#59
+  не включён; при старте дубликатов #177 не найдено.
+- System-designer подтвердил исключение размера из #177: четыре удаления и до
+  девяти связанных файлов в одном PR, added production/test <=100 строк каждый.
+  Удалены `cmd/bot/telegram.go`, `cmd/bot/telegram_test.go`,
+  `internal/telegram/bot.go`, `internal/telegram/bot_test.go`: direct клиент,
+  его wiring/helpers и собственные тесты больше не нужны после удаления клиента.
+- Другие изменения: `cmd/bot/main.go`, `README.md`, `docker-compose.yml`,
+  `ops/docker-compose.release.yml`, `docs/DOMAIN.md`, `docs/DECISIONS.md`,
+  `docs/ARCHITECTURE.md` и этот handoff. CONTEXT не менялся: активного direct
+  Telegram утверждения нет. Всего 12 файлов; production/test additions 0/0.
+  D-028 сохранён исторически с withdrawn; D-029 фиксирует удаление. Hermes #127
+  остаётся планом; требование отсутствия смешения Telegram между runtime #124
+  сохранено после замечания reviewer. Legacy/SQLite/Momentum не удалялись.
+- Developer PASS на Go 1.26.9: targeted `go test ./cmd/bot`, full tests, full
+  race, vet, build, gofmt и diff-check. Кэш: `/private/tmp/issue177-gocache`,
+  GOPATH `/private/tmp/issue177-gopath`, GOMODCACHE
+  `/private/tmp/bybit-issue58-gopath/pkg/mod`; первый запуск на неполном другом
+  кэше был заблокирован DNS, повтор с полным кэшем PASS. Оба Compose config
+  PASS с `env -i`, `--env-file /dev/null` и фиктивными значениями. Активных
+  ссылок на удалённые symbols/package/env keys не найдено.
+- Независимый read-only reviewer вернул GREEN без блокеров и одобрил ровно 11
+  Issue-файлов: `README.md` (`9717cd8037b3a2bee3e4d57c4fd34d659a0b4e7e`),
+  `cmd/bot/main.go` (`58a2c6dc7c17e5ce9747ab33f8904d8f9a37d3dd`), удаления
+  `cmd/bot/telegram.go`, `cmd/bot/telegram_test.go`,
+  `internal/telegram/bot.go`, `internal/telegram/bot_test.go`,
+  `docker-compose.yml` (`6fe78f53ad888b981565d69a3087934507645136`),
+  `docs/ARCHITECTURE.md` (`ed75e83f14bf22a6afbccbdba9383c161f8e72ad`),
+  `docs/DECISIONS.md` (`95a87e438c245351569a9fdd7b53dd45d0a5dbfe`),
+  `docs/DOMAIN.md` (`3663f930f20cdbdefebf685fc72a4f046e2b5f61`) и
+  `ops/docker-compose.release.yml` (`4fcdc6b8a5a7459c1cd16dfa9cf2ca4da04e8081`).
+  Независимые targeted/full tests, full race, vet, build, gofmt, diff-check и оба
+  Compose config — PASS. Reviewer также одобрил этот handoff-only checkpoint;
+  его diff-check прошёл на полном наборе из 12 путей. Commit/push/PR ещё не
+  выполнены, GitHub CI не запущен. После публикации github-reviewer проверит
+  точные PR head/base/files и CI; продолжать эту же ветку/worktree/Issue.
+- Удаления восстановимы из Git базы. Данные, ветки, чужие незакоммиченные файлы
+  не удалялись; реальные env/secrets/БД не читались, процессы/контейнеры не
+  запускались и не останавливались, Telegram/Bybit не вызывались. Остаточный
+  эффект: direct Telegram команд больше нет; это не отзыв токена и не миграция
+  живого Gateway. Merge и закрытие #177 оставлены основному orchestrator.
+
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
 - Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
