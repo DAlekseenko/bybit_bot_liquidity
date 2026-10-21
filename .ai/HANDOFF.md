@@ -3,8 +3,8 @@
 ## Issue #177 — удаление direct Telegram, checkpoint 2026-10-21
 
 - Worktree: `/Users/alekseenkodenis/.codex/worktrees/0172/bybit_bot_liquidity`;
-  branch: `codex/177-remove-direct-telegram`; HEAD и подтверждённая после fetch
-  база `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
+  branch: `codex/177-remove-direct-telegram`; стартовый HEAD и подтверждённая
+  после fetch база `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
   Основная dirty detached копия `bd7e8a8` не изменялась. Отдельный PR #129/#59
   не включён; при старте дубликатов #177 не найдено.
 - System-designer подтвердил исключение размера из #177: четыре удаления и до
@@ -36,9 +36,11 @@
   `docs/DECISIONS.md` (`95a87e438c245351569a9fdd7b53dd45d0a5dbfe`),
   `docs/DOMAIN.md` (`3663f930f20cdbdefebf685fc72a4f046e2b5f61`) и
   `ops/docker-compose.release.yml` (`4fcdc6b8a5a7459c1cd16dfa9cf2ca4da04e8081`).
-  Независимые targeted/full tests, full race, vet, build, gofmt, diff-check и оба
-  Compose config — PASS. Reviewer также одобрил этот handoff-only checkpoint;
-  его diff-check прошёл на полном наборе из 12 путей. Issue-коммит
+  Developer подтвердил targeted/full tests, full race, vet, build, gofmt,
+  diff-check и оба Compose config — PASS. Reviewer независимо подтвердил
+  targeted test, gofmt, diff-check и оба Compose config — PASS. Reviewer также
+  одобрил handoff-only checkpoint; его diff-check прошёл на полном наборе из 12
+  путей. Issue-коммит
   `d18629f755d24557835ab0a35571238663761215` отправлен обычным push без force.
   Publication state: `PR открыт` —
   https://github.com/DAlekseenko/bybit_bot_liquidity/pull/178, base `master`
