@@ -33,6 +33,12 @@
   Остаточные ограничения: MCP runtime и все 17 операций ещё не реализованы;
   совместимость SDK/Hermes **UNVERIFIED**, pin/probe — #131; D-01/D-04/D-06/D-08/D-11
   открыты. Изменения только в утверждённых двух файлах.
+- Publication state: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180,
+  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), head
+  `e10ccc33dc5a60b67ece9250ca5d5315c0d8fb96`; GitHub readback подтвердил ровно
+  два reviewer-approved файла. Обычный push успешен, branch status чистый; CI
+  пока без статусов. URL, base, head и GREEN handoff переданы orchestrator для
+  github-reviewer. Не закрывать #130 и не выбирать следующую Issue.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
