@@ -12,13 +12,20 @@
   операции и ошибки, threat matrix, source gaps и gated read-only/Paper/pause
   пилот. D-01/D-04/D-06/D-08/D-11 остаются открытыми; совместимость версий
   **UNVERIFIED**, pinned client и fixture probe принадлежат #131.
+- PR [#180](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180), base
+  `master`. Повторный независимый review GREEN на двух одобренных файлах:
+  `docs/crypto-momentum/issues/HM-001.md` (`b56bb7b5d21108b95f64b3cc82e56e095df0acfa`)
+  и `.ai/HANDOFF.md` (`63ce651adbee5e0edc8a4509f31f9ef0887f2f69`). Проверки:
+  17/17 операций, 11 локальных ссылок, 84 содержательные строки, diff PASS.
+  GitHub Actions runs `39662931125` и `39662923311` FAIL из-за GO-2026-6809
+  в `crypto/x509` на закреплённом Go 1.26.9; исправлено upstream в Go 1.26.10.
+  Go directive и workflow вне scope, CI blocker остаётся; эти docs правки его не
+  исправляют. Текущий опубликованный head до фиксации изменений: `968a07b`.
 - Официальные страницы SDK/specification и Hermes MCP/Telegram/security
-  проверены 2026-10-21. Независимый reviewer предварительно BLOCKED; замечания
-  устранены в контракте: `UNKNOWN`, provenance/verification, discriminated
-  resume/config preview с hash binding, точные scope grants и обязательные
-  account/run IDs. Ожидается повторный независимый review. Проверки: реестр
-  содержит 17/17 операций, все локальные ссылки source map разрешаются,
-  `git diff --check` PASS. Это docs-only; Go-проверки не запускались.
+  проверены 2026-10-21. Добавлены: action-kind grant derivation с актуальной
+  проверкой отзыва, обязательный и сверяемый run scope backtest и Result meta,
+  null только для ранних validation/auth отказов. Проверки: 17/17 операций,
+  source links разрешаются, `git diff --check` PASS; Go-проверки не запускались.
 - Границы: никакого runtime, deploy, Telegram cutover, credentials, торговых
   операций, arbitrary order/SQL/shell/HTTP tools или изменения финансовых правил.
 
@@ -36,9 +43,8 @@
 - Publication state: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180,
   base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), head
   `e10ccc33dc5a60b67ece9250ca5d5315c0d8fb96`; GitHub readback подтвердил ровно
-  два reviewer-approved файла. Обычный push успешен, branch status чистый; CI
-  пока без статусов. URL, base, head и GREEN handoff переданы orchestrator для
-  github-reviewer. Не закрывать #130 и не выбирать следующую Issue.
+  два reviewer-approved файла. Это историческая публикация до последующих
+  изменений; актуальный head и CI передать после очередного обычного push.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
