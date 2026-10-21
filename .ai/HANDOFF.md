@@ -38,9 +38,14 @@
   `ops/docker-compose.release.yml` (`4fcdc6b8a5a7459c1cd16dfa9cf2ca4da04e8081`).
   Независимые targeted/full tests, full race, vet, build, gofmt, diff-check и оба
   Compose config — PASS. Reviewer также одобрил этот handoff-only checkpoint;
-  его diff-check прошёл на полном наборе из 12 путей. Commit/push/PR ещё не
-  выполнены, GitHub CI не запущен. После публикации github-reviewer проверит
-  точные PR head/base/files и CI; продолжать эту же ветку/worktree/Issue.
+  его diff-check прошёл на полном наборе из 12 путей. Issue-коммит
+  `d18629f755d24557835ab0a35571238663761215` отправлен обычным push без force.
+  Publication state: `PR открыт` —
+  https://github.com/DAlekseenko/bybit_bot_liquidity/pull/178, base `master`
+  (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), первоначальный head
+  `d18629f755d24557835ab0a35571238663761215`. После handoff-only metadata push
+  сверить финальный head SHA и состав файлов. GitHub CI ещё не подтверждён;
+  github-reviewer проверит GREEN и CI на точном опубликованном head.
 - Удаления восстановимы из Git базы. Данные, ветки, чужие незакоммиченные файлы
   не удалялись; реальные env/secrets/БД не читались, процессы/контейнеры не
   запускались и не останавливались, Telegram/Bybit не вызывались. Остаточный
