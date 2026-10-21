@@ -30,11 +30,12 @@
   go.mod `bdbc751b3edf4f6b7c53b7e523d6d698089b0309231051769b4c629efc134697`;
   go.sum `17312526da8a9be4df6f551e202aac5df741230cc8609bd4c50607dc4279f684`.
 - Публикация: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/129.
-  Последний GitHub readback до corrective push (21.10.2026): head
-  `a02f8959ac3ee57ba05f4981016666272f763e60`, base `master`
-  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`, ровно шесть approved paths.
-  PR прикреплён к этому чату; дубликаты не создавались. PR body обновлён с
-  результатом govulncheck и blocker #179. Corrective push ниже ещё требуется.
+  Обычный non-force corrective push выполнен. GitHub readback подтвердил
+  implementation head `f3af8326d7077464f45df86f6e52ec3dfcf43a55`, base `master`
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть approved paths.
+  PR прикреплён; дубликатов нет. PR body сообщает о govulncheck blocker #179.
+  CI run `39661033259` был `in_progress` для implementation head f3af832; после
+  metadata push final head и CI должен проверить github-reviewer.
 - Residual risk из reviewer handoff: zero-value `Config` может сформировать
   некорректный snapshot при обходе `Load`/`Parse`; проверенные инварианты hash
   относятся к результатам этих валидирующих путей. Runtime пока отсутствует.
@@ -43,12 +44,13 @@
   GitHub P2 `discussion_r4330027087` потребовал использовать существующий
   Decimal-контракт для equity (ведущие нули, предел 128 символов / 64 дробных
   цифр) и канонизировать до hash; это исправлено и покрыто тестами. Последний
-  опубликованный ранее head `a02f8959ac3ee57ba05f4981016666272f763e60`; до
-  publisher commit/push uncommitted только approved `config.go`, `config_test.go`
-  и этот `.ai/HANDOFF.md`. Посторонних файлов нет. После push
-  github-reviewer должен проверить exact head/base/files и CI; delivery остаётся
-  заблокированной `GO-2026-6809` до решения #179. Merge/close #59 и следующая
-  Issue — только основной orchestrator.
+  последний проверенный implementation head — `f3af8326d7077464f45df86f6e52ec3dfcf43a55`;
+  текущий HEAD handoff-only metadata commit определяется через `git rev-parse HEAD`.
+  Коррективный push завершён; после этого финального handoff-only push проверить
+  локально чистое дерево и передать exact PR head/base/files github-reviewer.
+  Delivery остаётся заблокированной `GO-2026-6809` до решения #179. Не создавать
+  дополнительные metadata commits. Merge/close #59 и следующая Issue — только
+  основной orchestrator.
 - D-01/D-04/D-06/D-08/D-11 открыты. Loader даёт только декларативные guards и
   безопасный config snapshot/hash; Testnet/live mode отклоняются. Runtime,
   торговые полномочия, изменение risk limits, deployment и merge/закрытие #59
