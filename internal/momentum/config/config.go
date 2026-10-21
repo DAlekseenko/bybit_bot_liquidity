@@ -8,11 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math/big"
 	"os"
 	"regexp"
 	"sort"
 
+	"bybit_bot_liquidity/internal/momentum/model"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,7 +20,6 @@ const maxBytes = 64 << 10
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 var digest = regexp.MustCompile(`^[0-9a-f]{64}$`)
-var decimal = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?$`)
 
 // Config хранит валидированные параметры без изменяемого публичного доступа.
 type Config struct {
@@ -135,7 +134,8 @@ func Parse(data []byte) (Config, error) {
 	if profile == "baseline_delta_1x" && *r.Leverage != 1 || profile == "isolated_weekly_reset" && !oneOf(*r.Leverage, 1, 2, 3, 5) {
 		return Config{}, errors.New("invalid leverage")
 	}
-	if r.MarginMode != "ISOLATED_MARGIN" || *r.AutoAddMargin || r.PositionMode != "one_way" || !positiveDecimal(equity) {
+	equity, valid := canonicalEquity(equity)
+	if !valid || r.MarginMode != "ISOLATED_MARGIN" || *r.AutoAddMargin || r.PositionMode != "one_way" {
 		return Config{}, errors.New("invalid momentum guards")
 	}
 	if len(r.Symbols) != 3 {
@@ -159,7 +159,7 @@ func Parse(data []byte) (Config, error) {
 	}
 	symbols := append([]string(nil), r.Symbols...)
 	sort.Strings(symbols)
-	return Config{Values{1, r.StrategyID, profile, r.ProfileVersion, r.ModelID, mode, r.StartPolicy, symbols, *r.Leverage, r.MarginMode, *r.AutoAddMargin, r.PositionMode, equity, DataSource{s.Kind, s.Environment, s.DatasetID, s.ManifestSHA256}}}, nil
+	return Config{Values{1, r.StrategyID, profile, r.ProfileVersion, r.ModelID, mode, r.StartPolicy, symbols, *r.Leverage, r.MarginMode, *r.AutoAddMargin, r.PositionMode, equity, DataSource(s)}}, nil
 }
 
 // Values возвращает снимок полей с копией списка символов.
@@ -205,13 +205,18 @@ func safeNode(n *yaml.Node) bool {
 // validID проверяет безопасный ASCII идентификатор.
 func validID(s string) bool { return identifier.MatchString(s) }
 
-// positiveDecimal принимает только конечную положительную десятичную строку.
-func positiveDecimal(s string) bool {
-	if !decimal.MatchString(s) {
-		return false
+// canonicalEquity проверяет положительный equity и канонизирует его сумму.
+func canonicalEquity(s string) (string, bool) {
+	d, err := model.ParseAmount(s)
+	if err != nil {
+		return "", false
 	}
-	r, ok := new(big.Rat).SetString(s)
-	return ok && r.Sign() > 0
+	cmp, err := d.Cmp(model.Zero())
+	if err != nil || cmp <= 0 {
+		return "", false
+	}
+	wire, err := d.WireDecimal()
+	return wire, err == nil
 }
 
 // oneOf проверяет принадлежность целого значения разрешённому набору.

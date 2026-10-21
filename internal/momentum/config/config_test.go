@@ -68,7 +68,7 @@ func TestRejectGuards(t *testing.T) {
 		strings.Replace(validYAML(), "margin_mode: ISOLATED_MARGIN", "margin_mode: CROSS_MARGIN", 1), strings.Replace(validYAML(), "auto_add_margin: false", "auto_add_margin: true", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: hedge", 1),
 		strings.Replace(validYAML(), "symbols: [HYPEUSDT, BTCUSDT, ETHUSDT]", "symbols: [BTCUSDT, BTCUSDT, ETHUSDT]", 1), strings.Replace(validYAML(), "symbols: [HYPEUSDT, BTCUSDT, ETHUSDT]", "symbols: []", 1), strings.Replace(validYAML(), "symbols: [HYPEUSDT, BTCUSDT, ETHUSDT]", "symbols: [BTCUSDT, ETHUSDT, XRPUSDT]", 1),
 		strings.Replace(validYAML(), "kind: bybit_testnet_public", "kind: frozen_dataset", 1), strings.Replace(validYAML(), "environment: testnet", "environment: mainnet", 1), strings.Replace(validYAML(), "environment: testnet", "environment: testnet\n  dataset_id: ''", 1),
-		strings.Replace(validYAML(), "schema_version: 1", "schema_version: 1\napi_secret: super-secret-value", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '-1'", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: ''", 1),
+		strings.Replace(validYAML(), "schema_version: 1", "schema_version: 1\napi_secret: super-secret-value", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '-1'", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: ''", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '01'", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '"+strings.Repeat("1", 129)+"'", 1), strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '1."+strings.Repeat("1", 65)+"'", 1),
 	} {
 		if _, err := Parse([]byte(bad)); err == nil || strings.Contains(err.Error(), "super-secret-value") {
 			t.Fatalf("accepted or leaked invalid YAML: %v", err)
@@ -114,7 +114,8 @@ func TestSnapshotCanonical(t *testing.T) {
 	if err != nil || strings.Contains(string(b), "super-secret-value") {
 		t.Fatalf("unsafe snapshot: %v", err)
 	}
-	canonical, err := Parse([]byte(validYAML()))
+	equivalent := strings.Replace(validYAML(), "position_mode: one_way", "position_mode: one_way\ninitial_equity_usdt: '10000.0'", 1)
+	canonical, err := Parse([]byte(equivalent))
 	if err != nil {
 		t.Fatal(err)
 	}
