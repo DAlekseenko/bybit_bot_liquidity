@@ -1,5 +1,39 @@
 # Передача работы
 
+## Текущая работа — Issue #130 HM-001
+
+- Ветка `codex/130-hm001-operator-contract`, база `origin/master` и стартовый
+  HEAD `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`. Основной checkout не менялся.
+- Контракт [Issue #130](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/130);
+  родитель #127 подтверждает 17 операций. Изменены только
+  `docs/crypto-momentum/issues/HM-001.md` и этот handoff.
+- Зафиксированы топология Hermes Gateway → отдельный MCP adapter → private
+  Go Control API в Momentum process, типы/closed-schema правила, role/scope,
+  операции и ошибки, threat matrix, source gaps и gated read-only/Paper/pause
+  пилот. D-01/D-04/D-06/D-08/D-11 остаются открытыми; совместимость версий
+  **UNVERIFIED**, pinned client и fixture probe принадлежат #131.
+- Официальные страницы SDK/specification и Hermes MCP/Telegram/security
+  проверены 2026-10-21. Независимый reviewer предварительно BLOCKED; замечания
+  устранены в контракте: `UNKNOWN`, provenance/verification, discriminated
+  resume/config preview с hash binding, точные scope grants и обязательные
+  account/run IDs. Ожидается повторный независимый review. Проверки: реестр
+  содержит 17/17 операций, все локальные ссылки source map разрешаются,
+  `git diff --check` PASS. Это docs-only; Go-проверки не запускались.
+- Границы: никакого runtime, deploy, Telegram cutover, credentials, торговых
+  операций, arbitrary order/SQL/shell/HTTP tools или изменения финансовых правил.
+
+- Перед публикацией повторно сверены branch `codex/130-hm001-operator-contract`,
+  HEAD/base `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`, ancestry PASS и только
+  reviewer-approved файлы `docs/crypto-momentum/issues/HM-001.md`
+  (`00068e759bdecbf61b30244f21b79517b18608c7`) и `.ai/HANDOFF.md`
+  (`dcabb81a704d2e8cf48a12643e555da4f74151c8`); исходный `origin/master`
+  обновлён и совпадает с базой. Независимый reviewer повторно вернул GREEN:
+  реестр 17/17 операций, 11 локальных ссылок, 84 содержательные строки,
+  diff/ancestry PASS; Go-тесты пропущены по docs-only контракту. Блокеров нет.
+  Остаточные ограничения: MCP runtime и все 17 операций ещё не реализованы;
+  совместимость SDK/Hermes **UNVERIFIED**, pin/probe — #131; D-01/D-04/D-06/D-08/D-11
+  открыты. Изменения только в утверждённых двух файлах.
+
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
 - Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
