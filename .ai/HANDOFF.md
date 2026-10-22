@@ -13,10 +13,15 @@
   пилот. D-01/D-04/D-06/D-08/D-11 остаются открытыми; совместимость версий
   **UNVERIFIED**, pinned client и fixture probe принадлежат #131.
 - PR [#180](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180), base
-  `master`. Повторный независимый review GREEN на двух одобренных файлах:
-  `docs/crypto-momentum/issues/HM-001.md` (`b56bb7b5d21108b95f64b3cc82e56e095df0acfa`)
-  и `.ai/HANDOFF.md` (`63ce651adbee5e0edc8a4509f31f9ef0887f2f69`). Проверки:
-  17/17 операций, 11 локальных ссылок, 84 содержательные строки, diff PASS.
+  `master`, опубликованный одобренный head
+  `efa2a6768e91e09333a1108890f6924cccc544f8` был чистым до текущих локальных
+  edits. Финальный независимый и adversarial review GREEN на двух одобренных
+  файлах: `docs/crypto-momentum/issues/HM-001.md`
+  (`554e8edb3dfa27a0fd54d3fc760302c0d95d44fe`) и `.ai/HANDOFF.md`
+  (`1d9daa602380a115e049d5e053df990ee6841f23`). Проверки: 17/17 операций,
+  11 локальных ссылок, 84 содержательные строки, diff PASS; adversarial cases
+  охватили cross-scope, подмену actor, отозванные partial grants, forged receipt
+  и replay/restart.
   Повторный review подтверждает обновлённые blobs `b56bb7b5d21108b95f64b3cc82e56e095df0acfa`
   и `63ce651adbee5e0edc8a4509f31f9ef0887f2f69`. GitHub Actions runs
   `39662931125` и `39662923311` FAIL из-за GO-2026-6809
@@ -28,6 +33,14 @@
   проверкой отзыва, обязательный и сверяемый run scope backtest и Result meta,
   null только для ранних validation/auth отказов. Проверки: 17/17 операций,
   source links разрешаются, `git diff --check` PASS; Go-проверки не запускались.
+- Adversarial review fixes (2026-10-22): confirm/cancel привязаны к полному
+  сохранённому scope, trusted actor и актуальному kind-specific grant; confirm
+  требует одноразовый trusted receipt вне model body; незнакомый/чужой action ID
+  не раскрывает существование. Эти границы проверены adversarial review.
+- Последний CI run `39664399837`, job `119445655782`, FAIL из-за GO-2026-6809
+  на Go 1.26.9; upstream fix доступен в Go 1.26.10. Это blocker отдельной #179;
+  этот docs-only Issue не меняет toolchain. После merge #179 оркестратор должен
+  обновить базу и повторно проверить PR #180 на актуальной базе.
 - Границы: никакого runtime, deploy, Telegram cutover, credentials, торговых
   операций, arbitrary order/SQL/shell/HTTP tools или изменения финансовых правил.
 
@@ -43,12 +56,12 @@
   совместимость SDK/Hermes **UNVERIFIED**, pin/probe — #131; D-01/D-04/D-06/D-08/D-11
   открыты. Изменения только в утверждённых двух файлах.
 - Publication state: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180,
-  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`), актуальный head
-  `559cf212d2eca30168f10ba7b3d59ac616b43945`; GitHub readback подтвердил ровно
-  два reviewer-approved файла. Обычный push успешен; combined status пока пуст.
-  CI blocker GO-2026-6809 и runs `39662931125`/`39662923311` переданы orchestrator
-  для github-reviewer вместе с повторным GREEN. Не закрывать #130 и не выбирать
-  следующую Issue.
+  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`). Финальный review
+  одобрил контракт blob `554e8edb3dfa27a0fd54d3fc760302c0d95d44fe` и handoff
+  blob `1d9daa602380a115e049d5e053df990ee6841f23`; они отправлены обычным push
+  в ту же ветку PR. CI blocker — run `39664399837`, job `119445655782`;
+  окончательный опубликованный head и GitHub readback передать оркестратору.
+  Не закрывать #130 и не выбирать следующую Issue.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
