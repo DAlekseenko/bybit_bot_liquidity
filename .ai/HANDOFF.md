@@ -30,11 +30,14 @@
   (<=80 добавлений), Go production/test строк — 0.
 - Остаточный риск: Docker image build пропущена, поскольку Docker daemon
   недоступен. PR [#181](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/181)
-  открыт против `master`; GitHub подтвердил URL, head `1e7762dda1a653e5cc11a7c71e877c3b8874417b`,
-  base `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть разрешённых
-  файлов. CI pending на этом head; readiness не объявлять до github-reviewer.
-  Незакоммиченных файлов после issue-коммита не было; текущий handoff-only
-  publisher commit ещё предстоит отправить. Блокеров публикации нет.
+  открыт против `master`; при создании GitHub подтвердил URL, head issue-коммита
+  `1e7762dda1a653e5cc11a7c71e877c3b8874417b`, base
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть разрешённых файлов.
+  После этого отправлены handoff-only publisher commits; checkpoint SHA
+  `1762ae91a31fa19ceac1ab8f4af940b94ed29b53` продвинул PR head. Текущий SHA
+  берётся из GitHub readback PR после этого финального metadata push. CI pending;
+  readiness не объявлять до github-reviewer. Незакоммиченных файлов после
+  issue-коммита не было. Блокеров публикации нет.
   Зависимый cleanup #177/#178 должен быть повторно проверен на базе security PR.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
