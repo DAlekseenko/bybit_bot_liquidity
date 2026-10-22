@@ -26,7 +26,7 @@
   (`a7484b884ee17aacbfcdbc76cb304c6376f709eb`). Локальная проверка publisher
   подтвердила эти blob SHA, базу и отсутствие посторонних/untracked файлов;
   `git diff --check` — PASS. Проверенный reviewer diff: 38 additions / 5
-  deletions; publisher metadata увеличила итог до 48 / 5, в лимите Issue
+  deletions; publisher metadata увеличила итог до 56 / 5, в лимите Issue
   (<=80 добавлений), Go production/test строк — 0.
 - Остаточный риск: Docker image build пропущена, поскольку Docker daemon
   недоступен. PR [#181](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/181)
