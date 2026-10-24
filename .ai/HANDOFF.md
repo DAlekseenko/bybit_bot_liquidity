@@ -2,6 +2,40 @@
 
 ## Issue #177 — удаление direct Telegram, checkpoint 2026-10-21
 
+### Новый checkpoint: CI заблокирован внешней уязвимостью toolchain
+
+- Состояние сохранено локально в той же ветке/worktree; эта handoff-запись
+  пока не опубликована. PR [#178](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/178)
+  открыт, base `master` SHA `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`, точный
+  head `b7be390765fd46cba7f75a75b2d4ef9ee23a27e3`; GitHub показывает synthetic
+  merge SHA `e585680cb31b389e626f108ea886d8c5377be2cf`. PR не merged, #177 не
+  закрыта. Текущая локальная ветка совпадает с head; единственный uncommitted
+  путь — `.ai/HANDOFF.md`.
+- На exact head независимый code-review повторно GREEN: 12 файлов, `73+/738-`,
+  все 11 reviewer-approved Issue blobs совпадают. github-reviewer подтвердил
+  точный scope и отсутствие необходимости в user-action comment; новый marker
+  comment не нужен.
+- CI run [39560604927](https://github.com/DAlekseenko/bybit_bot_liquidity/actions/runs/39560604927),
+  job `119090764984`, завершился блокером `govulncheck`: `GO-2026-6809` в
+  `crypto/x509` toolchain Go 1.26.9; исправленная версия — Go 1.26.10. Unit,
+  format и coverage прошли; lint/race/vet/build пропущены после остановки job.
+  Это внешний CI blocker для PR #178, не дефект текущего diff.
+- System-designer после проверки официальных Go advisory/release и поиска
+  дубликатов создал и прочитал обратно отдельную
+  [Issue #179](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/179).
+  Её whitelist: `go.mod`, `Dockerfile`, `README.md`, `docs/DEVELOPMENT.md`,
+  `docs/DECISIONS.md`, `.ai/HANDOFF.md`; toolchain/image Go 1.26.10 без смены
+  языка `go 1.24.13`, зависимостей, workflow или отключения govulncheck.
+  Официальные источники: https://pkg.go.dev/vuln/GO-2026-6809 и
+  https://go.dev/doc/devel/release . Поиски Issues/PR по GO-2026-6809,
+  go1.26.10 и toolchain до создания не нашли дубликатов.
+- Следующий шаг: orchestrator запускает отдельный security chat по #179;
+  реализации в cleanup worktree нет. Документация пересекается, поэтому этапы
+  последовательные. После merge security fix — fetch, обычный merge
+  `origin/master` в эту же ветку #177 без force, независимый review и CI нового
+  exact head в том же PR #178. До GREEN не merge и не закрывать #177. Этот
+  checkpoint остаётся локальным; опубликованный head b7be390 не изменён.
+
 - Worktree: `/Users/alekseenkodenis/.codex/worktrees/0172/bybit_bot_liquidity`;
   branch: `codex/177-remove-direct-telegram`; стартовый HEAD и подтверждённая
   после fetch база `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
