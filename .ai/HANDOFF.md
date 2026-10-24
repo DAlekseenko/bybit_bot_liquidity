@@ -1,5 +1,26 @@
 # Передача работы
 
+## Issue #177 — checkpoint после merge security #181, 2026-10-24
+
+- GitHub подтвердил merge PR #181 в `master`: `mergedAt=2026-10-24T20:51:43Z`,
+  merge SHA и проверенный `origin/master` — `311b299b1aab19819f15108e48cd81916c0b3a17`.
+  Ветка #177 `codex/177-remove-direct-telegram`, PR #178 остаётся открыт; Issue
+  #177 не закрыта. Перед merge локальный checkpoint `.ai/HANDOFF.md` сохранён в
+  `/private/tmp/issue177-handoff-checkpoint-20261024.md` и отдельно committed
+  (`e81033468a27a70efa027be00be6e9672933989d`).
+- Обычный merge `origin/master` начат после проверки ancestry от исходной базы
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`. Конфликтовали только
+  `.ai/HANDOFF.md` и `docs/DECISIONS.md`; `README.md` слился автоматически.
+  Сохранены обе стороны: D-029 о снятии direct Telegram и D-030 об обновлении
+  toolchain; D-028 остаётся withdrawn. Новых удалений или функциональных правок
+  нет. Для #177 требуется независимая повторная проверка итогового diff и CI
+  после разрешения merge; публикацию выполняет publisher.
+- Используется Go 1.26.10 из `/private/tmp/issue179-toolchain/go/bin/go`;
+  кэш модулей: `/private/tmp/issue179-modcache`. Следующий шаг: завершить
+  локальные проверки и передать точные merge/head SHA, состав файлов и reviewer
+  handoff publisher для PR #178. Не выполнять push, merge PR или закрытие #177
+  до GREEN на точном опубликованном head.
+
 ## Issue #177 — удаление direct Telegram, checkpoint 2026-10-21
 
 ### Новый checkpoint: CI заблокирован внешней уязвимостью toolchain
@@ -87,6 +108,46 @@
   запускались и не останавливались, Telegram/Bybit не вызывались. Остаточный
   эффект: direct Telegram команд больше нет; это не отзыв токена и не миграция
   живого Gateway. Merge и закрытие #177 оставлены основному orchestrator.
+
+## Issue #179 — patch security toolchain
+
+- Контракт: [Issue #179](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/179),
+  ветка `codex/179-go-1.26.10`, база `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
+- Официальные источники проверены 2026-10-22: GO-2026-6809 указывает `crypto/x509`
+  до Go 1.26.10; Go release history сообщает о выпуске 1.26.10 2026-10-19
+  с security fixes для `crypto/x509`.
+- Изменения ограничены whitelist Issue: `go.mod`, Dockerfile, README, DEVELOPMENT,
+  DECISIONS и handoff. Язык `go 1.24.13` и зависимости сохранены; D-027 оставлено
+  историческим, D-030 добавлено после D-028. D-029 зарезервировано для #177.
+- Проверен фактический toolchain `go1.26.10 darwin/arm64`. Targeted tests
+  (`cmd/bot`, `internal/observability`, `internal/exchange/bybit`), `go test ./...`,
+  `go test -race ./...`, `go vet ./...`, `go build ./...`, форматирование,
+  `git diff --check` и `golangci-lint v2.10.1` — PASS. Coverage 77.8% при пороге 70%.
+- `govulncheck@v1.1.4 ./...` — PASS: достижимых уязвимостей 0, GO-2026-6809 не
+  обнаружена; GO-2026-5024 в `golang.org/x/sys/windows` недостижима и относится
+  к Windows API. Docker daemon не запущен, поэтому image build пропущена.
+- Независимый reviewer `/root/review179` вернул GREEN без замечаний и одобрил
+  ровно шесть файлов: `go.mod` (`9f92ad06c1c693c63d032a43751b30afd54e823a`),
+  `Dockerfile` (`4a17a4a4e7ffa22e468e69eb4f21809e59d7465f`), `README.md`
+  (`eb1746382d96d61d72a7ab02da23cdccb827ba94`), `docs/DEVELOPMENT.md`
+  (`c8462241759e06997a9fb22994c8c11a088cb3af`), `docs/DECISIONS.md`
+  (`39d860c13632ac0d44f433e28c6128cf8c4f0490`) и этот handoff
+  (`a7484b884ee17aacbfcdbc76cb304c6376f709eb`). Локальная проверка publisher
+  подтвердила эти blob SHA, базу и отсутствие посторонних/untracked файлов;
+  `git diff --check` — PASS. Проверенный reviewer diff: 38 additions / 5
+  deletions; publisher metadata увеличила итог до 56 / 5, в лимите Issue
+  (<=80 добавлений), Go production/test строк — 0.
+- Остаточный риск: Docker image build пропущена, поскольку Docker daemon
+  недоступен. PR [#181](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/181)
+  открыт против `master`; при создании GitHub подтвердил URL, head issue-коммита
+  `1e7762dda1a653e5cc11a7c71e877c3b8874417b`, base
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть разрешённых файлов.
+  После этого отправлены handoff-only publisher commits; checkpoint SHA
+  `1762ae91a31fa19ceac1ab8f4af940b94ed29b53` продвинул PR head. Текущий SHA
+  берётся из GitHub readback PR после этого финального metadata push. CI pending;
+  readiness не объявлять до github-reviewer. Незакоммиченных файлов после
+  issue-коммита не было. Блокеров публикации нет.
+  Зависимый cleanup #177/#178 должен быть повторно проверен на базе security PR.
 
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
