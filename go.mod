@@ -2,7 +2,7 @@ module bybit_bot_liquidity
 
 go 1.24.13
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/gorilla/websocket v1.5.3
