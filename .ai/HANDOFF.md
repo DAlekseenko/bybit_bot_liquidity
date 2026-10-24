@@ -1,6 +1,6 @@
 # Передача работы
 
-## Issue #177 — checkpoint после merge security #181, 2026-10-24
+## Issue #177 — publisher checkpoint после GREEN, 2026-10-24
 
 - GitHub подтвердил merge PR #181 в `master`: `mergedAt=2026-10-24T20:51:43Z`,
   merge SHA и проверенный `origin/master` — `311b299b1aab19819f15108e48cd81916c0b3a17`.
@@ -8,18 +8,34 @@
   #177 не закрыта. Перед merge локальный checkpoint `.ai/HANDOFF.md` сохранён в
   `/private/tmp/issue177-handoff-checkpoint-20261024.md` и отдельно committed
   (`e81033468a27a70efa027be00be6e9672933989d`).
-- Обычный merge `origin/master` начат после проверки ancestry от исходной базы
-  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`. Конфликтовали только
-  `.ai/HANDOFF.md` и `docs/DECISIONS.md`; `README.md` слился автоматически.
-  Сохранены обе стороны: D-029 о снятии direct Telegram и D-030 об обновлении
-  toolchain; D-028 остаётся withdrawn. Новых удалений или функциональных правок
-  нет. Для #177 требуется независимая повторная проверка итогового diff и CI
-  после разрешения merge; публикацию выполняет publisher.
-- Используется Go 1.26.10 из `/private/tmp/issue179-toolchain/go/bin/go`;
-  кэш модулей: `/private/tmp/issue179-modcache`. Следующий шаг: завершить
-  локальные проверки и передать точные merge/head SHA, состав файлов и reviewer
-  handoff publisher для PR #178. Не выполнять push, merge PR или закрытие #177
-  до GREEN на точном опубликованном head.
+- После обычного merge базы выполнена проверка: ветка `codex/177-remove-direct-telegram`,
+  review merge HEAD `1f1155be65933c6c3ed763200c648da492b521e2`, база
+  `origin/master` `311b299b1aab19819f15108e48cd81916c0b3a17`, ancestry PASS.
+  Reviewer проверил чистое рабочее дерево; перед publisher-only handoff update
+  единственным незакоммиченным путём был `.ai/HANDOFF.md`.
+- Независимый reviewer вернул финальный GREEN по 12 разрешённым путям: `.ai/HANDOFF.md`,
+  `README.md`, `cmd/bot/main.go`, `cmd/bot/telegram.go`,
+  `cmd/bot/telegram_test.go`, `docker-compose.yml`, `docs/ARCHITECTURE.md`,
+  `docs/DECISIONS.md`, `docs/DOMAIN.md`, `internal/telegram/bot.go`,
+  `internal/telegram/bot_test.go`, `ops/docker-compose.release.yml`.
+  Итоговый diff — 128 добавлений и 738 удалений (109 добавлений относятся к
+  handoff); все 11 reviewer-approved Issue blobs неизменны. Нет security-181-only
+  файлов в PR. D-029 и D-030 сохранены, D-028 остаётся withdrawn.
+- Developer подтвердил полные tests, race, vet, build, gofmt, diff-check и
+  cached lint v2.10.1 без findings. Независимый reviewer отдельно подтвердил
+  targeted test на Go 1.26.10, gofmt, diff-check, обе Compose-конфигурации и
+  отсутствие активных ссылок на прямой Telegram. Старый блокирующий CI из
+  checkpoint 2026-10-21 (`GO-2026-6809` на Go 1.26.9) разрешён отдельным PR #181;
+  старый checkpoint ниже оставлен как история. Новый GitHub CI для текущего PR
+  #178 ещё pending и должен быть проверен на точном опубликованном head.
+- Publication state: `PR открыт` —
+  https://github.com/DAlekseenko/bybit_bot_liquidity/pull/178, base `master`
+  (`311b299b1aab19819f15108e48cd81916c0b3a17`). Reviewed merge HEAD —
+  `1f1155be65933c6c3ed763200c648da492b521e2`; итоговый PR head будет подтверждён
+  GitHub readback после push и передан orchestrator отдельно, чтобы handoff не
+  требовал бесконечных self-SHA commits. Следующий шаг — github-reviewer проверяет
+  CI на финальном head. Не создавать новый PR, не merge и не закрывать #177;
+  post-merge gate остаётся orchestrator.
 
 ## Issue #177 — удаление direct Telegram, checkpoint 2026-10-21
 
