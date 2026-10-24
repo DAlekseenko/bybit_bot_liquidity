@@ -1,5 +1,45 @@
 # Передача работы
 
+## Issue #179 — patch security toolchain
+
+- Контракт: [Issue #179](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/179),
+  ветка `codex/179-go-1.26.10`, база `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`.
+- Официальные источники проверены 2026-10-22: GO-2026-6809 указывает `crypto/x509`
+  до Go 1.26.10; Go release history сообщает о выпуске 1.26.10 2026-10-19
+  с security fixes для `crypto/x509`.
+- Изменения ограничены whitelist Issue: `go.mod`, Dockerfile, README, DEVELOPMENT,
+  DECISIONS и handoff. Язык `go 1.24.13` и зависимости сохранены; D-027 оставлено
+  историческим, D-030 добавлено после D-028. D-029 зарезервировано для #177.
+- Проверен фактический toolchain `go1.26.10 darwin/arm64`. Targeted tests
+  (`cmd/bot`, `internal/observability`, `internal/exchange/bybit`), `go test ./...`,
+  `go test -race ./...`, `go vet ./...`, `go build ./...`, форматирование,
+  `git diff --check` и `golangci-lint v2.10.1` — PASS. Coverage 77.8% при пороге 70%.
+- `govulncheck@v1.1.4 ./...` — PASS: достижимых уязвимостей 0, GO-2026-6809 не
+  обнаружена; GO-2026-5024 в `golang.org/x/sys/windows` недостижима и относится
+  к Windows API. Docker daemon не запущен, поэтому image build пропущена.
+- Независимый reviewer `/root/review179` вернул GREEN без замечаний и одобрил
+  ровно шесть файлов: `go.mod` (`9f92ad06c1c693c63d032a43751b30afd54e823a`),
+  `Dockerfile` (`4a17a4a4e7ffa22e468e69eb4f21809e59d7465f`), `README.md`
+  (`eb1746382d96d61d72a7ab02da23cdccb827ba94`), `docs/DEVELOPMENT.md`
+  (`c8462241759e06997a9fb22994c8c11a088cb3af`), `docs/DECISIONS.md`
+  (`39d860c13632ac0d44f433e28c6128cf8c4f0490`) и этот handoff
+  (`a7484b884ee17aacbfcdbc76cb304c6376f709eb`). Локальная проверка publisher
+  подтвердила эти blob SHA, базу и отсутствие посторонних/untracked файлов;
+  `git diff --check` — PASS. Проверенный reviewer diff: 38 additions / 5
+  deletions; publisher metadata увеличила итог до 56 / 5, в лимите Issue
+  (<=80 добавлений), Go production/test строк — 0.
+- Остаточный риск: Docker image build пропущена, поскольку Docker daemon
+  недоступен. PR [#181](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/181)
+  открыт против `master`; при создании GitHub подтвердил URL, head issue-коммита
+  `1e7762dda1a653e5cc11a7c71e877c3b8874417b`, base
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть разрешённых файлов.
+  После этого отправлены handoff-only publisher commits; checkpoint SHA
+  `1762ae91a31fa19ceac1ab8f4af940b94ed29b53` продвинул PR head. Текущий SHA
+  берётся из GitHub readback PR после этого финального metadata push. CI pending;
+  readiness не объявлять до github-reviewer. Незакоммиченных файлов после
+  issue-коммита не было. Блокеров публикации нет.
+  Зависимый cleanup #177/#178 должен быть повторно проверен на базе security PR.
+
 ## Issue #126 — документированная изоляция Liquidity/Momentum
 
 - Worktree `/Users/alekseenkodenis/.codex/worktrees/47e4/bybit_bot_liquidity`,
