@@ -1,4 +1,88 @@
 # Передача работы
+## Актуальное состояние — Issue #130 HM-001, 2026-10-25
+
+- PR #180 продолжается в `codex/130-hm001-operator-contract`. Исходный HEAD
+  `8edf25f858f0729ba3d54bb8df4d7825716318c6`; новая база
+  `origin/master=556304183f5db6151eb4fb6ea68a0ab2987418a8` включает merged #129.
+  Обычный `--no-commit --no-ff` merge выполняется без commit/push; конфликт только
+  в этом handoff разрешается с сохранением #130, CM-004 и последующих историй.
+- В source map отражён текущий факт: strict declarative config и sample теперь
+  есть (`internal/momentum/config`, #59); Momentum runtime, read providers,
+  Control API и MCP всё ещё отсутствуют. Другие файлы, включая конфиг и Go
+  изменения, приходят неизменёнными из origin/master.
+- HM-001 остаётся docs-only: 17 операций, D-01/04/06/08/11 открыты, #131
+  pinned client/probe **UNVERIFIED**. Финальная независимая review и CI на новом
+  exact head ожидают проверки. Контракт: 84 физические, 60 содержательных строк.
+  Не добавлять runtime/deploy/trades/secrets/Telegram cutover.
+- Проверки на Go 1.26.10 прошли: targeted config/model/cmd tests, `go test ./...`,
+  `go test -race ./...`, `go vet ./...`, `go build ./...`, `gofmt` и diff checks.
+  `govulncheck v1.1.4`: 0 reachable; 1 advisory в требуемом module не вызывается.
+  В HM-001 17/17 операций, 8/8 local links, 84 физических и 60 содержательных
+  строк. Review и CI нового exact head остаются pending; это не commit и не push.
+  Предыдущие GREEN/CI checkpoints сохранены как история, не как текущий статус.
+
+## История Issue #130 HM-001 до обновления базы
+
+- Ветка `codex/130-hm001-operator-contract`, база `origin/master` и стартовый
+  HEAD `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`. Основной checkout не менялся.
+- Контракт [Issue #130](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/130);
+  родитель #127 подтверждает 17 операций. Изменены только
+  `docs/crypto-momentum/issues/HM-001.md` и этот handoff.
+- Зафиксированы топология Hermes Gateway → отдельный MCP adapter → private
+  Go Control API в Momentum process, типы/closed-schema правила, role/scope,
+  операции и ошибки, threat matrix, source gaps и gated read-only/Paper/pause
+  пилот. D-01/D-04/D-06/D-08/D-11 остаются открытыми; совместимость версий
+  **UNVERIFIED**, pinned client и fixture probe принадлежат #131.
+- PR [#180](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180), base
+  `master`, опубликованный одобренный head
+  `efa2a6768e91e09333a1108890f6924cccc544f8` был чистым до текущих локальных
+  edits. Финальный независимый и adversarial review GREEN на двух одобренных
+  файлах: `docs/crypto-momentum/issues/HM-001.md`
+  (`554e8edb3dfa27a0fd54d3fc760302c0d95d44fe`) и `.ai/HANDOFF.md`
+  (`1d9daa602380a115e049d5e053df990ee6841f23`). Проверки: 17/17 операций,
+  11 локальных ссылок, 84 содержательные строки, diff PASS; adversarial cases
+  охватили cross-scope, подмену actor, отозванные partial grants, forged receipt
+  и replay/restart.
+  Повторный review подтверждает обновлённые blobs `b56bb7b5d21108b95f64b3cc82e56e095df0acfa`
+  и `63ce651adbee5e0edc8a4509f31f9ef0887f2f69`. GitHub Actions runs
+  `39662931125` и `39662923311` FAIL из-за GO-2026-6809
+  в `crypto/x509` на закреплённом Go 1.26.9; исправлено upstream в Go 1.26.10.
+  Go directive и workflow вне scope, CI blocker остаётся; эти docs правки его не
+  исправляют. Актуальный published head указан ниже.
+- Официальные страницы SDK/specification и Hermes MCP/Telegram/security
+  проверены 2026-10-21. Добавлены: action-kind grant derivation с актуальной
+  проверкой отзыва, обязательный и сверяемый run scope backtest и Result meta,
+  null только для ранних validation/auth отказов. Проверки: 17/17 операций,
+  source links разрешаются, `git diff --check` PASS; Go-проверки не запускались.
+- Adversarial review fixes (2026-10-22): confirm/cancel привязаны к полному
+  сохранённому scope, trusted actor и актуальному kind-specific grant; confirm
+  требует одноразовый trusted receipt вне model body; незнакомый/чужой action ID
+  не раскрывает существование. Эти границы проверены adversarial review.
+- Последний CI run `39664399837`, job `119445655782`, FAIL из-за GO-2026-6809
+  на Go 1.26.9; upstream fix доступен в Go 1.26.10. Это blocker отдельной #179;
+  этот docs-only Issue не меняет toolchain. После merge #179 оркестратор должен
+  обновить базу и повторно проверить PR #180 на актуальной базе.
+- Границы: никакого runtime, deploy, Telegram cutover, credentials, торговых
+  операций, arbitrary order/SQL/shell/HTTP tools или изменения финансовых правил.
+
+- Перед публикацией повторно сверены branch `codex/130-hm001-operator-contract`,
+  HEAD/base `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`, ancestry PASS и только
+  reviewer-approved файлы `docs/crypto-momentum/issues/HM-001.md`
+  (`00068e759bdecbf61b30244f21b79517b18608c7`) и `.ai/HANDOFF.md`
+  (`dcabb81a704d2e8cf48a12643e555da4f74151c8`); исходный `origin/master`
+  обновлён и совпадает с базой. Независимый reviewer повторно вернул GREEN:
+  реестр 17/17 операций, 11 локальных ссылок, 84 содержательные строки,
+  diff/ancestry PASS; Go-тесты пропущены по docs-only контракту. Блокеров нет.
+  Остаточные ограничения: MCP runtime и все 17 операций ещё не реализованы;
+  совместимость SDK/Hermes **UNVERIFIED**, pin/probe — #131; D-01/D-04/D-06/D-08/D-11
+  открыты. Изменения только в утверждённых двух файлах.
+- Publication state: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/180,
+  base `master` (`21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`). Финальный review
+  одобрил контракт blob `554e8edb3dfa27a0fd54d3fc760302c0d95d44fe` и handoff
+  blob `1d9daa602380a115e049d5e053df990ee6841f23`; они отправлены обычным push
+  в ту же ветку PR. CI blocker — run `39664399837`, job `119445655782`;
+  окончательный опубликованный head и GitHub readback передать оркестратору.
+  Не закрывать #130 и не выбирать следующую Issue.
 
 ## Issue #59 — CM-004, публикация
 
