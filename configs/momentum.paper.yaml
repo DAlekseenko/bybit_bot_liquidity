@@ -1,0 +1,19 @@
+schema_version: 1
+strategy_id: momentum-v1
+profile: baseline_delta_1x
+profile_version: v1
+model_id: roc30
+mode: paper
+start_policy: next_monday
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+  - HYPEUSDT
+leverage: 1
+margin_mode: ISOLATED_MARGIN
+auto_add_margin: false
+position_mode: one_way
+initial_equity_usdt: "10000"
+data_source:
+  kind: bybit_testnet_public
+  environment: testnet
