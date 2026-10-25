@@ -1,35 +1,27 @@
 # Передача работы
-
 ## Актуальное состояние — Issue #130 HM-001, 2026-10-25
 
-- PR #180 продолжается в `codex/130-hm001-operator-contract`; исходный HEAD
-  `f5aa5e9063ecf995d6e4a04741173e64d2941f92`, обновлённая база
-  `origin/master=271ace0f5022e3ef31521e9cbb86f337e8b5ff14` (#178), включающая
-  #181 merge `311b299b1aab19819f15108e48cd81916c0b3a17`. Обычный merge начат
-  без commit; конфликт handoff разрешён с сохранением обеих историй.
-- Incoming master code оставлен как есть; `git diff --cached origin/master`
-  показывает только handoff и контракт. В source map обе ссылки на удалённые
-  Telegram-файлы заменены исторической ссылкой PR #178. Сверки: 17/17 операций,
-  9/9 локальных ссылок, 60 непустых строк, `gofmt` и `git diff --check` PASS.
-- Go 1.26.10: targeted `go test ./cmd/bot`, `go test ./...`, `go test -race ./...`,
-  `go vet ./...`, `go build ./...` PASS. `govulncheck v1.1.4` PASS: нет reachable
-  уязвимостей; одна уязвимость в требуемых модулях не вызывается кодом. Все
-  кэши в `/tmp/hm001-*`. Merge пока без commit/push; ancestry объединённого
-  commit проверить после его создания.
-- Финальный независимый review GREEN одобрил ровно два Issue-файла:
-  HM-001 blob `28571707900cf7a967000166bb9872213ddd6e52`, handoff blob
-  `1d968b984f6e3f0f8cbb28b1c1a1fdc844b0970e`; 17 операций, 9 ссылок, 84
-  физических и 60 содержательных строк, diff PASS. Ветка сохранена merge-коммитом
-  к обновлённой базе; текущий CI exact head ожидает запуска/проверки после push.
-  Ранее run `39664399837`, job `119445655782`, падал на Go 1.26.9/GO-2026-6809;
-  новая база использует Go 1.26.10, локальный govulncheck PASS. Следующий шаг —
-  проверить PR #180, его точный head и CI; merge/закрытие Issue остаются за root.
-- Контракт остаётся docs-only: D-01/04/06/08/11 открыты, #131 pin/probe
-  **UNVERIFIED**, без runtime/deploy/trades/credentials/Telegram cutover.
-  Последний CI blocker PR #180: run `39664399837`, job `119445655782`, GO-2026-6809
-  на Go 1.26.9; исправление Go 1.26.10 принадлежит отдельной #179.
+- PR #180 продолжается в `codex/130-hm001-operator-contract`. Исходный HEAD
+  `8edf25f858f0729ba3d54bb8df4d7825716318c6`; новая база
+  `origin/master=556304183f5db6151eb4fb6ea68a0ab2987418a8` включает merged #129.
+  Обычный `--no-commit --no-ff` merge выполняется без commit/push; конфликт только
+  в этом handoff разрешается с сохранением #130, CM-004 и последующих историй.
+- В source map отражён текущий факт: strict declarative config и sample теперь
+  есть (`internal/momentum/config`, #59); Momentum runtime, read providers,
+  Control API и MCP всё ещё отсутствуют. Другие файлы, включая конфиг и Go
+  изменения, приходят неизменёнными из origin/master.
+- HM-001 остаётся docs-only: 17 операций, D-01/04/06/08/11 открыты, #131
+  pinned client/probe **UNVERIFIED**. Финальная независимая review и CI на новом
+  exact head ожидают проверки. Контракт: 84 физические, 60 содержательных строк.
+  Не добавлять runtime/deploy/trades/secrets/Telegram cutover.
+- Проверки на Go 1.26.10 прошли: targeted config/model/cmd tests, `go test ./...`,
+  `go test -race ./...`, `go vet ./...`, `go build ./...`, `gofmt` и diff checks.
+  `govulncheck v1.1.4`: 0 reachable; 1 advisory в требуемом module не вызывается.
+  В HM-001 17/17 операций, 8/8 local links, 84 физических и 60 содержательных
+  строк. Review и CI нового exact head остаются pending; это не commit и не push.
+  Предыдущие GREEN/CI checkpoints сохранены как история, не как текущий статус.
 
-## Текущая работа — Issue #130 HM-001
+## История Issue #130 HM-001 до обновления базы
 
 - Ветка `codex/130-hm001-operator-contract`, база `origin/master` и стартовый
   HEAD `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`. Основной checkout не менялся.
@@ -91,6 +83,118 @@
   в ту же ветку PR. CI blocker — run `39664399837`, job `119445655782`;
   окончательный опубликованный head и GitHub readback передать оркестратору.
   Не закрывать #130 и не выбирать следующую Issue.
+
+## Issue #59 — CM-004, публикация
+
+- Checkpoint 25.10.2026: ветка `codex/59-momentum-config-guards`, worktree
+  `/Users/alekseenkodenis/.codex/worktrees/6342/bybit_bot_liquidity`. Orchestrator
+  выполнил локальную интеграцию `origin/master` `271ace0f5022e3ef31521e9cbb86f337e8b5ff14`;
+  это не merge PR. Текущий reviewed merge HEAD —
+  `4c3822ae3f1cad98a9b881be3476b12be517b968`, родители `fb4c8398edbbe8bbce15b09e338be00e0bf3720f`
+  и `271ace0f5022e3ef31521e9cbb86f337e8b5ff14`. До этой handoff-only записи worktree был чист; незакоммичен только этот одобренный metadata-путь. Текущая база origin/master: `271ace0f5022e3ef31521e9cbb86f337e8b5ff14`; ancestry PASS. Последний GitHub readback до handoff-коррекции подтвердил PR head `d2099284da5ce009b1b3422d07de4cb4e7341b68` и ровно шесть approved paths.
+- Reviewer FINAL GREEN на точном integration HEAD `4c3822ae3f1cad98a9b881be3476b12be517b968`;
+  одобрены ровно 6 Issue paths, 247 production и 150 test строк, 488 additions / 0
+  deletions. Независимые targeted config/model tests, config race, gofmt и diff-check
+  PASS. Developer на Go 1.26.10 подтвердил full tests, full race, vet, build,
+  coverage 79.0% и staticcheck 2.10.1 без findings. Свежий govulncheck: 0 найденных
+  уязвимостей в проверенных пакетах; один advisory относится к невызываемому module.
+- Security Issue #179 уже устранена в текущей базе: Go 1.26.10 и соответствующий
+  security fix унаследованы из master. Предыдущие RED по `GO-2026-6809` на Go 1.26.9
+  сохранены ниже как история, а не текущий blocker. Runtime отсутствует; residual risk
+  reviewer остаётся: нулевой `Config` может сформировать некорректный snapshot при
+  обходе `Load`/`Parse`; hash invariants относятся к валидированным результатам.
+- Точный approved file set и хэши: config.go
+  `72d1c271db4f92fe48533fe5e5ad3dafe4d72410c035c36c48e58d511b4dac6b`; config_test.go
+  `cd7e9749bb8a8d3cf56d3c0de7e68dbde979bb63e8abbe69dd1aa3e1a669dbcc`; sample
+  `820c5e80f86790d43259d50decc76448244ff580d0bc2fd8345128f37d22cd29`; go.mod
+  `d793e4088b7b276da280db7af62693266e39df36abf0195d6138a0981fdbc000`; go.sum
+  `17312526da8a9be4df6f551e202aac5df741230cc8609bd4c50607dc4279f684`;
+  `.ai/HANDOFF.md` `5c6acbf53245ab8760862c02180e7ce690a038b86e26ee3b975ae29c83c8f702` before this
+  publication update. До обновления handoff локальный diff и staged set были пустыми;
+  иных файлов/изменений нет.
+- Публикация: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/129.
+  Использовать существующую ветку и PR; новый PR не создавать. После обычного push
+  проверить GitHub URL/head/base/ровно 6 paths. CI для нового exact head требует
+  readback и не объявляется GREEN заранее. После этого единственного handoff-only
+  push передать финальный SHA github-reviewer и orchestrator. Merge/close #59 и
+  выбор следующей Issue остаются orchestrator.
+- Ниже восстановлена точная reviewer-approved публикационная запись #59 из
+  25.10.2026, включая исторические RED/CI замечания; после неё без изменений
+  сохранена история master по #177 и #179.
+- D-01/D-04/D-06/D-08/D-11 остаются открытыми. Loader даёт только декларативные
+  guards и безопасный config snapshot/hash; Testnet/live mode отклоняются. Runtime,
+  торговые полномочия, изменение risk limits, deployment и merge/закрытие #59
+  не разрешены этой поставкой; merge/close остаются за основным orchestrator.
+
+
+
+### Историческая reviewer-approved публикационная запись #59, 25.10.2026
+
+## Issue #59 — CM-004, публикация
+
+- Checkpoint 25.10.2026: orchestrator выполнил обычную локальную интеграцию
+  `origin/master` `271ace0f5022e3ef31521e9cbb86f337e8b5ff14` в существующую ветку
+  #59; это не merge GitHub PR. Конфликт был только в `.ai/HANDOFF.md` и разрешён
+  с сохранением записи #59 и всей актуальной истории master для #177/#179.
+  Текущий Go toolchain 1.26.10 унаследован из security fix #179; прежний CI RED
+  по `GO-2026-6809` на Go 1.26.9 теперь исторический и устранён базой. Свежий
+  `govulncheck` orchestrator на Go 1.26.10 завершился PASS: 0 уязвимостей в
+  просмотренных пакетах (1 advisory module не был вызван). CI на новом exact PR
+  head пока не подтверждён. После commit интеграции записать точный merge
+  HEAD и проверить новый PR head/base/paths; не объявлять CI GREEN до readback.
+- Чат Issue #59, worktree `/Users/alekseenkodenis/.codex/worktrees/6342/bybit_bot_liquidity`,
+  ветка `codex/59-momentum-config-guards`. Стартовый HEAD и проверенная после fetch база
+  `origin/master`: `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63`; ancestry PASS.
+  Основная dirty detached копия `bd7e8a8` не изменялась. GitHub зависимости
+  #58/#122/#126 closed, #124 open; открытых PR и дубликата PR #59 не найдено.
+- System-designer уточнил и прочитал обратно контракт GitHub #59, маркер
+  `crypto-momentum-contract:CM-004 v1`. Область ровно шесть файлов:
+  `internal/momentum/config/config.go`, `internal/momentum/config/config_test.go`,
+  `configs/momentum.paper.yaml`, `go.mod`, `go.sum`, `.ai/HANDOFF.md`.
+  Лимиты: 250 production Go строк, 150 test Go строк. yaml.v3 обоснован для
+  strict YAML; legacy config/cmd/bot/SQLite/runtime вне области.
+- Независимый reviewer повторно вернул scoped GREEN по уточнённому exact #59 v1:
+  одобрены те же 6 файлов, 247 production и 150 test строк; uncached config/model
+  tests и config race PASS. Developer подтвердил full tests, full race, vet, build,
+  gofmt, diff-check и coverage 78.6%; staticcheck 2.10.1 PASS без findings.
+  Reviewer не нашёл блокеров в CM-004 и разрешил обычный corrective push в PR #129.
+- Свежий govulncheck вернул delivery RED: `GO-2026-6809` достижима через
+  `crypto/x509` в toolchain Go 1.26.9; исправление upstream — Go 1.26.10.
+  Не менять toolchain/dependency в этой Issue. Существующий security Issue #179
+  отслеживает исправление: https://github.com/DAlekseenko/bybit_bot_liquidity/issues/179.
+  Это внешний blocker доставки/безопасности; CI и security gate нельзя объявлять
+  зелёными. Не создавать дубликат #179 и не запускать зависящий от него этап.
+- Approved hashes после корректировок: config.go `72d1c271db4f92fe48533fe5e5ad3dafe4d72410c035c36c48e58d511b4dac6b`;
+  config_test.go `cd7e9749bb8a8d3cf56d3c0de7e68dbde979bb63e8abbe69dd1aa3e1a669dbcc`;
+  sample `820c5e80f86790d43259d50decc76448244ff580d0bc2fd8345128f37d22cd29`;
+  go.mod `bdbc751b3edf4f6b7c53b7e523d6d698089b0309231051769b4c629efc134697`;
+  go.sum `17312526da8a9be4df6f551e202aac5df741230cc8609bd4c50607dc4279f684`.
+- Публикация: `PR открыт` — https://github.com/DAlekseenko/bybit_bot_liquidity/pull/129.
+  Обычный non-force corrective push выполнен. GitHub readback подтвердил
+  implementation head `f3af8326d7077464f45df86f6e52ec3dfcf43a55`, base `master`
+  `21954cbaf0f2b12b0df8210e83cbc4adc0e21e63` и ровно шесть approved paths.
+  PR прикреплён; дубликатов нет. PR body сообщает о govulncheck blocker #179.
+  CI run `39661033259` был `in_progress` для implementation head f3af832; после
+  metadata push final head и CI должен проверить github-reviewer.
+- Residual risk из reviewer handoff: zero-value `Config` может сформировать
+  некорректный snapshot при обходе `Load`/`Parse`; проверенные инварианты hash
+  относятся к результатам этих валидирующих путей. Runtime пока отсутствует.
+- Checkpoint 21.10.2026: GitHub run `39492913092` на предыдущем head провалил
+  staticcheck S1016; исправление включено в текущий reviewer-approved diff.
+  GitHub P2 `discussion_r4330027087` потребовал использовать существующий
+  Decimal-контракт для equity (ведущие нули, предел 128 символов / 64 дробных
+  цифр) и канонизировать до hash; это исправлено и покрыто тестами. Последний
+  последний проверенный implementation head — `f3af8326d7077464f45df86f6e52ec3dfcf43a55`;
+  текущий HEAD handoff-only metadata commit определяется через `git rev-parse HEAD`.
+  Коррективный push завершён; после этого финального handoff-only push проверить
+  локально чистое дерево и передать exact PR head/base/files github-reviewer.
+  Delivery остаётся заблокированной `GO-2026-6809` до решения #179. Не создавать
+  дополнительные metadata commits. Merge/close #59 и следующая Issue — только
+  основной orchestrator.
+- D-01/D-04/D-06/D-08/D-11 открыты. Loader даёт только декларативные guards и
+  безопасный config snapshot/hash; Testnet/live mode отклоняются. Runtime,
+  торговые полномочия, изменение risk limits, deployment и merge/закрытие #59
+  не разрешены этой поставкой; merge/close остаются за основным orchestrator.
 
 ## Issue #177 — publisher checkpoint после GREEN, 2026-10-24
 
