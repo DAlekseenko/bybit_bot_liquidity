@@ -7,9 +7,9 @@
 
 - Go-модуль `bybit_bot_liquidity`, версия языка 1.24.
 - Legacy Liquidity остаётся единственным runtime: `cmd/bot`, `configs/config.yaml`,
-  SQLite и текущий Compose. Momentum пока представлен только
-  `internal/momentum/model`; `cmd/momentum` и отдельные config/storage/runtime/
-  Compose запланированы в #59/#65/#86/#109/#112. См. карту в
+  SQLite и текущий Compose. Momentum config guards и sample реализованы в
+  #59/PR #129 (`internal/momentum/config`); `cmd/momentum` и отдельные
+  storage/runtime/Compose запланированы в #65/#86/#109/#112. См. карту в
   [ARCHITECTURE](../docs/ARCHITECTURE.md#изоляция-liquidity-и-crypto-momentum)
   и ограничения в [DECISIONS](../docs/DECISIONS.md).
 - Цель: MVP торгового бота для Bybit V5 Testnet, один символ и одна стратегия.
