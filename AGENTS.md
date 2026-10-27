@@ -154,10 +154,7 @@ Docker-команды и оговорки среды приведены в
 - At Issue start, read `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, the assigned Issue,
   `git status --short --branch`, and the base/relevant diff. Read other docs only
   when the Issue contract or a discovered dependency requires them.
-- Use `system-designer` to define bounded work, `developer` to implement only
-  that contract, `reviewer` for independent read-only review, then `publisher`
-  for handoff and publication after a green review, then `github-reviewer` for
-  the post-publication check.
+- Route work through `system-designer`, one `developer-middle` or orchestrator-activated `developer-senior`, and independent `reviewer`; the developer owner publishes after GREEN and the orchestrator owns post-publication checks.
 - Keep review under 15 minutes: normally <=6 files, <=250 production lines,
   and <=150 test lines. Ask `system-designer` to split work that exceeds this.
 - Keep the bot on Bybit Testnet and read-only by default. This workflow grants
@@ -178,57 +175,73 @@ Docker-команды и оговорки среды приведены в
 
 ## Workflow
 
-1. `system-designer` defines a bounded Issue contract.
-2. `developer` implements only that contract.
-3. `reviewer` reviews from a fresh context without editing the reviewed files.
-4. Repeat developer/reviewer until blocking findings are resolved.
-5. On GREEN, `reviewer` returns the exact approved files, verification evidence,
-   residual risks, branch, diff, blockers, and an exact handoff for `publisher`.
-   Reviewer does not declare the Issue complete or choose the next Issue.
-6. `publisher` updates `.ai/HANDOFF.md` with publication state, stages only
-   approved files plus that handoff, commits, pushes the current Issue branch
-   without force, and opens a PR against the default branch. It verifies the PR
-   URL and exact head SHA, records `PR открыт`, provides the verified PR URL,
-   head SHA, and green reviewer handoff to `github-reviewer`, then stops. Missing
-   access or required approval is a blocker; publication must not be claimed.
-7. `github-reviewer` checks the exact published PR diff against the Issue and
-   approved files, confirms the local reviewer is GREEN, and confirms CI is
-   GREEN for that same head SHA. Fail closed on missing, stale, or mismatched
-   evidence. It publishes a Russian user-action comment only when user
-   participation is genuinely required; use marker
-   `<!-- codex-user-action:v1 -->`, sections `Контекст`, `От вас`, `До ответа`,
-   evidence and head SHA, exactly one concrete action, and the blocked step or
-   safe path if there is no reply. Mark mandatory participation `🟡` and optional
-   participation `🟢`. Before writing, find its own marker comment and update it
-   when the state changes; do not duplicate it. After writing, read back and
-   verify the comment URL, target PR and head, and full body. Ordinary review
-   notes, normal CI, and cases needing no user participation produce no new
-   comment. The role cannot approve or request changes, merge, push, edit code,
-   create Issues or PRs, trade, or change risk limits; Testnet/read-only safety
-   boundaries remain in force.
-8. `publisher` never merges, selects the next Issue, performs post-merge
-   verification, rewrites history, force-pushes, deletes data, handles secrets,
-   changes financial rules, or enables live execution. The orchestrator chooses
-   the next Issue and owns post-merge verification.
-9. После merge orchestrator закрывает Issue только после подтверждения gate:
-   получить из GitHub `mergedAt` и `mergeCommit`, обновить remote refs через
-   fetch, проверить достижимость merge commit из `origin/master` и записать
-   проверенный SHA `origin/master`. Исчезновение PR из списка open или совпадение
-   head SHA не доказывает merge; при squash проверять именно merge commit.
-   Если GitHub недоступен или `origin/master` не обновлён и не проверен, Issue
-   не закрывать. Затем идемпотентно создать или обновить в связанной Issue
-   checkpoint-комментарий с маркером `<!-- codex-merge-checkpoint:v1 -->`, PR
-   URL, merge SHA и проверенным SHA `origin/master`; прочитать комментарий назад
-   и сверить все поля до закрытия Issue. Не создавать дубликаты маркера.
-10. Следующую готовую Issue выбирает orchestrator по приоритету и зависимостям;
-    при равенстве брать старейшую. Issue, код или PR, заблокированные решением
-    пользователя, оставлять без изменений. Независимую Issue разрешено выполнять
-    только при отсутствии пересечения файлов и контрактов.
-11. При лимите или прерывании записать точное состояние для продолжения:
-    Issue/task, branch, worktree, PR и head SHA, пройденные проверки, blocker и
-    следующее действие. Продолжать те же Issue/task/branch/worktree/PR без
-    дубликатов и сверять актуальные SHA до дальнейших действий.
-12. Только orchestrator выполняет merge gate, checkpoint и закрытие Issue после
-    подтверждения. `publisher` останавливается после публикации PR;
-    `github-reviewer` проверяет опубликованный PR и не выполняет merge или
-    закрытие Issue.
+1. One GitHub Issue per branch, PR, and Codex task. Its approved body is the
+   sole contract. At Issue start, read `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, the
+   Issue, `git status --short --branch`, and relevant base/diff; read other docs
+   only for a discovered dependency.
+2. Route uncertainty, architecture, or decomposition to `system-designer`
+   (`gpt-6.1-sol`, high); ready narrow Issues to `developer-middle`
+   (`gpt-6-luna`, medium). The orchestrator may activate dormant
+   `developer-senior` (`gpt-6.1-sol`, medium) for complex concurrency,
+   idempotency, or recovery work, recording why and the confirmed selection
+   mechanism. Medium remains the default. Use high effort only with a recorded
+   reason and a confirmed launch method that selects high; custom role-file
+   effort takes precedence, so never promise an explicit high override. Custom
+   role-file model and effort take precedence over explicit spawn/default/parent
+   values. A middle to senior
+   handoff keeps the same Issue, task, branch, worktree, and PR, and records
+   files, checks, and a concrete blocker. There is one developer owner. These
+   profiles apply to new launches; sandbox mode inherits from the parent and
+   does not guarantee isolation from it.
+3. The developer implements only the approved contract. Keep review within 15
+   minutes, normally <=6 files, <=250 production lines, and <=150 test lines;
+   split larger work. Keep Testnet/read-only and all existing broker, financial,
+   secret, and human-confirmation policies. `dry_run: false` never enables live
+   execution. Never infer a fill from an absent order; only an executed broker
+   operation proves execution. For Go, add concise Russian comments to every
+   function and method, including private functions and test helpers; exported
+   comments start with the identifier name. Run gofmt, targeted tests,
+   `go test ./...`, and `go vet ./...`.
+4. The independent `reviewer` (`gpt-6.1-sol`, high) reviews from fresh context,
+   read-only, without edits, staging, commits, pushes, PR writes, or self-review.
+   GREEN names the base, branch, contract, exact approved paths, and hashes of
+   final contents including `.ai/HANDOFF.md`, plus verification, residual risks,
+   and blockers. Prepare HANDOFF before review. After GREEN, freeze it and every
+   approved blob: any changed content requires another independent review of
+   the exact final blobs before publication. No post-GREEN handoff edits or
+   self-referential SHA commits.
+5. The same developer owner publishes only reviewer-approved blobs with an
+   ordinary commit, pushes the current Issue branch without force, opens a PR
+   against the default branch, verifies URL and exact head SHA, and stops. Do
+   not amend, push to master, merge, close Issues, select the next Issue, or
+   perform post-merge verification. Since HANDOFF is frozen at GREEN, unknown
+   PR/head/CI facts remain unknown; report them after publication without
+   rewriting approved content.
+6. The orchestrator owns post-publication verification: compare exact PR
+   URL/base/head/files with the approved contract, confirm independent GREEN,
+   and require every CI check GREEN on that same head SHA. Fail closed on
+   missing, stale, ambiguous, or mismatched evidence. Publish a Russian PR
+   conversation comment only when user participation is genuinely required.
+   Use marker `<!-- codex-user-action:v1 -->`, sections `Контекст`, `От вас`,
+   `До ответа`, evidence and exact head SHA, exactly one concrete action, and
+   the blocked step or safe path if there is no reply. Mark mandatory
+   participation `🟡` and optional `🟢`. Before writing, find the marker comment
+   and update it when state changes; never duplicate it. After writing, read
+   back and verify its URL, target PR, head, and full body. Ordinary review
+   notes, normal CI, and cases needing no participation produce no comment.
+7. The orchestrator alone performs merge gate, merge, post-merge verification,
+   checkpoint, and Issue closure after owner authorization. Require GitHub
+   `mergedAt` and `mergeCommit`; fetch and verify merge-commit ancestry from
+   refreshed `origin/master`, recording its SHA. Open/absent PR or matching
+   head is not merge proof; for squash, verify the merge commit. If GitHub or
+   refreshed ancestry is unavailable, do not close. Idempotently create/update
+   the linked Issue checkpoint comment with marker
+   `<!-- codex-merge-checkpoint:v1 -->`, PR URL, merge SHA, and verified
+   `origin/master` SHA; read it back and verify all fields before closure.
+8. The orchestrator selects the next ready Issue by priority/dependencies, then
+   oldest when tied. Leave work blocked on user decisions unchanged; independent
+   work requires no file or contract overlap. At interruption, record Issue,
+   task, branch, worktree, PR/head if known, completed checks, blocker, and next
+   action; resume the same artifacts and recheck current SHAs. Preserve all
+   existing safety policies and never grant trade, deploy, risk-limit, or live
+   execution authority through this workflow.
