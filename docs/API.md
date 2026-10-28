@@ -28,6 +28,22 @@
 проверяется сразу, поэтому невалидный клиент не создаётся. При `nil` создаётся
 HTTP-клиент с timeout 10 секунд.
 
+Для Momentum отдельно реализован чистый `parseDailyKlinePage(symbol, serverMs,
+result klineResult) ([]DailyCandle, error)`: он не вызывает HTTP, не декодирует
+JSON и не использует локальные часы. `DailyCandle` хранит Symbol, UTC OpenTime,
+точные `model.Decimal` Open/High/Low/Close/Volume/Turnover и Confirmed. Parser
+проверяет запрошенный uppercase symbol без окружающих пробелов, identity linear
+и точное совпадение response symbol, положительный serverMs даже для пустой
+страницы. Принимаются 0–200 записей ровно из семи строк; положительные int64
+Unix-ms timestamps должны совпадать с UTC-полуночью и строго убывать без дублей.
+Цены разбираются `model.ParsePrice`, объёмы — `model.ParseQty`; нулевые объёмы
+допустимы, дополнительные соотношения OHLC не проверяются. Confirmed равен
+`serverMs >= openMs && serverMs-openMs >= 86_400_000`, без сложения конца суток
+и переполнения около MaxInt64. Корректная пустая страница возвращает non-nil
+пустой slice; любая ошибка — nil slice без частичного результата. Входные строки
+не изменяются; сортировка и заполнение пропусков отсутствуют. HTTP helper
+остаётся задачей #190, range/pagination — #183; parser не подключён к runtime.
+
 REST-контракт намеренно фиксирован под MVP:
 
 - `GetCandles` вызывает `GET /v5/market/kline` с `category=linear`, `interval=1`
