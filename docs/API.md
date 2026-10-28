@@ -41,8 +41,16 @@ Unix-ms timestamps должны совпадать с UTC-полуночью и 
 `serverMs >= openMs && serverMs-openMs >= 86_400_000`, без сложения конца суток
 и переполнения около MaxInt64. Корректная пустая страница возвращает non-nil
 пустой slice; любая ошибка — nil slice без частичного результата. Входные строки
-не изменяются; сортировка и заполнение пропусков отсутствуют. HTTP helper
-остаётся задачей #190, range/pagination — #183; parser не подключён к runtime.
+не изменяются; сортировка и заполнение пропусков отсутствуют.
+`Client.getDailyKlinePage(ctx, symbol, startBoundaryMs, endBoundaryMs)` —
+внутренний HTTP helper одной страницы: он проверяет uppercase symbol и
+положительные упорядоченные Unix-ms границы, затем вызывает public
+`GET /v5/market/kline` с `category=linear`, `interval=D`, `limit=200`,
+`start=startBoundaryMs-1` и `end=endBoundaryMs`. Сдвиг start на 1 мс — внутренняя
+конвенция адаптера, не гарантия включённости границ Bybit. Общий `c.get`
+ограничивает ответ 2 MiB и декодирует envelope, затем результат и server time
+передаются parser без частичных данных. Range/pagination — #183; parser не
+подключён к runtime.
 
 REST-контракт намеренно фиксирован под MVP:
 
