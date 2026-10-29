@@ -87,14 +87,20 @@ instant. Проверка обратным преобразованием `time.
 результат — отдельный slice с исходными значениями. Функция не проверяет
 категорию, среду, provenance, свежесть, общий конец нескольких рядов, расписание
 ребалансировки или финансовые формулы; эти проверки выполняются до этой границы
-или будущим multi-series контрактом.
+или `CommonDailyWindow`.
 
 `WindowReason` позволяет распознать стабильные причины через `errors.Is` и
 `errors.As`: `ReasonInvalidInput`, `ReasonMixedSymbol`, `ReasonMisaligned`,
 `ReasonDuplicate`, `ReasonOutOfOrder`, `ReasonFuture`, `ReasonUnconfirmed`,
-`ReasonInvalidPrice`, `ReasonInsufficient` и `ReasonGap`. Причины общего окна,
-например отсутствующего символа или разного конца рядов, принадлежат отдельному
-контракту и здесь не объявляются.
+`ReasonInvalidPrice`, `ReasonInsufficient` и `ReasonGap`.
+`internal/momentum/data.CommonDailyWindow(symbols, series, serverTime)` вызывает
+этот проверяющий контракт для каждого обязательного символа в заданном порядке,
+затем сравнивает последние сутки только после успешной проверки всех рядов.
+Отсутствующий ключ даёт `ReasonMissingSymbol`; лишний — `ReasonInvalidInput`;
+разные концы — `ReasonDifferentEnd`. Ошибка односимвольной проверки передаётся
+без изменения. Ошибки возвращают nil без частичного результата. Успешная map и
+каждый slice отделены от входа. Вызов не читает локальные часы и не проверяет
+freshness или расписание; общий исторический конец допустим.
 
 REST-контракт намеренно фиксирован под MVP:
 
