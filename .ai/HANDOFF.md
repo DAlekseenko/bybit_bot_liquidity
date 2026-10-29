@@ -1,25 +1,30 @@
 # Передача работы
 
-## Checkpoint — Issue #190, готово к повторному независимому review
+## Checkpoint — Issue #193, готово к независимому review
 
-- Контракт: [#190](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/190),
-  `CM-005A-wire`; только один public daily-kline HTTP helper.
-- Worktree: `/Users/alekseenkodenis/.codex/worktrees/1522/bybit_bot_liquidity`;
-  ветка `codex/190-daily-kline-wire`, база свежего `origin/master`
-  `bdd2b521832ee75f8d74030804b91d81d3faeac1`.
-- Изменены ровно пять контрактных путей: новый wire helper и fake-wire tests,
-  `docs/API.md`, этот checkpoint и byteexact архив предыдущего HANDOFF.
-  Текущая версия: 32 production Go строки / 149 test строк; лимит #190 — 250/150.
-- После findings final candidate: targeted/full/race/vet/build/lint и coverage PASS;
-  repository 79.4%, helper 100%. Форматирование и diff-check проходят.
-  Логи `/private/tmp/issue190-gates`; Go 1.26.10 в
-  `/private/tmp/issue182-toolchain/go`, отдельные issue182 Go caches.
-- Govulncheck PASS после разрешённого сетевого запуска: 0 called/package findings.
-  Найден module-only GO-2026-5024 в `golang.org/x/sys@v0.36.0`, Windows-only
-  `NewNTUnicodeString`; вызываемого пути нет, dependencies не менялись.
-- Первый reviewer verdict был CHANGES REQUIRED на исходном candidate; fixes покрывают
-  все findings без расширения Issue scope. Промежуточные 154 строки не отправлялись
-  на review; финальная матрица занимает 149 строк. Второй review pending; после GREEN
-  blobs заморозить.
-- Нет реальных API/credentials, заявок, торговли, deploy, risk changes,
-  parser changes или range/pagination. Merge и закрытие Issue принадлежат parent.
+- Контракт: [#193](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/193),
+  `CM-005B-bounds v1`; только чистая `dailyRangeBounds` с исключающим концом.
+- Worktree: `/Users/alekseenkodenis/.codex/worktrees/c909/bybit_bot_liquidity`;
+  ветка `codex/193-daily-kline-bounds`, база обновлённого `origin/master`
+  `0f64a95c02cbdd31aa57cef4de6c07ab94b744b4`.
+- Ровно пять whitelist paths; предыдущий HANDOFF сохранён побайтно в
+  `.ai/HANDOFF-ARCHIVE-2026-10-29-issue193.md`. Новые файлы сейчас:
+  34 production / 86 test строк, лимиты 250/150.
+- Реализованы UTC-полуночь, наносекунды, точный int64 Unix-ms roundtrip,
+  положительность, порядок и длина <=3660 суток через day indices.
+  Тесты включают int64-ms край и соседние дальние непредставимые даты;
+  отдельные пары изолируют roundtrip для start и end.
+- Gofmt, targeted/full/race/vet/build/lint, coverage и diff-check PASS.
+  Coverage repository 79.5%, helper 100%. Все три overlay mutation-проверки
+  (без roundtrip обоих/start/end) дали ожидаемый FAIL без правок workspace.
+  Логи `/private/tmp/issue193-gates`; Go 1.26.10 из
+  `/private/tmp/issue182-toolchain/go`: src/pkg/version проверены, официальный
+  архив SHA256 совпадает с release evidence #182.
+- Govulncheck PASS после сетевого запуска: 0 called/package findings; остаётся
+  module-only GO-2026-5024 в x/sys@v0.36.0, Windows NewNTUnicodeString, без
+  вызываемого пути. Это не утверждение об отсутствии всех module advisories.
+- Независимый review pending; commit/PR/head/CI пока отсутствуют.
+  После GREEN все одобренные blobs замораживаются; тот же developer публикует.
+- #183/#60 здесь не реализуются; публичного range API нет. Нет HTTP/parser/wire,
+  runtime, dependencies, credentials, реальных API, торговли, deploy или
+  финансовых изменений. Merge/closure/checkpoint после merge — за parent.
