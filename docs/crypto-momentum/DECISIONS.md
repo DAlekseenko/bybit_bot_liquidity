@@ -1,6 +1,7 @@
 # Crypto Momentum: решения и вопросы
 
-Статус CM-001: **предложения к review**, не применённые runtime-решения.
+Статус CM-001: D-01 утверждён для pure planning; остальные вопросы ниже
+остаются предложениями к review, не применёнными runtime-решениями.
 Каноническое ТЗ — [Issue #55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55),
 локальный контракт — [SPEC.md](SPEC.md). Исторические решения legacy MVP в
 [общем журнале](../DECISIONS.md) не отменены и не распространяются автоматически
@@ -8,7 +9,7 @@
 
 | ID | Предложение / требуемый ответ | Блокирует |
 | --- | --- | --- |
-| D-01 | **Владелец:** подтвердить baseline cutoff и резерв на дельту/будущее закрытие существующей позиции; численные кандидаты в SPEC. | Baseline planner и golden targets. |
+| D-01 | **Утверждено владельцем 2026-10-30:** baseline cutoff, frozen-cycle/start-now и резерв на дельту/будущее закрытие; [decision/readback](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/63#issuecomment-6532663082), формула и fixtures в SPEC. Только pure planning. | Скалярная Qty реализована #206; агрегатор, snapshot и TradePlan остаются #63. |
 | D-02 | **Владелец:** подтвердить post-close equity для reset и сопоставимость с прежним тестом. | Reset golden comparison, не первый baseline replay. |
 | D-03 | **Владелец:** предоставить прежние исходники, данные, период, расходы, funding, rounding, event order и допуски. До этого `NOT_VERIFIED`. | Утверждение исторической эквивалентности. |
 | D-04 | **Владелец/оператор:** численные fee, slippage, freshness, REST/RPC deadlines и fallback для версии профиля. | Реалистичный paper и Testnet gate. |
