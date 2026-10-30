@@ -1,0 +1,108 @@
+name: Momentum PostgreSQL
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f
+        env:
+          POSTGRES_USER: momentum_test_admin
+          POSTGRES_PASSWORD: synthetic_ci_password
+          POSTGRES_DB: momentum_test_admin
+        options: >-
+          --tmpfs /var/lib/postgresql/data
+          --health-cmd "pg_isready -U momentum_test_admin -d momentum_test_admin"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+        ports:
+          - 127.0.0.1::5432
+    env:
+      PQGO_DEBUG: "0"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Direct pinned driver smoke and vulnerability check
+        env:
+          PG_PORT: ${{ job.services.postgres.ports[5432] }}
+          MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
+        run: |
+          set -eu
+          scratch="$RUNNER_TEMP/momentum-postgres"
+          mkdir -p "$scratch"
+          cp go.mod go.sum "$scratch/"
+          cat > "$scratch/main.go" <<'GO'
+          package main
+
+          import (
+            "context"
+            "database/sql"
+            "fmt"
+            "os"
+            "strconv"
+            "time"
+
+            "github.com/lib/pq"
+          )
+
+          // main проверяет прямой pq connector против disposable PostgreSQL.
+          func main() {
+            port, err := strconv.ParseUint(os.Getenv("PG_PORT"), 10, 16)
+            if err != nil || port == 0 {
+              fmt.Fprintln(os.Stderr, "invalid test port")
+              os.Exit(1)
+            }
+            cfg := pq.Config{Host: "127.0.0.1", Port: uint16(port), Database: "momentum_test_admin", User: "momentum_test_admin", Password: "synthetic_ci_password", SSLMode: pq.SSLModeDisable, ConnectTimeout: 5 * time.Second, Options: "-c search_path=pg_catalog,momentum -c timezone=UTC", ApplicationName: "momentum-ci", MinProtocolVersion: pq.ProtocolVersion30, MaxProtocolVersion: pq.ProtocolVersion30}
+            connector, err := pq.NewConnectorConfig(cfg)
+            if err != nil {
+              fmt.Fprintln(os.Stderr, "connector configuration failed")
+              os.Exit(1)
+            }
+            db := sql.OpenDB(connector)
+            ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+            defer cancel()
+            var one, version string
+            if err = db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
+              fmt.Fprintln(os.Stderr, "database smoke failed")
+              os.Exit(1)
+            }
+            if err = db.QueryRowContext(ctx, "SHOW server_version_num").Scan(&version); err != nil {
+              fmt.Fprintln(os.Stderr, "version query failed")
+              os.Exit(1)
+            }
+            if one != "1" {
+              fmt.Fprintln(os.Stderr, "unexpected query result")
+              os.Exit(1)
+            }
+            fmt.Printf("PostgreSQL smoke passed; server_version_num=%s\n", version)
+            if err = db.Close(); err != nil {
+              fmt.Fprintln(os.Stderr, "pool close failed")
+              os.Exit(1)
+            }
+            if err = db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err == nil {
+              fmt.Fprintln(os.Stderr, "closed pool accepted query")
+              os.Exit(1)
+            }
+          }
+          GO
+          cd "$scratch"
+          GOTOOLCHAIN=local go run .
+          GOTOOLCHAIN=local go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      - name: Run Momentum suites with disposable PostgreSQL opt-in
+        env:
+          MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
+        run: go test -race -count=1 -v ./internal/momentum/...
