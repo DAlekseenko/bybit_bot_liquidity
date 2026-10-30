@@ -1,39 +1,12 @@
 # Передача работы
 
-## Checkpoint — Issue #62 CM-007 v2, подготовлено к независимому review
+## Checkpoint — Issue #200 CM-010A, готов к независимому review
 
-- Контракт: [#62](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/62),
-  CM-007 v2; system-designer утвердил API `planner.ROC30` и exact Decimal
-  сравнение концов 31-дневного окна как признак утверждённой формулы ROC30.
-- Ветка `codex/62-roc30`, worktree
-  `/Users/alekseenkodenis/.codex/worktrees/419f/bybit_bot_liquidity`, base и
-  исходный HEAD `bc0ef0009594b02ae18e828620c028a59a773c57`, совпадали с
-  `origin/master`; Issue обновлена и прочитана обратно как v2. Дубликат PR не
-  найден.
-- Whitelist: `internal/momentum/planner/roc.go`, `roc_test.go`, `docs/API.md`,
-  этот файл и `.ai/HANDOFF-ARCHIVE-2026-10-29-issue62.md`. Архив побайтно взят
-  с исходной базы до изменения HANDOFF. После gofmt production 26 строк, tests
-  142 физических строк.
-- `ROC30` сначала делегирует полную проверку `data.CommonDailyWindow`, затем
-  применяет `model.Decimal.Cmp` между крайними ценами. Ошибки передаются без
-  изменения; nil при отказе, без частичных значений. I/O, sizing, paper, runtime,
-  persistence, торговля, deploy, live и risk limits не изменялись.
-- Тесты покрывают ровно 31 свечу; рост/спад/равенство; точность выше float;
-  дробные цены с отношением 4.2/3.1; последние 31 закрытые свечи и открытая
-  свеча с отличающейся ценой; historical shared end with later serverTime; повтор и независимость map; invalid symbols/time, missing/extra,
-  short window, zero/negative/uninitialized price, malformed row, gap,
-  unconfirmed close, два валидных ряда с разными концами и ошибку позднего ряда без partial result.
-- Проверки PASS на Go 1.26.10: targeted planner/data (planner 90.9%, data 98.5%),
-  full tests, race, vet, build, lint (0 issues), format и diff. Общий coverage
-  80.4%. Govulncheck PASS после сетевого retry: 0 called/package findings и
-  один module-only `GO-2026-5024` в `golang.org/x/sys@v0.36.0` для Windows; это
-  не all-clear, зависимости не менялись. Логи: `/private/tmp/issue62-gates/`.
-- Known govulncheck context: module-only `GO-2026-5024` in
-  `golang.org/x/sys@v0.36.0` affects Windows package not called here; dependencies
-  remain unchanged. `Signalcollector` remains NOT_READY pending runtime,
-  persistence, restart and runbook evidence; VPS use is not established.
-- До публикации нужен независимый read-only reviewer GREEN на exact hashes всех
-  пяти blobs, включая HANDOFF и архив. После GREEN контент заморожен; developer
-  публикует только утверждённые файлы обычным commit/push и проверяет PR URL/head.
-  Coordinator проверяет PR/head/files и exact-head CI. Merge, post-merge proof,
-  Issue closure и chat archival остаются за parent.
+- Контракт: [#200](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/200), exact A1–A8; parent #65 остаётся открытым. #63 и код #65/#201/#202 не менялись.
+- Ветка `codex/200-postgres-driver-ci`, worktree `/Users/alekseenkodenis/.codex/worktrees/cc41/bybit_bot_liquidity`; исходный HEAD и `origin/master` `a419297c027090421590409789baf083f80ac07e`.
+- Whitelist ровно шесть файлов: `go.mod`, `go.sum`, `docs/DECISIONS.md`, `.ai/HANDOFF.md`, `.ai/HANDOFF-ARCHIVE-2026-10-30-cm010a.md`, `.github/workflows/momentum-postgres.yml`. Архив byte-exact с исходным HANDOFF.
+- Прямой pin `github.com/lib/pq v1.12.3`; Go 1.26.10, `go mod download`, `go mod verify` прошли. Production Go не добавлялся; pq намеренно пока не импортируется production-кодом до connection child. `go mod tidy` не запускался.
+- D-031 фиксирует rationale и следующие утверждённые, но ещё не реализованные connection/migration policies. Dedicated CI закрепляет PostgreSQL 17.11 digest, tmpfs, loopback-only dynamic port, synthetic credentials, `PQGO_DEBUG=0`, scratch `pq.NewConnectorConfig`/`sql.OpenDB` smoke, отдельный govulncheck v1.1.4 callgraph и race Momentum tests с явным DSN. До появления storage tests CI команда покрывает существующие Momentum suites плюс direct-driver smoke.
+- Проверки PASS: полный `go test ./...`, race, vet, build, golangci-lint 2.10.1, формат, diff-check, YAML parse; coverage 80.4%. Реальный локальный disposable PostgreSQL smoke: `SELECT 1`, `server_version_num=170011`, запрос через закрытый pool отклонён; контейнер удалён. `go test -race -count=1 -v ./internal/momentum/...` также прошёл. Scratch driver callgraph govulncheck v1.1.4: 0 findings.
+- Project govulncheck: 0 called/package findings; сохраняется module-only `GO-2026-5024` для Windows package `golang.org/x/sys@v0.36.0` (fixed v0.44.0). Это не all-clear; dependency graph не расширялся кроме прямого pq pin.
+- Следующий шаг — independent read-only GREEN по точным final hashes всех шести blobs. После GREEN содержимое заморожено; этот же developer выполняет обычный commit/push и создаёт один PR против master, затем проверяет URL/head. Merge, закрытие Issue, parent checkpoint и parent chat принадлежат orchestrator.
