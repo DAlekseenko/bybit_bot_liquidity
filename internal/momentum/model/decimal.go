@@ -117,6 +117,30 @@ func (d Decimal) Quo(other Decimal) (Decimal, error) {
 	return r, nil
 }
 
+// Add точно складывает значения и сохраняет ограничение размера дроби.
+func (d Decimal) Add(other Decimal) (Decimal, error) {
+	if !d.valid() || !other.valid() {
+		return Decimal{}, errDecimal
+	}
+	r := Decimal{new(big.Rat).Add(d.value, other.value)}
+	if !r.valid() {
+		return Decimal{}, errDecimal
+	}
+	return r, nil
+}
+
+// Sub точно вычитает значения и сохраняет ограничение размера дроби.
+func (d Decimal) Sub(other Decimal) (Decimal, error) {
+	if !d.valid() || !other.valid() {
+		return Decimal{}, errDecimal
+	}
+	r := Decimal{new(big.Rat).Sub(d.value, other.value)}
+	if !r.valid() {
+		return Decimal{}, errDecimal
+	}
+	return r, nil
+}
+
 // Cmp сравнивает два валидных значения.
 func (d Decimal) Cmp(other Decimal) (int, error) {
 	if !d.valid() || !other.valid() {
