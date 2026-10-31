@@ -102,6 +102,34 @@ P/step >0; step имеет точную конечную decimal форму. О�
 не проверяет snapshot/полноту позиций и не строит TradePlan: это остаётся #63,
 включая запрет входов при equity<=0. I/O и execution отсутствуют.
 
+### Полные LONG-цели CM-008C
+
+В #208 реализован чистый `planner.BaselineLongTargets(snapshot
+model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decimal)
+([]model.Target, error)`. Он возвращает новую отсортированную тройку
+BTCUSDT/ETHUSDT/HYPEUSDT, включая нулевые dust-цели. Это контрфактические
+максимальные LONG quantities фиксированных долей до применения сигналов;
+разрешение входа они не дают. Parent #63 обязан вызвать полный расчёт до
+active masking, а затем применить сигналы; strategy aggregate ещё не завершён.
+
+Порядок проверок: пустой Hash снимка; ровно три фиксированных ключа каждой из
+Prices/Positions/qtySteps, включая явно переданный zero для flat позиции;
+валидность и положительность equity. Missing position не означает flat.
+`BaselinePlanReason` возвращает `ReasonInvalidBaselineInput` либо
+`ReasonNonPositiveEquity` при equity<=0; Error равен строке причины,
+errors.Is/errors.As сохраняют значение. Снимок остаётся закрытым immutable
+model: повторного constructor/hash validator здесь нет, freshness и полнота
+account/environment не доказываются.
+
+Точный бюджет B=equity/3 в USDT передаётся в существующий BaselineQuantity
+строго по BTC/ETH/HYPE; P — USDT за базовый актив, Q0/Qt/step — базовый актив,
+f — безразмерная доля одной стороны. Scalar validation, reserve и округление
+не дублируются. Любая ошибка Decimal или scalar передаётся тем же object без
+обёртки и возвращает строго nil вместо частичных целей. Входы и результаты
+не разделяют mutable caller state. Active flags, cutoff lifecycle,
+min/max Qty/notional/delta normalization, TradePlan construction, I/O и
+execution остаются вне helper.
+
 ## Детерминированный порядок и отказ: предложение D-07/D-08
 
 Для одинакового UTC timestamp предлагается: (1) сохранить входные market и
