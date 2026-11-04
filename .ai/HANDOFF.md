@@ -12,11 +12,15 @@
   inactive количества без перераспределения. Scalar/model/financial math не менялись.
   Тесты: 148 физических строк после gofmt (лимит 150), production: 26 строк.
 - Обновлён SPEC описанием композиции CM-008; runtime, execution, cutoff enforcement
-  и broker transport не добавлялись. Archive30/31 сохранены byte-exact без изменений.
-  Заменённый исходный HANDOFF base #210 сохранён вне репозитория:
-  `/private/tmp/issue63-resume-20261104/HANDOFF-ARCHIVE-2026-11-04-base.md`,
-  SHA-256 `381866a82b9d507700f07f887605e1299ce40011fec70718a494bd6b9dc9be35`;
-  промежуточный checkpoint перед этой версией сохранён в
+  и broker transport не добавлялись. История base HANDOFF сохранена в
+  `.ai/HANDOFF-ARCHIVE-2026-11-04-issue63.md`: точная копия
+  `af2166d212d4e9258c4660f556ba23486aa9f6f8:.ai/HANDOFF.md`, SHA-256
+  `381866a82b9d507700f07f887605e1299ce40011fec70718a494bd6b9dc9be35`.
+  `.ai/HANDOFF-ARCHIVE-2026-10-30-cm010a.md` уже отслеживается в base и
+  побайтно совпадает с исключённым дубликатом `archive30issue63`; уникальный
+  `.ai/HANDOFF-ARCHIVE-2026-10-31-issue63.md` сохранён без изменений.
+  Предыдущий опубликованный checkpoint доступен в истории PR; отдельная копия
+  каждой редакции не нужна. Промежуточный checkpoint также сохранён в
   `/private/tmp/issue63-gates/v2-20261104/HANDOFF-interim-before-final.md`.
 - PASS: gofmt; targeted `go test ./internal/momentum/planner`; `go test ./...`;
   `go test -race ./...`; `go vet ./...`; `go build ./...`; golangci-lint v2.10.1
