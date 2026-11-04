@@ -1,0 +1,15 @@
+# Передача работы
+
+## Checkpoint — Issue #208 CM-008C, готов к независимому review
+
+- Контракт [#208](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/208), exact CM-008C v1; D-01 утверждён [владельцем](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/63#issuecomment-6532663082), повторное решение не требуется.
+- Ветка `codex/208-baseline-long-targets`, worktree `/Users/alekseenkodenis/.codex/worktrees/d2a5/bybit_bot_liquidity`; clean start, fresh fetch и base/origin/master `a760d1cba1116587a11df9092639b18ea5823af8`, prerequisite PR #207 merged, ancestry PASS. Поиск PR этой ветки пустой на старте.
+- Единственный developer owner: developer-senior, gpt-6.1-sol/medium через профиль; причина — точный equity/3, три финансовые цели и immutable/error propagation. Coordinator владеет post-publication проверками.
+- Whitelist ровно пять: internal/momentum/planner/baseline_long.go, baseline_long_test.go, docs/crypto-momentum/SPEC.md, .ai/HANDOFF.md и byte-exact archive .ai/HANDOFF-ARCHIVE-2026-10-31-cm008c.md.
+- Реализован полный LONG sizing до active flags: sorted BTC/ETH/HYPE, stable reasons, nil при любой ошибке без обёртки, delegation scalar. Production 57 строк, тестовый файл 148 физических readable строк после gofmt. Узкий designer followup заменил edit descriptors на named setup table и JSON capture фактических численных входов; cases не удалялись, whitelist не расширялся.
+- Полная матрица: distinct/rational/dust successes, repeat/reverse insertion, input/snapshot/map/fee values и returned slice independence; 10 structural и 8 scalar errors с exact nil/error identity/errors.Is/errors.As extracted VALUE; публичный поздний HYPE overflow с подтверждёнными early BTC/ETH scalar successes и неизменностью входов.
+- PASS final targeted planner/model, full tests, race, vet, build, golangci-lint 2.10.1 (0 issues), coverage 80.7% при gate 70%, gofmt, tracked и отдельно untracked whitespace, локальные ссылки, byte-exact archive. Go1.26.10, изолированные caches; логи `/private/tmp/issue208-logs/`.
+- Govulncheck network+verbose завершён exit0: 0 called/package, 1 module-only Windows GO-2026-5024 в x/sys@v0.36.0 (fixed v0.44.0), не all-clear. Первая попытка govulncheck.log завершилась DNS-ошибкой и не считается scan. Зависимости не менялись.
+- Checkpoints сохранены до implementation и long gates; недельное использование при последней проверке 97%, primary 42%, ordinaryUsageAllowed=true. Внешний developer checkpoint `/private/tmp/issue208-developer-checkpoint.json`, coordinator evidence `/private/tmp/issue208-publication.json`.
+- Следующий шаг: independent fresh read-only reviewer final five blobs, включая HANDOFF и архив. После GREEN freeze, тот же developer ordinary commit/push/one PR. PR/head/CI сейчас неизвестны; сообщаются отдельно без изменения frozen HANDOFF. Merge/close/archive принадлежат parent.
+- Testnet/read-only; нет I/O/realAPI/credentials/trades/SQL/deploy/risk/live. Active flags/TradePlan aggregate остаются #63, который открыт до финального signal aggregator. Signalcollector NOT_READY.
