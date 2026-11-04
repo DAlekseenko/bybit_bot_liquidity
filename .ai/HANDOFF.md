@@ -1,30 +1,38 @@
 # Передача работы
 
-## Checkpoint — Issue #210, готов к независимому review
+## Checkpoint — Issue #212, готов к независимому review
 
-- Контракт: [Issue #210](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/210).
-  Task/chat `01a1a803-e4f7-7ca1-b5d4-74f1ddb740c0`; worktree
-  `/Users/alekseenkodenis/.codex/worktrees/ebba/bybit_bot_liquidity`, branch
-  `codex/210-context-optimization`, base `23938e379770d9a4b0775b2bc217bab44270a757`
-  (`origin/master` на старте); текущий prepublication HEAD совпадает с base, PR не
-  создан. Один developer owner; scope — четыре файла ниже.
-- `AGENTS.md`, `.ai/CONTEXT.md`, `.ai/HANDOFF.md` и
-  `.ai/HANDOFF-ARCHIVE-2026-11-04-context-optimization.md`. Архив byte-exact
-  содержит прежний HANDOFF от base. Go, торговая логика, config и автоматизации
-  не менялись.
-- PASS: Go 1.26.10 `gofmt`, `go test ./...`, coverage 80.7% (gate 70%),
-  `go test -race ./...`, `go vet ./...`, `go build ./...`, golangci-lint
-  v2.10.1 (0 issues), govulncheck v1.1.4. Scan: 0 reachable findings; 1
-  module-only GO-2026-5024 в `x/sys@v0.36.0` для Windows, fixed в v0.44.0.
-  Также проверены ссылки, whitespace и byte-exact archive.
-- Перед публикацией независимый reviewer должен проверить exact final blobs и
-  вернуть GREEN с base/branch/контрактом, paths и hashes. После GREEN blobs
-  заморожены; тот же owner делает обычный commit/push и один PR в master, затем
-  проверяет URL/exact head SHA и останавливается.
-- Blocker: ожидается независимый повторный review после исправлений. Других
-  блокеров не выявлено. Открытый вопрос для отчёта/PR: system-designer profile говорит explicit
-  human confirmation, а CONTEXT фиксирует, что каждый Momentum план не требует
-  ручного подтверждения. Профиль не менялся; live полномочий нет.
-- Следующий шаг: fresh read-only reviewer. Проверочные команды завершены ранее;
-  после документационных правок Go gates повторно не запускались.
-  Post-publication gates/CI, merge и закрытие Issue принадлежат orchestrator.
+- Контракт: [Issue #212](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/212).
+  Task/chat `01a1a802-3787-78f1-ae5f-689997af5be7`; worktree
+  `/Users/alekseenkodenis/.codex/worktrees/designer-confirmation-policy/bybit_bot_liquidity`;
+  branch `codex/212-designer-confirmation-policy`; base и prepublication HEAD
+  `af2166d212d4e9258c4660f556ba23486aa9f6f8` (`origin/master`, обновлён и
+  перепроверен). PR ещё не создан. Один developer owner.
+- Scope ровно три файла: `.codex/agents/system-designer.toml`, этот HANDOFF и
+  `.ai/HANDOFF-ARCHIVE-2026-11-04-designer-confirmation.md`. Архив побайтно
+  совпадает с прежним HANDOFF от base. Профиль меняет только формулировку
+  будущей execution-границы: planner создаёт immutable `TradePlan`, отдельная
+  confirmation/authorization policy задаётся актуальным Issue и решениями
+  проекта; граница не требует ручного подтверждения каждого плана и не выдаёт
+  live-полномочий. Метаданные TOML и остальные инструкции сохранены. Код,
+  конфигурация, риск и торговые полномочия не менялись.
+- PASS на Go 1.26.10: `gofmt` check, `go test ./...`, coverage 80.7% (порог
+  70%), `go test -race ./...`, `go vet ./...`, `go build ./...`, golangci-lint
+  v2.10.1 (0 issues), govulncheck v1.1.4 (0 достижимых уязвимостей; одна
+  module-only уязвимость). Поведенческие Go targeted tests неприменимы: Go-код
+  не менялся. TOML parse/равенство структурированных значений и единственной
+  разрешённой замены прошли; byte-exact archive и `git diff --check` прошли.
+  Momentum PostgreSQL workflow также пройден локально с pinned PostgreSQL 17
+  image: прямой pq smoke и `go test -race -count=1 -v ./internal/momentum/...`;
+  disposable контейнер удалён.
+  Первые lint/vuln вызовы ошибочно выбрали Go 1.23.1 и завершились до анализа;
+  повторные вызовы с Go 1.26.10 прошли. Успешные логи сохранены в
+  `/private/tmp/issue212-*.log`.
+- До reviewer: base, branch, whitelist и SHA256 финальных blobs перепроверены.
+  После GREEN blobs заморожены; тот же owner выполняет обычный commit/push и
+  открывает один PR против `master`, затем проверяет URL и exact head SHA и
+  останавливается. Merge/close не разрешены.
+- Blocker: ожидается независимый fresh read-only GREEN. Других блокеров нет.
+  PR/head пока неизвестны. Следующий шаг — передать точные финальные blobs
+  reviewer; после GREEN выполнить публикацию. Post-publication CI и merge gate
+  принадлежат orchestrator.
