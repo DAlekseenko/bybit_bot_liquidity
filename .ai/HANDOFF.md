@@ -1,15 +1,30 @@
 # Передача работы
 
-## Checkpoint — Issue #208 CM-008C, готов к независимому review
+## Checkpoint — Issue #210, готов к независимому review
 
-- Контракт [#208](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/208), exact CM-008C v1; D-01 утверждён [владельцем](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/63#issuecomment-6532663082), повторное решение не требуется.
-- Ветка `codex/208-baseline-long-targets`, worktree `/Users/alekseenkodenis/.codex/worktrees/d2a5/bybit_bot_liquidity`; clean start, fresh fetch и base/origin/master `a760d1cba1116587a11df9092639b18ea5823af8`, prerequisite PR #207 merged, ancestry PASS. Поиск PR этой ветки пустой на старте.
-- Единственный developer owner: developer-senior, gpt-6.1-sol/medium через профиль; причина — точный equity/3, три финансовые цели и immutable/error propagation. Coordinator владеет post-publication проверками.
-- Whitelist ровно пять: internal/momentum/planner/baseline_long.go, baseline_long_test.go, docs/crypto-momentum/SPEC.md, .ai/HANDOFF.md и byte-exact archive .ai/HANDOFF-ARCHIVE-2026-10-31-cm008c.md.
-- Реализован полный LONG sizing до active flags: sorted BTC/ETH/HYPE, stable reasons, nil при любой ошибке без обёртки, delegation scalar. Production 57 строк, тестовый файл 148 физических readable строк после gofmt. Узкий designer followup заменил edit descriptors на named setup table и JSON capture фактических численных входов; cases не удалялись, whitelist не расширялся.
-- Полная матрица: distinct/rational/dust successes, repeat/reverse insertion, input/snapshot/map/fee values и returned slice independence; 10 structural и 8 scalar errors с exact nil/error identity/errors.Is/errors.As extracted VALUE; публичный поздний HYPE overflow с подтверждёнными early BTC/ETH scalar successes и неизменностью входов.
-- PASS final targeted planner/model, full tests, race, vet, build, golangci-lint 2.10.1 (0 issues), coverage 80.7% при gate 70%, gofmt, tracked и отдельно untracked whitespace, локальные ссылки, byte-exact archive. Go1.26.10, изолированные caches; логи `/private/tmp/issue208-logs/`.
-- Govulncheck network+verbose завершён exit0: 0 called/package, 1 module-only Windows GO-2026-5024 в x/sys@v0.36.0 (fixed v0.44.0), не all-clear. Первая попытка govulncheck.log завершилась DNS-ошибкой и не считается scan. Зависимости не менялись.
-- Checkpoints сохранены до implementation и long gates; недельное использование при последней проверке 97%, primary 42%, ordinaryUsageAllowed=true. Внешний developer checkpoint `/private/tmp/issue208-developer-checkpoint.json`, coordinator evidence `/private/tmp/issue208-publication.json`.
-- Следующий шаг: independent fresh read-only reviewer final five blobs, включая HANDOFF и архив. После GREEN freeze, тот же developer ordinary commit/push/one PR. PR/head/CI сейчас неизвестны; сообщаются отдельно без изменения frozen HANDOFF. Merge/close/archive принадлежат parent.
-- Testnet/read-only; нет I/O/realAPI/credentials/trades/SQL/deploy/risk/live. Active flags/TradePlan aggregate остаются #63, который открыт до финального signal aggregator. Signalcollector NOT_READY.
+- Контракт: [Issue #210](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/210).
+  Task/chat `01a1a803-e4f7-7ca1-b5d4-74f1ddb740c0`; worktree
+  `/Users/alekseenkodenis/.codex/worktrees/ebba/bybit_bot_liquidity`, branch
+  `codex/210-context-optimization`, base `23938e379770d9a4b0775b2bc217bab44270a757`
+  (`origin/master` на старте); текущий prepublication HEAD совпадает с base, PR не
+  создан. Один developer owner; scope — четыре файла ниже.
+- `AGENTS.md`, `.ai/CONTEXT.md`, `.ai/HANDOFF.md` и
+  `.ai/HANDOFF-ARCHIVE-2026-11-04-context-optimization.md`. Архив byte-exact
+  содержит прежний HANDOFF от base. Go, торговая логика, config и автоматизации
+  не менялись.
+- PASS: Go 1.26.10 `gofmt`, `go test ./...`, coverage 80.7% (gate 70%),
+  `go test -race ./...`, `go vet ./...`, `go build ./...`, golangci-lint
+  v2.10.1 (0 issues), govulncheck v1.1.4. Scan: 0 reachable findings; 1
+  module-only GO-2026-5024 в `x/sys@v0.36.0` для Windows, fixed в v0.44.0.
+  Также проверены ссылки, whitespace и byte-exact archive.
+- Перед публикацией независимый reviewer должен проверить exact final blobs и
+  вернуть GREEN с base/branch/контрактом, paths и hashes. После GREEN blobs
+  заморожены; тот же owner делает обычный commit/push и один PR в master, затем
+  проверяет URL/exact head SHA и останавливается.
+- Blocker: ожидается независимый повторный review после исправлений. Других
+  блокеров не выявлено. Открытый вопрос для отчёта/PR: system-designer profile говорит explicit
+  human confirmation, а CONTEXT фиксирует, что каждый Momentum план не требует
+  ручного подтверждения. Профиль не менялся; live полномочий нет.
+- Следующий шаг: fresh read-only reviewer. Проверочные команды завершены ранее;
+  после документационных правок Go gates повторно не запускались.
+  Post-publication gates/CI, merge и закрытие Issue принадлежат orchestrator.
