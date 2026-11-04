@@ -71,8 +71,9 @@ ledger, но молча не пересчитывают уже сохранён�
 `Q0=10` — `Qt=29.950`. При `Q0=40` максимум `Qt=29.960` и сокращение
 `10.040`; даже тогда новые покупки ждут подтверждения всех сокращений.
 Пример не задаёт slippage, фактическую комиссию или биржевую маржу.
-Cutoff, start-now и frozen-cycle правила утверждены для pure planning;
-их lifecycle enforcement и сборка baseline planner остаются в #63.
+Cutoff, start-now и frozen-cycle правила утверждены для pure planning.
+Агрегатор baseline для pure planning реализован в #63; enforcement этих lifecycle
+правил остаётся за пределами #63.
 
 ### Скалярный расчёт CM-008B
 
@@ -109,8 +110,9 @@ model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decima
 ([]model.Target, error)`. Он возвращает новую отсортированную тройку
 BTCUSDT/ETHUSDT/HYPEUSDT, включая нулевые dust-цели. Это контрфактические
 максимальные LONG quantities фиксированных долей до применения сигналов;
-разрешение входа они не дают. Parent #63 обязан вызвать полный расчёт до
-active masking, а затем применить сигналы; strategy aggregate ещё не завершён.
+разрешение входа они не дают. Реализованный в #63 pure planner вызывает полный
+расчёт до active masking, затем применяет сигналы. Runtime integration и
+enforcement cutoff lifecycle остаются за пределами #63.
 
 Порядок проверок: пустой Hash снимка; ровно три фиксированных ключа каждой из
 Prices/Positions/qtySteps, включая явно переданный zero для flat позиции;
@@ -129,6 +131,16 @@ f — безразмерная доля одной стороны. Scalar valida
 не разделяют mutable caller state. Active flags, cutoff lifecycle,
 min/max Qty/notional/delta normalization, TradePlan construction, I/O и
 execution остаются вне helper.
+
+### Агрегирование baseline CM-008
+
+`planner.BaselineTargets` проверяет, что active содержит ровно BTCUSDT, ETHUSDT
+и HYPEUSDT, затем всегда делегирует расчёт полных целей
+`BaselineLongTargets`. Ошибка helper возвращается тем же значением, а цели
+отсутствуют. Только после успешного расчёта inactive-количества становятся
+нулевыми; доля не переносится на другие символы. Результат сохраняет
+фиксированный порядок трёх символов. Это pure planning; разрешение неактивным
+входам не изменяет исполнение, cutoff lifecycle или authority.
 
 ## Детерминированный порядок и отказ: предложение D-07/D-08
 

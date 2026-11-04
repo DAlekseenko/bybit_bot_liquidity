@@ -1,30 +1,34 @@
 # Передача работы
 
-## Checkpoint — Issue #210, готов к независимому review
+## Checkpoint — Issue #63 CM-008 v2, подготовлено к независимому review
 
-- Контракт: [Issue #210](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/210).
-  Task/chat `01a1a803-e4f7-7ca1-b5d4-74f1ddb740c0`; worktree
-  `/Users/alekseenkodenis/.codex/worktrees/ebba/bybit_bot_liquidity`, branch
-  `codex/210-context-optimization`, base `23938e379770d9a4b0775b2bc217bab44270a757`
-  (`origin/master` на старте); текущий prepublication HEAD совпадает с base, PR не
-  создан. Один developer owner; scope — четыре файла ниже.
-- `AGENTS.md`, `.ai/CONTEXT.md`, `.ai/HANDOFF.md` и
-  `.ai/HANDOFF-ARCHIVE-2026-11-04-context-optimization.md`. Архив byte-exact
-  содержит прежний HANDOFF от base. Go, торговая логика, config и автоматизации
-  не менялись.
-- PASS: Go 1.26.10 `gofmt`, `go test ./...`, coverage 80.7% (gate 70%),
-  `go test -race ./...`, `go vet ./...`, `go build ./...`, golangci-lint
-  v2.10.1 (0 issues), govulncheck v1.1.4. Scan: 0 reachable findings; 1
-  module-only GO-2026-5024 в `x/sys@v0.36.0` для Windows, fixed в v0.44.0.
-  Также проверены ссылки, whitespace и byte-exact archive.
-- Перед публикацией независимый reviewer должен проверить exact final blobs и
-  вернуть GREEN с base/branch/контрактом, paths и hashes. После GREEN blobs
-  заморожены; тот же owner делает обычный commit/push и один PR в master, затем
-  проверяет URL/exact head SHA и останавливается.
-- Blocker: ожидается независимый повторный review после исправлений. Других
-  блокеров не выявлено. Открытый вопрос для отчёта/PR: system-designer profile говорит explicit
-  human confirmation, а CONTEXT фиксирует, что каждый Momentum план не требует
-  ручного подтверждения. Профиль не менялся; live полномочий нет.
-- Следующий шаг: fresh read-only reviewer. Проверочные команды завершены ранее;
-  после документационных правок Go gates повторно не запускались.
-  Post-publication gates/CI, merge и закрытие Issue принадлежат orchestrator.
+- Контракт: [Issue #63](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/63),
+  ветка `codex/63-baseline-targets`, base `af2166d212d4e9258c4660f556ba23486aa9f6f8`
+  (`origin/master`), HEAD до публикации не создан; PR отсутствует. #208 завершён
+  через #209 и merge `23938e379770d9a4b0775b2bc217bab44270a757`; D-01 уже одобрен.
+- Реализация ограничена six-файловым allowlist Issue. `BaselineTargets`
+  проверяет ровно три active keys, вызывает `BaselineLongTargets` при любой маске,
+  сохраняет исходную ошибку и возвращает nil-цели при ошибке, затем обнуляет
+  inactive количества без перераспределения. Scalar/model/financial math не менялись.
+  Тесты: 148 физических строк после gofmt (лимит 150), production: 26 строк.
+- Обновлён SPEC описанием композиции CM-008; runtime, execution, cutoff enforcement
+  и broker transport не добавлялись. Archive30/31 сохранены byte-exact без изменений.
+  Заменённый исходный HANDOFF base #210 сохранён вне репозитория:
+  `/private/tmp/issue63-resume-20261104/HANDOFF-ARCHIVE-2026-11-04-base.md`,
+  SHA-256 `381866a82b9d507700f07f887605e1299ce40011fec70718a494bd6b9dc9be35`;
+  промежуточный checkpoint перед этой версией сохранён в
+  `/private/tmp/issue63-gates/v2-20261104/HANDOFF-interim-before-final.md`.
+- PASS: gofmt; targeted `go test ./internal/momentum/planner`; `go test ./...`;
+  `go test -race ./...`; `go vet ./...`; `go build ./...`; golangci-lint v2.10.1
+  (0 issues); coverage 80.8% total, planner 87.8%. `go mod verify` сообщил
+  `all modules verified`. Проверки выполнены Go 1.26.10 в
+  `/private/tmp/issue63-go126`; логи и coverage сохранены в
+  `/private/tmp/issue63-gates/v2-20261104/`.
+- Govulncheck: 0 reachable vulnerabilities; 1 module-only Windows advisory
+  GO-2026-5024 (`golang.org/x/sys@v0.36.0`, исправлено в v0.44.0). Зависимости
+  проекта не менялись. Бот и реальные API не запускались.
+- Следующий шаг: независимый read-only reviewer проверяет exact final file blobs,
+  base, ветку, Issue, лимиты, проверки и риски. После GREEN blobs заморожены;
+  тот же owner публикует только утверждённые hashes обычным commit/push и одним PR,
+  проверяет URL и точный head SHA, затем останавливается. Merge/closure и
+  post-publication gates принадлежат orchestrator. GREEN, commit, push и PR пока нет.
