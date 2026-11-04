@@ -1,38 +1,40 @@
 # Передача работы
 
-## Checkpoint — Issue #63 CM-008 v2, подготовлено к независимому review
+## Checkpoint — Issue #63 CM-008 v2, PR #214, base обновлён
 
 - Контракт: [Issue #63](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/63),
-  ветка `codex/63-baseline-targets`, base `af2166d212d4e9258c4660f556ba23486aa9f6f8`
-  (`origin/master`), HEAD до публикации не создан; PR отсутствует. #208 завершён
-  через #209 и merge `23938e379770d9a4b0775b2bc217bab44270a757`; D-01 уже одобрен.
-- Реализация ограничена six-файловым allowlist Issue. `BaselineTargets`
-  проверяет ровно три active keys, вызывает `BaselineLongTargets` при любой маске,
-  сохраняет исходную ошибку и возвращает nil-цели при ошибке, затем обнуляет
-  inactive количества без перераспределения. Scalar/model/financial math не менялись.
-  Тесты: 148 физических строк после gofmt (лимит 150), production: 26 строк.
-- Обновлён SPEC описанием композиции CM-008; runtime, execution, cutoff enforcement
-  и broker transport не добавлялись. История base HANDOFF сохранена в
-  `.ai/HANDOFF-ARCHIVE-2026-11-04-issue63.md`: точная копия
-  `af2166d212d4e9258c4660f556ba23486aa9f6f8:.ai/HANDOFF.md`, SHA-256
-  `381866a82b9d507700f07f887605e1299ce40011fec70718a494bd6b9dc9be35`.
-  `.ai/HANDOFF-ARCHIVE-2026-10-30-cm010a.md` уже отслеживается в base и
-  побайтно совпадает с исключённым дубликатом `archive30issue63`; уникальный
-  `.ai/HANDOFF-ARCHIVE-2026-10-31-issue63.md` сохранён без изменений.
-  Предыдущий опубликованный checkpoint доступен в истории PR; отдельная копия
-  каждой редакции не нужна. Промежуточный checkpoint также сохранён в
-  `/private/tmp/issue63-gates/v2-20261104/HANDOFF-interim-before-final.md`.
-- PASS: gofmt; targeted `go test ./internal/momentum/planner`; `go test ./...`;
-  `go test -race ./...`; `go vet ./...`; `go build ./...`; golangci-lint v2.10.1
-  (0 issues); coverage 80.8% total, planner 87.8%. `go mod verify` сообщил
-  `all modules verified`. Проверки выполнены Go 1.26.10 в
-  `/private/tmp/issue63-go126`; логи и coverage сохранены в
-  `/private/tmp/issue63-gates/v2-20261104/`.
-- Govulncheck: 0 reachable vulnerabilities; 1 module-only Windows advisory
-  GO-2026-5024 (`golang.org/x/sys@v0.36.0`, исправлено в v0.44.0). Зависимости
-  проекта не менялись. Бот и реальные API не запускались.
-- Следующий шаг: независимый read-only reviewer проверяет exact final file blobs,
-  base, ветку, Issue, лимиты, проверки и риски. После GREEN blobs заморожены;
-  тот же owner публикует только утверждённые hashes обычным commit/push и одним PR,
-  проверяет URL и точный head SHA, затем останавливается. Merge/closure и
-  post-publication gates принадлежат orchestrator. GREEN, commit, push и PR пока нет.
+  PR [#214](https://github.com/DAlekseenko/bybit_bot_liquidity/pull/214),
+  ветка `codex/63-baseline-targets`. Новый base `a8d6e65e3dc569e04f9ca38d892493b833855965`
+  (`origin/master`) содержит merge PR #213 / Issue #212. Последний опубликованный
+  head PR #214 — `87339810932c781a07bc2f0a057e4e45240faf13`. Итоговый merge tree
+  готовится к новому review; новый commit/head и его CI ещё не существуют.
+- CM-008 v2 реализует pure `BaselineTargets`: точные active keys, всегда полный
+  вызов `BaselineLongTargets`, та же ошибка и nil при отказе, inactive quantities
+  в ноль без перераспределения. Скалярная и доменная математика не менялись;
+  production 26 строк, полный Go test source 148 физических строк после gofmt.
+  Live broker, execution, cutoff lifecycle enforcement и runtime не добавлены.
+- База также включает изменение профиля из Issue #212, объединённое через PR #213. Профиль
+  `.codex/agents/system-designer.toml` унаследован из новой базы без изменений:
+  confirmation/authorization определяется актуальным Issue и решениями проекта,
+  не требует ручного подтверждения каждого плана и не даёт live-полномочий.
+- Архивы: `.ai/HANDOFF-ARCHIVE-2026-11-04-designer-confirmation.md` уже в новой
+  базе и побайтно сохраняет предыдущий HANDOFF от base `af2166d`; отдельный
+  `...-issue63.md` с тем же содержимым исключён как duplicate. Ранняя история
+  сохранена в уже tracked `.ai/HANDOFF-ARCHIVE-2026-10-30-cm010a.md`; уникальный
+  archive31 не менялся. Текущий base HANDOFF
+  `a8d6e65e:.ai/HANDOFF.md` побайтно сохранён в
+  `.ai/HANDOFF-ARCHIVE-2026-11-05-issue63.md` (SHA-256
+  `950c380e630760bd0f0b84f537bc097b8afc62aa02ca8248fb6dc81d0cb5b041`). Уникальный
+  `.ai/HANDOFF-ARCHIVE-2026-10-31-issue63.md` сохранён неизменным. Ранее
+  опубликованные checkpoints #63 доступны в истории PR #214.
+- Проверки #63 на прежнем base: Go 1.26.10 gofmt, targeted/full tests, race, vet,
+  build, lint 0 issues, coverage 80.8% overall / 87.8% planner, govulncheck 0
+  reachable findings и одна module-only Windows advisory GO-2026-5024
+  (`golang.org/x/sys@v0.36.0`, fixed in v0.44.0). После обновления base gates
+  запускаются повторно; логи будут в `/private/tmp/issue63-gates/base-move-20261105/`.
+- Следующий шаг: завершить gates и fresh independent review точных шести итоговых
+  файлов/хешей относительно base `a8d6e65e`. После GREEN выполнить обычный merge
+  commit с родителями опубликованный `8733981` и новый base, затем push без force
+  в ту же ветку и PR #214, проверить новый URL/base/head/files и остановиться.
+  Exact-head CI, review thread, merge gate и закрытие Issue принадлежат orchestrator.
+  До нового GREEN не создавать commit. Testnet/read-only границы неизменны.
