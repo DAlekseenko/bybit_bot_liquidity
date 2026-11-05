@@ -1,24 +1,27 @@
 package planner
 
-import "bybit_bot_liquidity/internal/momentum/model"
+import (
+	"bybit_bot_liquidity/internal/momentum/config"
+	"bybit_bot_liquidity/internal/momentum/model"
+)
 
-// BaselineTargets применяет active-маску к полным LONG-целям.
-func BaselineTargets(snapshot model.PortfolioSnapshot, active map[string]bool, qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error) {
-	symbols := [...]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}
-	if len(active) != len(symbols) {
+// BaselineTargets применяет active-маску к полным LONG-целям выбранного universe.
+func BaselineTargets(symbols []string, snapshot model.PortfolioSnapshot, active map[string]bool, qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error) {
+	canonical, err := config.CanonicalSymbols(symbols)
+	if err != nil || len(active) != len(canonical) {
 		return nil, ReasonInvalidBaselineInput
 	}
-	for _, symbol := range symbols {
+	for _, symbol := range canonical {
 		if _, ok := active[symbol]; !ok {
 			return nil, ReasonInvalidBaselineInput
 		}
 	}
-	targets, err := BaselineLongTargets(snapshot, qtySteps, feeRate)
+	targets, err := BaselineLongTargets(symbols, snapshot, qtySteps, feeRate)
 	if err != nil {
 		return nil, err
 	}
-	for i, symbol := range symbols {
-		if !active[symbol] {
+	for i := range targets {
+		if !active[targets[i].Symbol] {
 			targets[i].Quantity = model.Zero()
 		}
 	}

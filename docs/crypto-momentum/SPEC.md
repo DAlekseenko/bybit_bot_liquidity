@@ -27,6 +27,18 @@
   данных. Testnet и mainnet имеют разные явные guards; mainnet невозможно
   включить переключением существующего `dry_run`.
 
+### Universe символов из конфигурации (CM-008D)
+
+`config.CanonicalSymbols` принимает ровно три разных ASCII имени: base из
+`A-Z`/`0-9` минимум с одним символом, затем `USDT`. Ввод не обрезается и не
+исправляется; результат — новая отсортированная копия, ошибка возвращает nil.
+Это проверка синтаксиса, не доступности инструмента на Bybit или Testnet.
+Парсер использует этот контракт вместо фиксированного whitelist, сохраняя
+остальные guards и snapshot semantics. Это config-only prerequisite: оба
+planner API `BaselineQuantity` и `BaselineLongTargets` пока не интегрированы с
+выбранным universe; для end-to-end selectable planning требуется отдельная
+planner-integration Issue.
+
 ## Точная арифметика: инженерное предложение
 
 Источник денег, цен, Qty, fee и funding — проверенная десятичная строка;
@@ -72,8 +84,8 @@ ledger, но молча не пересчитывают уже сохранён�
 `10.040`; даже тогда новые покупки ждут подтверждения всех сокращений.
 Пример не задаёт slippage, фактическую комиссию или биржевую маржу.
 Cutoff, start-now и frozen-cycle правила утверждены для pure planning.
-Агрегатор baseline для pure planning реализован в #63; enforcement этих lifecycle
-правил остаётся за пределами #63.
+Pure baseline aggregate реализован в #63; enforcement этих lifecycle правил
+остаётся за пределами #63.
 
 ### Скалярный расчёт CM-008B
 
@@ -103,44 +115,50 @@ P/step >0; step имеет точную конечную decimal форму. О�
 не проверяет snapshot/полноту позиций и не строит TradePlan: это остаётся #63,
 включая запрет входов при equity<=0. I/O и execution отсутствуют.
 
-### Полные LONG-цели CM-008C
+### Полные LONG-цели CM-008E
 
-В #208 реализован чистый `planner.BaselineLongTargets(snapshot
-model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decimal)
-([]model.Target, error)`. Он возвращает новую отсортированную тройку
-BTCUSDT/ETHUSDT/HYPEUSDT, включая нулевые dust-цели. Это контрфактические
-максимальные LONG quantities фиксированных долей до применения сигналов;
-разрешение входа они не дают. Реализованный в #63 pure planner вызывает полный
-расчёт до active masking, затем применяет сигналы. Runtime integration и
-enforcement cutoff lifecycle остаются за пределами #63.
+`planner.BaselineLongTargets(symbols []string, snapshot model.PortfolioSnapshot,
+qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error)`
+использует ровно три канонических символа, полученных из
+`config.CanonicalSymbols`. Caller передаёт выбранный universe, например
+`cfg.Values().Symbols`; порядок входного списка не влияет на отсортированный
+результат. Синтаксическая валидность не подтверждает доступность инструмента
+на Bybit/Testnet.
 
-Порядок проверок: пустой Hash снимка; ровно три фиксированных ключа каждой из
-Prices/Positions/qtySteps, включая явно переданный zero для flat позиции;
-валидность и положительность equity. Missing position не означает flat.
-`BaselinePlanReason` возвращает `ReasonInvalidBaselineInput` либо
-`ReasonNonPositiveEquity` при equity<=0; Error равен строке причины,
-errors.Is/errors.As сохраняют значение. Снимок остаётся закрытым immutable
-model: повторного constructor/hash validator здесь нет, freshness и полнота
-account/environment не доказываются.
+После canonicalization helper сохраняет прежние проверки: непустой Hash
+снимка; точные keysets выбранного universe в Prices/Positions/qtySteps,
+включая явно переданный zero для flat позиции; затем валидность и
+положительность equity. Missing position не означает flat. Ошибка
+canonicalization и structural failure возвращают строго nil и существующий
+`ReasonInvalidBaselineInput`; `ReasonNonPositiveEquity` при equity<=0 и другие
+typed reasons сохраняют прежний контракт.
 
-Точный бюджет B=equity/3 в USDT передаётся в существующий BaselineQuantity
-строго по BTC/ETH/HYPE; P — USDT за базовый актив, Q0/Qt/step — базовый актив,
-f — безразмерная доля одной стороны. Scalar validation, reserve и округление
-не дублируются. Любая ошибка Decimal или scalar передаётся тем же object без
-обёртки и возвращает строго nil вместо частичных целей. Входы и результаты
-не разделяют mutable caller state. Active flags, cutoff lifecycle,
-min/max Qty/notional/delta normalization, TradePlan construction, I/O и
-execution остаются вне helper.
+Точный бюджет B=equity/3 в USDT передаётся в существующий
+`BaselineQuantity` по отсортированному выбранному universe; P — USDT за базовый
+актив, Q0/Qt/step — базовый актив, f — безразмерная доля одной стороны. Scalar
+validation, reserve и округление не дублируются. Любая Decimal или scalar ошибка
+передаётся тем же error object без обёртки и возвращает строго nil вместо
+частичных целей. Входы не меняются, результаты независимы от caller state.
 
-### Агрегирование baseline CM-008
+Configurable core helper готов: он принадлежит #218 и получает явно заданный
+universe. В #63 чистый `planner.BaselineTargets(symbols []string,
+snapshot model.PortfolioSnapshot, active map[string]bool,
+qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error)`
+применяет active flags к этим полным целям.
 
-`planner.BaselineTargets` проверяет, что active содержит ровно BTCUSDT, ETHUSDT
-и HYPEUSDT, затем всегда делегирует расчёт полных целей
-`BaselineLongTargets`. Ошибка helper возвращается тем же значением, а цели
-отсутствуют. Только после успешного расчёта inactive-количества становятся
-нулевыми; доля не переносится на другие символы. Результат сохраняет
-фиксированный порядок трёх символов. Это pure planning; разрешение неактивным
-входам не изменяет исполнение, cutoff lifecycle или authority.
+Перед расчётом wrapper канонизирует symbols общим `config.CanonicalSymbols`; при
+ошибке возвращает nil и `ReasonInvalidBaselineInput`. Active должен содержать
+ровно выбранные три canonical keys. Затем wrapper всегда вызывает
+`BaselineLongTargets(symbols, ...)`, в том числе при всех false. Ошибка helper
+передаётся тем же объектом со строго nil targets. Только после успеха false
+quantities обнуляются по `Target.Symbol`; true quantities, сортировка и число
+долей не меняются, перераспределения нет. Universe поступает из явной
+`cfg.Values().Symbols`; snapshot, active и qtySteps не служат источником
+universe. Функция pure и не загружает YAML, не выполняет I/O и не выбирает
+fallback symbols.
+
+Cutoff lifecycle, min/max Qty/notional/delta normalization, TradePlan
+construction, runtime и execution остаются вне wrapper.
 
 ## Детерминированный порядок и отказ: предложение D-07/D-08
 

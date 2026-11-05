@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 
 	"bybit_bot_liquidity/internal/momentum/model"
 	"gopkg.in/yaml.v3"
@@ -138,18 +139,9 @@ func Parse(data []byte) (Config, error) {
 	if !valid || r.MarginMode != "ISOLATED_MARGIN" || *r.AutoAddMargin || r.PositionMode != "one_way" {
 		return Config{}, errors.New("invalid momentum guards")
 	}
-	if len(r.Symbols) != 3 {
-		return Config{}, errors.New("invalid symbols")
-	}
-	want := map[string]bool{"BTCUSDT": true, "ETHUSDT": true, "HYPEUSDT": true}
-	for _, s := range r.Symbols {
-		if !want[s] {
-			return Config{}, errors.New("invalid symbols")
-		}
-		delete(want, s)
-	}
-	if len(want) != 0 {
-		return Config{}, errors.New("invalid symbols")
+	symbols, err := CanonicalSymbols(r.Symbols)
+	if err != nil {
+		return Config{}, err
 	}
 	s := r.DataSource
 	if s.Kind == "bybit_testnet_public" && s.Environment == "testnet" && mode == "paper" && s.DatasetID == "" && s.ManifestSHA256 == "" && !hasDatasetFields(doc.Content[0]) {
@@ -157,9 +149,32 @@ func Parse(data []byte) (Config, error) {
 	} else {
 		return Config{}, errors.New("invalid data source")
 	}
-	symbols := append([]string(nil), r.Symbols...)
-	sort.Strings(symbols)
 	return Config{Values{1, r.StrategyID, profile, r.ProfileVersion, r.ModelID, mode, r.StartPolicy, symbols, *r.Leverage, r.MarginMode, *r.AutoAddMargin, r.PositionMode, equity, DataSource(s)}}, nil
+}
+
+// CanonicalSymbols проверяет три уникальных USDT-символа и возвращает отсортированную копию.
+func CanonicalSymbols(symbols []string) ([]string, error) {
+	if len(symbols) != 3 {
+		return nil, errors.New("invalid symbols")
+	}
+	canonical := append([]string(nil), symbols...)
+	seen := make(map[string]struct{}, len(canonical))
+	for _, symbol := range canonical {
+		if len(symbol) < len("AUSDT") || !strings.HasSuffix(symbol, "USDT") {
+			return nil, errors.New("invalid symbols")
+		}
+		for _, char := range symbol[:len(symbol)-len("USDT")] {
+			if char < '0' || char > 'Z' || char > '9' && char < 'A' {
+				return nil, errors.New("invalid symbols")
+			}
+		}
+		if _, exists := seen[symbol]; exists {
+			return nil, errors.New("invalid symbols")
+		}
+		seen[symbol] = struct{}{}
+	}
+	sort.Strings(canonical)
+	return canonical, nil
 }
 
 // Values возвращает снимок полей с копией списка символов.
