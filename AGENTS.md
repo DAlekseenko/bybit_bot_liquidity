@@ -23,7 +23,7 @@ order/close transport без отдельного Issue и явного одоб
 | Нужно | Источник |
 | --- | --- |
 | Краткая архитектура и подтверждённые решения | [.ai/CONTEXT.md](.ai/CONTEXT.md) |
-| Текущая передача и следующий шаг | [.ai/HANDOFF.md](.ai/HANDOFF.md) |
+| Handoffs новых Issue | [`.ai/handoffs/`](.ai/handoffs/) и правила ниже; `.ai/HANDOFF.md` — legacy |
 | Историческая карта стартовой маршрутизации Issues | [.ai/ISSUE-ROUTING.md](.ai/ISSUE-ROUTING.md) |
 | Бизнес-правила и формулы | [docs/DOMAIN.md](docs/DOMAIN.md) |
 | Компоненты и зависимости | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
@@ -47,10 +47,57 @@ API. Для Go добавляйте краткие русские коммент
 начинается с его имени. Пишите табличные или точечные unit-тесты рядом с пакетом.
 Внешние API заменяйте fake/mock-реализациями; реальные заявки запрещены. Не редактируйте IDE-файлы и чужие изменения (`.idea/` вне проекта).
 
+## Per-Issue handoff
+
+Для новой Issue единственная текущая передача — `.ai/handoffs/issue-<n>.md`, где
+`<n>` — положительный десятичный номер без ведущих нулей. Approved body фиксирует
+точные handoff/archive paths в whitelist и общем file budget. Если body не задаёт
+canonical path, orchestrator вносит точный path и whitelist в body и читает body
+обратно ДО implementation; уже данное owner authorization не требует повторного
+согласования. Старый body, явно требующий global HANDOFF, сначала требует узкой
+approved-body поправки/readback; не переопределяйте его и не переносите прежний
+GREEN. Существующие artifacts сохраняются. `.ai/HANDOFF.md` и legacy archives
+неизменны; общего append/index, массовой миграции и копирования чужого статуса нет.
+
+При resume сначала выбирайте существующий own canonical file; legacy fallback используйте
+только если его ещё нет. Продолжайте те же artifacts и checkpoint. ID `issue-<n>-c<k>`
+нумерует этапы, не SHA; переход этапа увеличивает k. История — опубликованная запись
+или явно завершённый и переданный checkpoint; её нельзя задним числом назвать draft
+или удалить. Review fixes текущего этапа сохраняют ID. Если historical record остаётся
+в файле, архив не нужен. При замене/удалении до edit сохраните весь source-before file
+побайтно в approved archive, измерьте SHA256 и сравните source/archive bytes; новый
+handoff ссылается на архив. Canonical path:
+`.ai/handoffs/archive/issue-<n>-YYYY-MM-DD-v<k>.md` (UTC; k положительный без ведущих
+нулей и равен max(existing version)+1, не первому свободному gap). Совпадающий retry
+переиспользуйте. Несовпадающий payload не перезаписывайте: выберите следующий k,
+сначала обновите exact whitelist в body и readback, затем сохраняйте.
+
+Компактный handoff содержит Issue/contract marker и checkpoint, task/chat ID, owner/
+роль, worktree/branch/base, exact paths, проверки и пропуски с причинами, blocker/
+следующий шаг и ссылки на сохранённую историю. Не включайте неизвестные до GREEN
+PR/head/CI facts или self-referential hashes. GREEN покрывает все точные blobs; после
+него любая правка, включая conflict resolution, требует нового independent GREEN.
+
+## Завершение Issue и архивация чата
+
+Только orchestrator архивирует выделенный Issue-чат после GitHub `mergedAt` и
+`mergeCommit`, ancestry merge SHA в refreshed `origin/master`, идемпотентного
+единственного marker merge-checkpoint comment с readback, Issue
+closed/completed с readback, завершённых
+developer/reviewer turns и отсутствия pending reply/operations. Архивируйте через
+поддерживаемый инструмент; независимый readback подтверждает exact thread ID и
+`archived=true`. Используйте thread ID выделенного implementation-чата из его own
+handoff; parent/orchestrator и чужие Issue chats исключены. До точного archive readback
+queue task не завершена. При сбое сохраните blocker/следующий шаг во внешнем checkpoint
+и повторяйте тот же chat без дублей. Опубликованный handoff не меняйте ради
+merge/archive facts. Developer после публикации останавливается.
+
 ## Единый Issue workflow
 
-1. Перед началом прочитайте `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, точный текст
-   назначенного Issue, `git status --short --branch` и base/relevant diff. Проверьте
+1. Перед началом прочитайте `.ai/CONTEXT.md`, approved body Issue и выбранный
+   per-Issue handoff, затем `git status --short --branch` и base/relevant diff. Для
+   новой Issue без своего файла `.ai/HANDOFF.md` допустим только как однократный
+   legacy bootstrap; создайте `.ai/handoffs/issue-<n>.md` до interruption/review. Проверьте
    branch/base, открытые PR и правила репозитория; не трогайте грязный основной
    checkout. Issue body — единственный контракт; один Issue на чат, ветку и PR.
    Оркестратор сам фиксирует стартовый маршрут, не запуская designer заранее:
@@ -93,18 +140,16 @@ API. Для Go добавляйте краткие русские коммент
    `go vet ./...`. Выполняйте также обязательные CI/docs проверки (build, race,
    lint, security, coverage и прочие, если заданы). Проверяйте ссылки, whitespace
    и contract coverage; не сообщайте PASS при blocker. Не запускайте бота для теста.
-5. До review обновите `.ai/HANDOFF.md` как компактный проверенный checkpoint и
-   сохраните заменённую историю побайтно в датированном
-   `.ai/HANDOFF-ARCHIVE-*.md` (если история есть). Reviewer GREEN должен назвать
-   base, branch, Issue, точные paths и hashes всех итоговых файлов, включая HANDOFF
-   и архив, проверки, риски и blockers. После GREEN заморозьте все blobs; любое
-   изменение требует нового независимого review именно финальных blobs. Не
-   записывайте self-referential commit SHA.
+5. До review обновите handoff выбранной Issue как компактный проверенный
+   checkpoint; reviewer GREEN называет base, branch, Issue, exact paths/hashes всех
+   итоговых файлов, проверки, риски и blockers. После GREEN заморозьте все blobs;
+   любое изменение требует fresh independent review финальных blobs. Не записывайте
+   self-referential commit SHA.
 6. Тот же developer owner после GREEN публикует только одобренные paths/hashes
    обычным commit и push текущей ветки без force; создаёт один PR в default branch,
    читает обратно URL и exact head SHA и останавливается. Запрещены amend, push
    в master, merge и закрытие Issue; post-publication проверки принадлежат
-   orchestrator. PR/head/CI факты, неизвестные до GREEN, HANDOFF не переписывают.
+   orchestrator. PR/head/CI факты, неизвестные до GREEN, per-Issue handoff не переписывают.
 7. Orchestrator после публикации сверяет URL/base/head/files с контрактом и GREEN;
    требует все CI checks GREEN на том же head SHA, fail-closed при отсутствующих,
    старых или неоднозначных данных. Только при реальной необходимости участия

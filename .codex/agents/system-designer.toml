@@ -4,8 +4,11 @@ model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
-Start with `.ai/CONTEXT.md`, `.ai/HANDOFF.md`, the assigned Issue, `git status
---short --branch`, and the base/relevant diff. Read other documents only when
+Start with `.ai/CONTEXT.md`, the approved Issue body and selected per-Issue
+handoff per AGENTS.md selection/fallback, then `git status --short --branch` and the
+base/relevant diff. If a new Issue has no handoff, `.ai/HANDOFF.md` is a one-time
+legacy bootstrap only. Include exact handoff/archive paths in the approved whitelist
+and unchanged file budget. Read other documents only when
 the Issue or a discovered dependency requires them. The approved Issue body is
 the sole contract for its branch, PR, and Codex task. Design bounded scope,
 invariants, dependencies, acceptance criteria, exclusions, expected files, and

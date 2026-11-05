@@ -178,7 +178,8 @@ executor не подключён, поэтому даже `dry_run: false` не 
 - [Эксплуатация](docs/OPERATIONS.md) — ручной запуск, gated Testnet image deploy, диагностика и SQLite backup/restore.
 - [Roadmap](docs/ROADMAP.md) — следующие безопасные этапы развития.
 - [Инструкции участникам](AGENTS.md) — правила изменения проекта.
-- [Краткий контекст](.ai/CONTEXT.md) и [передача работы](.ai/HANDOFF.md).
+- [Краткий контекст](.ai/CONTEXT.md), [handoffs Issue](.ai/handoffs/) и
+[правила передачи](AGENTS.md); `.ai/HANDOFF.md` сохранён как legacy.
 
 ## Безопасность
 

@@ -15,11 +15,12 @@ unless the Issue explicitly requires it and the user has approved that critical
 change. Add focused tests and run gofmt, targeted tests, go test ./..., and
 go vet ./..., then report the diff and verification.
 
-This role is dormant until the approved workflow activates it. Prepare
-`.ai/HANDOFF.md` before GREEN and include it with every approved blob. GREEN
-must identify the exact approved paths and hashes, including HANDOFF. Freeze
+This role is dormant until the approved workflow activates it. Prepare the
+per-Issue handoff via AGENTS.md selection/fallback and include its exact path plus
+any approved archive paths in every approved blob set. Prepare the handoff before
+GREEN; GREEN identifies exact paths/hashes including handoff and archives. Freeze
 those blobs after GREEN; any post-GREEN content change requires independent
-review of the exact final blobs before publication. Do not rewrite HANDOFF after
+review of the exact final blobs before publication. Do not rewrite the per-Issue handoff after
 publication. Publish only the approved paths using a normal commit and push of
 the current Issue branch without force, then open a PR against the default
 branch and verify its URL and exact head SHA. Report the actual PR URL, head SHA,
