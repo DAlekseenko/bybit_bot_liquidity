@@ -1,0 +1,9 @@
+# Передача работы
+
+## Checkpoint — Issue #218, готов к независимому review
+
+- Контракт: [Issue #218](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/218), CM-008E. Ветка `codex/218-baseline-long-symbols`, точная база и стартовый HEAD `d4f9aca8085d3ed1c0c5b955c1dcea5f81d1ba04`; dependency #217 подтверждена merged/closed, PR #218 пока нет. Scope — ровно шесть путей из Issue. Базовый HANDOFF сохранён побайтно в [архиве](HANDOFF-ARCHIVE-2026-11-05-cm008e.md).
+- `BaselineLongTargets` принимает канонизируемый universe через `config.CanonicalSymbols`, валидирует точные ключи snapshot/maps выбранных трёх символов и возвращает новые отсортированные цели. Structural отказ остаётся typed и fail-closed; scalar/Decimal errors передаются исходным объектом без частичных целей. `BaselineQuantity` и его формулы не менялись.
+- Обновлена core API спецификация. Parent wrapper `BaselineTargets` и общая интеграция остаются отдельным scope #63. Нет API/broker calls, торговли, новых config I/O, данных, runtime, account или risk изменений.
+- Проверки запускались локально на Go 1.26.10 с изолированными caches. Общее покрытие `go test ./... -coverprofile` → `go tool cover`: 80.8%. Логи проверок, hashes и измеренный diff budget — в `/private/tmp/issue218-gates/developer-manifest.json`. govulncheck: вызываемых уязвимостей и findings в импортируемых пакетах нет; один module-only GO-2026-5024 относится к golang.org/x/sys/windows (current v0.36.0, fixed v0.44.0). PostgreSQL smoke локально пропущен как opt-in CI gate.
+- Следующий шаг: независимый fresh-context read-only GREEN по шести точным путям и SHA. После GREEN blobs замораживаются; публикацию выполняет тот же owner обычным commit/push и одним PR в default branch. Merge, закрытие Issue и post-publication checks не входят в роль developer.

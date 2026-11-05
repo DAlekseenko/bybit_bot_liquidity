@@ -83,8 +83,9 @@ ledger, но молча не пересчитывают уже сохранён�
 `Q0=10` — `Qt=29.950`. При `Q0=40` максимум `Qt=29.960` и сокращение
 `10.040`; даже тогда новые покупки ждут подтверждения всех сокращений.
 Пример не задаёт slippage, фактическую комиссию или биржевую маржу.
-Cutoff, start-now и frozen-cycle правила утверждены для pure planning;
-их lifecycle enforcement и сборка baseline planner остаются в #63.
+Cutoff, start-now и frozen-cycle правила утверждены для pure planning.
+Pure baseline aggregate реализован в #63; enforcement этих lifecycle правил
+остаётся за пределами #63.
 
 ### Скалярный расчёт CM-008B
 
@@ -139,10 +140,25 @@ validation, reserve и округление не дублируются. Люб�
 передаётся тем же error object без обёртки и возвращает строго nil вместо
 частичных целей. Входы не меняются, результаты независимы от caller state.
 
-Configurable core helper готов. Signal wrapper `BaselineTargets` и общая
-интеграция выбранного universe остаются в parent #63 и отдельном scope.
-Active flags, cutoff lifecycle, min/max Qty/notional/delta normalization,
-TradePlan construction, I/O и execution остаются вне helper.
+Configurable core helper готов: он принадлежит #218 и получает явно заданный
+universe. В #63 чистый `planner.BaselineTargets(symbols []string,
+snapshot model.PortfolioSnapshot, active map[string]bool,
+qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error)`
+применяет active flags к этим полным целям.
+
+Перед расчётом wrapper канонизирует symbols общим `config.CanonicalSymbols`; при
+ошибке возвращает nil и `ReasonInvalidBaselineInput`. Active должен содержать
+ровно выбранные три canonical keys. Затем wrapper всегда вызывает
+`BaselineLongTargets(symbols, ...)`, в том числе при всех false. Ошибка helper
+передаётся тем же объектом со строго nil targets. Только после успеха false
+quantities обнуляются по `Target.Symbol`; true quantities, сортировка и число
+долей не меняются, перераспределения нет. Universe поступает из явной
+`cfg.Values().Symbols`; snapshot, active и qtySteps не служат источником
+universe. Функция pure и не загружает YAML, не выполняет I/O и не выбирает
+fallback symbols.
+
+Cutoff lifecycle, min/max Qty/notional/delta normalization, TradePlan
+construction, runtime и execution остаются вне wrapper.
 
 ## Детерминированный порядок и отказ: предложение D-07/D-08
 
