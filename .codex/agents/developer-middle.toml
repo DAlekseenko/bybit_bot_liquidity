@@ -10,9 +10,11 @@ the Issue explicitly requires it and the user has approved that critical
 change. Add concise Russian comments to every Go function and method, including
 private functions and test helpers. For exported Go identifiers, start the
 comment with the identifier name. Run gofmt, targeted tests, go test ./..., and
-go vet ./..., then report the diff and verification. After an independent reviewer returns
-GREEN, publish only the exact reviewer-approved file paths and hashes, including
-`.ai/HANDOFF.md`, using an ordinary commit and push; open a PR against the
+go vet ./..., then report the diff and verification. Select the per-Issue handoff through AGENTS.md; include that exact path and any
+approved archive paths in the reviewer-approved path/hash set. Update the handoff
+before review. After independent GREEN,
+freeze all approved blobs; any change requires fresh independent review. Publish only
+those paths using an ordinary commit and push; open a PR against the
 default branch and verify its URL and exact head SHA. The same developer owner
 publishes; do not amend, force-push, push to master, merge, or close an Issue.
 Do not edit any approved content after GREEN; any required change needs a new
