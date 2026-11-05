@@ -46,8 +46,8 @@ func TestBaselineLongTargets(t *testing.T) {
 		}
 		s := longSnapshot(t, in)
 		before, beforeErr := json.Marshal([]any{in, s.Equity(), s.Prices(), s.Positions(), steps, fee})
-		got, err := BaselineLongTargets(s, steps, fee)
-		repeat, repeatErr := BaselineLongTargets(s, steps, fee)
+		got, err := BaselineLongTargets([]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}, s, steps, fee)
+		repeat, repeatErr := BaselineLongTargets([]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}, s, steps, fee)
 		if beforeErr != nil || err != nil || repeatErr != nil || len(got) != 3 || !reflect.DeepEqual(got, repeat) {
 			t.Fatalf("%s: %v / %v", scenario, err, repeatErr)
 		}
@@ -107,7 +107,7 @@ func TestBaselineLongErrors(t *testing.T) {
 		if tc.name == "zero snapshot" {
 			s = model.PortfolioSnapshot{}
 		}
-		got, err := BaselineLongTargets(s, steps, fee)
+		got, err := BaselineLongTargets([]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}, s, steps, fee)
 		var plan BaselinePlanReason
 		var sizing BaselineSizingReason
 		_, isPlan := tc.want.(BaselinePlanReason)
@@ -137,7 +137,7 @@ func TestBaselineLongOverflow(t *testing.T) {
 		}
 	}
 	_, overflow := BaselineQuantity(budget, in.Prices["HYPEUSDT"], in.Positions["HYPEUSDT"], fee, steps["HYPEUSDT"])
-	got, err := BaselineLongTargets(s, steps, fee)
+	got, err := BaselineLongTargets([]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}, s, steps, fee)
 	if beforeErr != nil || overflow == nil || got != nil || err != overflow || !errors.Is(err, overflow) {
 		t.Fatalf("overflow=%v err=%v", overflow, err)
 	}
