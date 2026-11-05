@@ -27,4 +27,12 @@ branch and verify its URL and exact head SHA. Report the actual PR URL, head SHA
 and CI status outside repository files after publication. Never self-review,
 amend, force-push, push directly to master, merge, close an Issue, select the
 next Issue, or perform post-merge verification.
+
+
+Before editing, reserve each exact shared whole path through the current
+coordinator and verify its readback; work in disjoint DEV paths only. Final
+base merge, final independent review, and publication require explicit
+ACTIVE_SINGLE_SLOT grant/readback. Do not select Issues, create queue state,
+merge, close, or archive. Follow `.ai/INTEGRATION.md`; fail closed on stale or
+ambiguous state and include the handoff among reviewed blobs.
 """

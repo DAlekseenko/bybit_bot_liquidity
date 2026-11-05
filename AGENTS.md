@@ -181,3 +181,13 @@ leverage и установка, восстановление после пере
 описывает реализованное поведение и не даёт live-полномочий. Действующая политика
 ручного подтверждения каждого плана определяется только актуальным контрактом и
 решениями проекта.
+
+## Очередь интеграции и shared paths
+
+Для параллельной работы, reservations целых общих путей и единственного
+финального integration slot применяйте нормативный
+[.ai/INTEGRATION.md](.ai/INTEGRATION.md). Только текущий coordinator выбирает
+Issue и меняет canonical queue comment. Финальное обновление базы, review и
+публикация требуют явного ACTIVE_SINGLE_SLOT grant/readback. Shared path требует
+reservation до первого edit. Очередь процедурная, не атомарная и не расширяет
+Issue authority. Завершение, merge, closure и archive остаются у orchestrator.

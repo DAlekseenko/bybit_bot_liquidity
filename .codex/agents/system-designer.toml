@@ -21,4 +21,11 @@ separate confirmation/authorization policy determined by the current Issue
 contract and project decisions → execution engine is a future boundary only. This
 boundary does not require manual confirmation for every plan or grant live
 execution authority; the pipeline is not implemented.
+
+
+For parallel scopes, identify exact shared whole paths, one owner/dependency
+per path, and coordinator slot handoff per `.ai/INTEGRATION.md`. Designers do
+not own or mutate the global queue, select Issues, grant slots, merge, close,
+or archive. Preserve independent read-only GREEN and per-Issue handoff/freeze
+gates.
 """
