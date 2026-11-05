@@ -27,6 +27,18 @@
   данных. Testnet и mainnet имеют разные явные guards; mainnet невозможно
   включить переключением существующего `dry_run`.
 
+### Universe символов из конфигурации (CM-008D)
+
+`config.CanonicalSymbols` принимает ровно три разных ASCII имени: base из
+`A-Z`/`0-9` минимум с одним символом, затем `USDT`. Ввод не обрезается и не
+исправляется; результат — новая отсортированная копия, ошибка возвращает nil.
+Это проверка синтаксиса, не доступности инструмента на Bybit или Testnet.
+Парсер использует этот контракт вместо фиксированного whitelist, сохраняя
+остальные guards и snapshot semantics. Это config-only prerequisite: оба
+planner API `BaselineQuantity` и `BaselineLongTargets` пока не интегрированы с
+выбранным universe; для end-to-end selectable planning требуется отдельная
+planner-integration Issue.
+
 ## Точная арифметика: инженерное предложение
 
 Источник денег, цен, Qty, fee и funding — проверенная десятичная строка;
