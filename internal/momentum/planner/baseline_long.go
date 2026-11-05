@@ -1,6 +1,9 @@
 package planner
 
-import "bybit_bot_liquidity/internal/momentum/model"
+import (
+	"bybit_bot_liquidity/internal/momentum/config"
+	"bybit_bot_liquidity/internal/momentum/model"
+)
 
 // BaselinePlanReason обозначает устойчивую причину отказа полного baseline.
 type BaselinePlanReason string
@@ -13,18 +16,21 @@ const (
 // Error возвращает строковое значение причины.
 func (r BaselinePlanReason) Error() string { return string(r) }
 
-// BaselineLongTargets вычисляет три полные LONG-цели до применения сигналов.
-func BaselineLongTargets(snapshot model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error) {
+// BaselineLongTargets вычисляет полные LONG-цели до применения сигналов.
+func BaselineLongTargets(symbols []string, snapshot model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error) {
+	canonical, err := config.CanonicalSymbols(symbols)
+	if err != nil {
+		return nil, ReasonInvalidBaselineInput
+	}
 	if snapshot.Hash() == "" {
 		return nil, ReasonInvalidBaselineInput
 	}
-	symbols := [...]string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"}
 	prices, positions := snapshot.Prices(), snapshot.Positions()
 	for _, values := range []map[string]model.Decimal{prices, positions, qtySteps} {
-		if len(values) != len(symbols) {
+		if len(values) != len(canonical) {
 			return nil, ReasonInvalidBaselineInput
 		}
-		for _, symbol := range symbols {
+		for _, symbol := range canonical {
 			if _, ok := values[symbol]; !ok {
 				return nil, ReasonInvalidBaselineInput
 			}
@@ -45,8 +51,8 @@ func BaselineLongTargets(snapshot model.PortfolioSnapshot, qtySteps map[string]m
 	if err != nil {
 		return nil, err
 	}
-	targets := make([]model.Target, 0, len(symbols))
-	for _, symbol := range symbols {
+	targets := make([]model.Target, 0, len(canonical))
+	for _, symbol := range canonical {
 		qty, err := BaselineQuantity(budget, prices[symbol], positions[symbol], feeRate, qtySteps[symbol])
 		if err != nil {
 			return nil, err

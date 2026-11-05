@@ -114,33 +114,35 @@ P/step >0; step имеет точную конечную decimal форму. О�
 не проверяет snapshot/полноту позиций и не строит TradePlan: это остаётся #63,
 включая запрет входов при equity<=0. I/O и execution отсутствуют.
 
-### Полные LONG-цели CM-008C
+### Полные LONG-цели CM-008E
 
-В #208 реализован чистый `planner.BaselineLongTargets(snapshot
-model.PortfolioSnapshot, qtySteps map[string]model.Decimal, feeRate model.Decimal)
-([]model.Target, error)`. Он возвращает новую отсортированную тройку
-BTCUSDT/ETHUSDT/HYPEUSDT, включая нулевые dust-цели. Это контрфактические
-максимальные LONG quantities фиксированных долей до применения сигналов;
-разрешение входа они не дают. Parent #63 обязан вызвать полный расчёт до
-active masking, а затем применить сигналы; strategy aggregate ещё не завершён.
+`planner.BaselineLongTargets(symbols []string, snapshot model.PortfolioSnapshot,
+qtySteps map[string]model.Decimal, feeRate model.Decimal) ([]model.Target, error)`
+использует ровно три канонических символа, полученных из
+`config.CanonicalSymbols`. Caller передаёт выбранный universe, например
+`cfg.Values().Symbols`; порядок входного списка не влияет на отсортированный
+результат. Синтаксическая валидность не подтверждает доступность инструмента
+на Bybit/Testnet.
 
-Порядок проверок: пустой Hash снимка; ровно три фиксированных ключа каждой из
-Prices/Positions/qtySteps, включая явно переданный zero для flat позиции;
-валидность и положительность equity. Missing position не означает flat.
-`BaselinePlanReason` возвращает `ReasonInvalidBaselineInput` либо
-`ReasonNonPositiveEquity` при equity<=0; Error равен строке причины,
-errors.Is/errors.As сохраняют значение. Снимок остаётся закрытым immutable
-model: повторного constructor/hash validator здесь нет, freshness и полнота
-account/environment не доказываются.
+После canonicalization helper сохраняет прежние проверки: непустой Hash
+снимка; точные keysets выбранного universe в Prices/Positions/qtySteps,
+включая явно переданный zero для flat позиции; затем валидность и
+положительность equity. Missing position не означает flat. Ошибка
+canonicalization и structural failure возвращают строго nil и существующий
+`ReasonInvalidBaselineInput`; `ReasonNonPositiveEquity` при equity<=0 и другие
+typed reasons сохраняют прежний контракт.
 
-Точный бюджет B=equity/3 в USDT передаётся в существующий BaselineQuantity
-строго по BTC/ETH/HYPE; P — USDT за базовый актив, Q0/Qt/step — базовый актив,
-f — безразмерная доля одной стороны. Scalar validation, reserve и округление
-не дублируются. Любая ошибка Decimal или scalar передаётся тем же object без
-обёртки и возвращает строго nil вместо частичных целей. Входы и результаты
-не разделяют mutable caller state. Active flags, cutoff lifecycle,
-min/max Qty/notional/delta normalization, TradePlan construction, I/O и
-execution остаются вне helper.
+Точный бюджет B=equity/3 в USDT передаётся в существующий
+`BaselineQuantity` по отсортированному выбранному universe; P — USDT за базовый
+актив, Q0/Qt/step — базовый актив, f — безразмерная доля одной стороны. Scalar
+validation, reserve и округление не дублируются. Любая Decimal или scalar ошибка
+передаётся тем же error object без обёртки и возвращает строго nil вместо
+частичных целей. Входы не меняются, результаты независимы от caller state.
+
+Configurable core helper готов. Signal wrapper `BaselineTargets` и общая
+интеграция выбранного universe остаются в parent #63 и отдельном scope.
+Active flags, cutoff lifecycle, min/max Qty/notional/delta normalization,
+TradePlan construction, I/O и execution остаются вне helper.
 
 ## Детерминированный порядок и отказ: предложение D-07/D-08
 
