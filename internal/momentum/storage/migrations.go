@@ -11,6 +11,7 @@ func MigrateMomentumPostgres(ctx context.Context, db *sql.DB) error {
 	return migrateMomentumPostgres(ctx, db, []migrationSpec{
 		{version: 1, sql: momentumBootstrap},
 		{version: 2, sql: momentumMarketCandlesSchema},
+		{version: 3, sql: momentumMarketSchema},
 	})
 }
 
