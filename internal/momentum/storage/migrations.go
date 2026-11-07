@@ -8,7 +8,10 @@ import (
 
 // MigrateMomentumPostgres применяет встроенный каталог в одной транзакции.
 func MigrateMomentumPostgres(ctx context.Context, db *sql.DB) error {
-	return migrateMomentumPostgres(ctx, db, []migrationSpec{{version: 1, sql: momentumBootstrap}})
+	return migrateMomentumPostgres(ctx, db, []migrationSpec{
+		{version: 1, sql: momentumBootstrap},
+		{version: 2, sql: momentumMarketCandlesSchema},
+	})
 }
 
 // migrateMomentumPostgres сериализует проверку истории и применение суффикса.
