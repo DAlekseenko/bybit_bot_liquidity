@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestReferenceMigration проверяет upgrade v2, три checksum, repeat и отсутствие потери префикса.
+// TestReferenceMigration проверяет upgrade v2, четыре checksum, repeat и отсутствие потери префикса.
 func TestReferenceMigration(t *testing.T) {
 	db := openTestPostgres(t)
 	migrationResult(t, migrateMomentumPostgres(context.Background(), db, []migrationSpec{{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}}), nil)
@@ -20,11 +20,11 @@ func TestReferenceMigration(t *testing.T) {
 	if !strings.Contains(migrationState(t, db), strings.Trim(prefix, "[]")) {
 		t.Fatal("upgrade changed committed v1/v2 checksum/timestamp")
 	}
-	for i, payload := range []string{momentumBootstrap, momentumMarketCandlesSchema, momentumMarketSchema} {
+	for i, payload := range []string{momentumBootstrap, momentumMarketCandlesSchema, momentumMarketSchema, momentumImportProgressSchema} {
 		checksum := sha256.Sum256([]byte(payload))
 		migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", i+1), fmt.Sprintf("%x", checksum))
 	}
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "3")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "4")
 	migrationValue(t, db, "SELECT row_to_json(c)::text FROM momentum.candles c", saved)
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
@@ -139,4 +139,108 @@ func TestReferenceSchema(t *testing.T) {
 	migrationValue(t, db, "SELECT count(*) FROM momentum.mark_prices WHERE dataset_id IN ('k','other')", "6")
 	migrationValue(t, db, "SELECT count(*) FROM momentum.funding WHERE dataset_id IN ('k','other')", "5")
 	marketStatement(t, conn, "INSERT INTO momentum.mark_prices VALUES ('mainnet','k','BTCUSDT','D','2026-01-03 00:00-10',1,2,0.5,1.5,true)", false)
+}
+
+// TestImportProgressMigration проверяет настоящий upgrade v3, историю, repeat и rollback collision.
+func TestImportProgressMigration(t *testing.T) {
+	specs := []migrationSpec{{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema}}
+	db := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(context.Background(), db, specs), nil)
+	prefix := migrationState(t, db)
+	marketStatement(t, db, "INSERT INTO momentum.datasets VALUES('testnet','d','bybit_v5','linear',DEFAULT)", true)
+	marketStatement(t, db, "INSERT INTO momentum.candles VALUES('testnet','d','BTCUSDT','D','2026-01-01+00',1,2,0.5,1.5,0,true)", true)
+	saved := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.candles r")
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	if !strings.Contains(migrationState(t, db), strings.Trim(prefix, "[]")) {
+		t.Fatal("v4 changed applied prefix")
+	}
+	checksum := sha256.Sum256([]byte(momentumImportProgressSchema))
+	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=4", fmt.Sprintf("%x", checksum))
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "4")
+	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.candles r", saved)
+	before := migrationState(t, db)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	if migrationState(t, db) != before {
+		t.Fatal("repeat changed history")
+	}
+	collision := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(context.Background(), collision, specs), nil)
+	before = migrationState(t, collision)
+	marketStatement(t, collision, "CREATE TABLE momentum.candle_import_progress(owned_marker TEXT)", true)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), collision), ErrMigration)
+	if migrationState(t, collision) != before {
+		t.Fatal("failed v4 changed prefix")
+	}
+	migrationValue(t, collision, "SELECT count(*) FROM information_schema.columns WHERE table_schema='momentum' AND table_name='candle_import_progress' AND column_name='owned_marker'", "1")
+}
+
+// TestImportProgressSchema проверяет все локальные ограничения и честную границу переходов.
+func TestImportProgressSchema(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	marketStatement(t, db, "INSERT INTO momentum.datasets VALUES('testnet','d','bybit_v5','linear',DEFAULT),('mainnet','d','bybit_v5','linear',DEFAULT),('testnet','other','bybit_v5','linear',DEFAULT),('mainnet','mainonly','bybit_v5','linear',DEFAULT)", true)
+	insert := "INSERT INTO momentum.candle_import_progress(environment,dataset_id,symbol,interval_code,lower_open,upper_open,next_end) VALUES('testnet','d','BTCUSDT','D','2026-01-01+00','2026-01-04+00','2026-01-03 23:59:59.999+00')"
+	marketStatement(t, db, insert, true)
+	marketStatement(t, db, insert, false)
+	marketStatement(t, db, insert+" ON CONFLICT DO NOTHING", true)
+	for _, change := range []string{"environment='paper'", "dataset_id='missing'", "dataset_id='mainonly'", "symbol='btcusdt'", "symbol='BTCUSDC'", "interval_code='1'",
+		"lower_open='infinity'", "lower_open='-infinity'", "lower_open='1969-01-01+00'", "lower_open='2026-01-01 01:00+00'",
+		"upper_open='infinity'", "upper_open='-infinity'", "upper_open=lower_open", "upper_open=lower_open-INTERVAL '1 day'", "upper_open='2026-01-04 00:01+00'",
+		"next_end='infinity'", "next_end='-infinity'", "next_end=upper_open", "next_end=lower_open-INTERVAL '2 milliseconds'", "next_end=upper_open-INTERVAL '1 microsecond'",
+		"next_end=upper_open-INTERVAL '2 milliseconds'", "revision=-1", "revision=9223372036854775808", "revision=1", "state='unknown'", "reason='unknown'", "reason='empty'",
+		"lower_open='294277-01-01 00:00+00'", "upper_open='294277-01-01 00:00+00'",
+		"next_end='294277-01-01 00:00+00'", "last_server_time='294277-01-01 00:00+00'",
+		"last_server_time='infinity'", "last_server_time='-infinity'", "last_server_time='1969-01-01+00'", "last_server_time='2026-01-04 00:00:00.000001+00'"} {
+		marketStatement(t, db, "UPDATE momentum.candle_import_progress SET "+change, false)
+	}
+	for _, column := range []string{"environment", "dataset_id", "symbol", "interval_code", "lower_open", "upper_open", "next_end", "revision", "state", "reason"} {
+		marketStatement(t, db, "UPDATE momentum.candle_import_progress SET "+column+"=NULL", false)
+	}
+	for _, change := range []string{
+		"state='progress',revision=1,next_end='2026-01-02 23:59:59.999+00'",
+		"state='progress',revision=1,last_server_time='2026-01-04+00'",
+		"state='progress',revision=1,last_server_time='2026-01-03+00',next_end='2026-01-02 23:59:59.999+00'",
+		"state='complete',revision=1,last_server_time='2026-01-04+00'",
+		"state='complete',revision=1,next_end='2025-12-31 23:59:59.999+00'",
+		"state='blocked',revision=1,last_server_time='2026-01-04+00'",
+		"state='blocked',revision=1,reason='empty'",
+		"state='blocked',revision=1,reason='gap',last_server_time='2026-01-03+00'",
+		"state='blocked',revision=1,reason='source_boundary'",
+		"state='blocked',revision=1,reason='empty',last_server_time='2026-01-04+00',next_end='2025-12-31 23:59:59.999+00'"} {
+		marketStatement(t, db, "UPDATE momentum.candle_import_progress SET "+change, false)
+	}
+	for _, change := range []string{
+		"state='progress',revision=1,last_server_time='2026-01-04+00',next_end='2026-01-02 23:59:59.999+00'",
+		"state='complete',revision=2,last_server_time='2026-01-04+00',next_end='2025-12-31 23:59:59.999+00'",
+		"state='blocked',reason='empty',revision=3,last_server_time='2026-01-04+00',next_end='2026-01-02 23:59:59.999+00'",
+		"reason='gap'", "reason='unconfirmed',last_server_time='2026-01-03+00'"} {
+		marketStatement(t, db, "UPDATE momentum.candle_import_progress SET "+change, true)
+	}
+	// SQL CHECK проверяет строку, но не запрещает rollback cursor/revision между валидными состояниями.
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET state='pending',reason='',revision=0,last_server_time=NULL,next_end=upper_open-INTERVAL '1 millisecond'", true)
+	for _, change := range []string{"environment='mainnet'", "dataset_id='other'", "symbol='ETHUSDT'", "interval_code='60'", "lower_open='2025-12-31+00'", "upper_open='2026-01-05+00',next_end='2026-01-04 23:59:59.999+00'"} {
+		marketStatement(t, db, "INSERT INTO momentum.candle_import_progress SELECT * FROM momentum.candle_import_progress LIMIT 1", false)
+		marketStatement(t, db, "INSERT INTO momentum.candle_import_progress SELECT * FROM momentum.candle_import_progress ON CONFLICT DO NOTHING", true)
+		tx, err := db.BeginTx(context.Background(), nil)
+		migrationResult(t, err, nil)
+		marketStatement(t, tx, "UPDATE momentum.candle_import_progress SET "+change, true)
+		marketStatement(t, tx, insert, true)
+		migrationResult(t, tx.Rollback(), nil)
+	}
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET lower_open='1970-01-01+00'", true)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET state='blocked',reason='source_boundary',revision=1", true)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET last_server_time='2026-01-04+00'", false)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET state='pending',reason='',revision=0", true)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET interval_code='60',lower_open='2026-01-01 01:00+00',upper_open='2026-01-01 03:00+00',next_end='2026-01-01 02:59:59.999+00'", true)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET lower_open='2026-01-01 01:01+00'", false)
+	marketStatement(t, db, "UPDATE momentum.candle_import_progress SET upper_open='2026-01-01 03:01+00'", false)
+	conn, err := db.Conn(context.Background())
+	migrationResult(t, err, nil)
+	defer conn.Close()
+	marketStatement(t, conn, "SET TimeZone='Pacific/Honolulu'", true)
+	marketStatement(t, conn, "UPDATE momentum.candle_import_progress SET lower_open='2026-01-01 04:00+03'", true)
+	migrationValue(t, db, "SELECT lower_open=TIMESTAMPTZ '2026-01-01 01:00+00' FROM momentum.candle_import_progress", "true")
+	fresh := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), fresh), nil)
+	migrationValue(t, fresh, "SELECT count(*) FROM momentum.candle_import_progress", "0")
 }
