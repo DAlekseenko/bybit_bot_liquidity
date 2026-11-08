@@ -50,6 +50,21 @@ Unix-ms timestamps должны совпадать с UTC-полуночью и 
 и переполнения около MaxInt64. Корректная пустая страница возвращает non-nil
 пустой slice; любая ошибка — nil slice без частичного результата. Входные строки
 не изменяются; сортировка и заполнение пропусков отсутствуют.
+
+`Client.GetMomentumCandlePage(ctx, symbol, interval, startMs, endMs)` загружает
+одну unsigned public страницу D или 60 с тем же точным Candle parser и
+`c.get`. Начало должно быть положительной UTC-границей дня/часа, конец —
+включительный логический cursor `>= startMs`; в запросе используются
+`start=startMs-1`, `end=endMs`, `limit=200`. Метод принимает только эффективные
+HTTPS origins `api-testnet.bybit.com` и `api.bybit.com`, отклоняет redirects и
+не переносит credentials, cookie jar или redirect policy исходного клиента.
+`model.CandlePage` содержит source (`bybit_v5`), environment, category,
+canonical endpoint и UTC server time. Источник `api.bybit.com` здесь служит только для чтения исторических данных;
+метод не меняет runtime-конфигурацию или допустимость источников и не разрешает торговлю или live-исполнение.
+Явный пустой `list: []` возвращает
+пустой non-nil Candles; отсутствующий или null list и свечи за запрошенными
+границами дают ошибку без частичной страницы. Пустая страница сама по себе не
+доказывает полноту диапазона; пагинации и inference полноты этот метод не делает.
 `Client.getDailyKlinePage(ctx, symbol, startBoundaryMs, endBoundaryMs)` —
 внутренний HTTP helper одной страницы: он проверяет uppercase symbol и
 положительные упорядоченные Unix-ms границы, затем вызывает public
