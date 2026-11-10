@@ -64,4 +64,3 @@ Scope остаётся чистым value/codec/replay. Этот этап не �
 - Ready for a new independent read-only review of all three current blobs. No reviewer
   launched here, no commit/push/PR performed; wait for parent review result and any
   separate publication grant.
-
