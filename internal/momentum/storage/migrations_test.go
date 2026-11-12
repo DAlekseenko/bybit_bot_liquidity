@@ -90,7 +90,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("4:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("5:1:%x:true", checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {

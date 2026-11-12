@@ -66,3 +66,11 @@ const momentumImportProgressSchema = `CREATE TABLE momentum.candle_import_progre
  PRIMARY KEY (environment,dataset_id,symbol,interval_code,lower_open,upper_open),
  FOREIGN KEY (environment,dataset_id) REFERENCES momentum.datasets(environment,dataset_id)
 );`
+
+const momentumSignalJournalSchema = `CREATE TABLE momentum.signal_batches (
+ batch_hash BYTEA PRIMARY KEY CHECK (pg_catalog.octet_length(batch_hash) = 32),
+ payload BYTEA NOT NULL CHECK (pg_catalog.octet_length(payload) > 0),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+   CHECK (isfinite(created_at) AND created_at >= TIMESTAMPTZ '1970-01-01 00:00+00'),
+ CHECK (batch_hash = pg_catalog.sha256(payload))
+);`

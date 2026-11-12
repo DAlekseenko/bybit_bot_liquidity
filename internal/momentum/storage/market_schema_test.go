@@ -1,14 +1,16 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
-// TestReferenceMigration проверяет upgrade v2, четыре checksum, repeat и отсутствие потери префикса.
+// TestReferenceMigration проверяет upgrade v2, пять checksum, repeat и отсутствие потери префикса.
 func TestReferenceMigration(t *testing.T) {
 	db := openTestPostgres(t)
 	migrationResult(t, migrateMomentumPostgres(context.Background(), db, []migrationSpec{{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}}), nil)
@@ -20,11 +22,11 @@ func TestReferenceMigration(t *testing.T) {
 	if !strings.Contains(migrationState(t, db), strings.Trim(prefix, "[]")) {
 		t.Fatal("upgrade changed committed v1/v2 checksum/timestamp")
 	}
-	for i, payload := range []string{momentumBootstrap, momentumMarketCandlesSchema, momentumMarketSchema, momentumImportProgressSchema} {
+	for i, payload := range []string{momentumBootstrap, momentumMarketCandlesSchema, momentumMarketSchema, momentumImportProgressSchema, momentumSignalJournalSchema} {
 		checksum := sha256.Sum256([]byte(payload))
 		migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", i+1), fmt.Sprintf("%x", checksum))
 	}
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "4")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "5")
 	migrationValue(t, db, "SELECT row_to_json(c)::text FROM momentum.candles c", saved)
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
@@ -156,7 +158,7 @@ func TestImportProgressMigration(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumImportProgressSchema))
 	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=4", fmt.Sprintf("%x", checksum))
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "4")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "5")
 	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.candles r", saved)
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
@@ -172,6 +174,109 @@ func TestImportProgressMigration(t *testing.T) {
 		t.Fatal("failed v4 changed prefix")
 	}
 	migrationValue(t, collision, "SELECT count(*) FROM information_schema.columns WHERE table_schema='momentum' AND table_name='candle_import_progress' AND column_name='owned_marker'", "1")
+}
+
+// TestSignalJournalMigration проверяет upgrade v4, данные, repeat и DDL collision.
+func TestSignalJournalMigration(t *testing.T) {
+	specs := []migrationSpec{{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema}, {4, momentumImportProgressSchema}}
+	db := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(context.Background(), db, specs), nil)
+	prefix := migrationState(t, db)
+	for _, query := range []string{
+		"INSERT INTO momentum.datasets VALUES('testnet','d','bybit_v5','linear',DEFAULT)",
+		"INSERT INTO momentum.candles VALUES('testnet','d','BTCUSDT','D','2026-01-01 00:00+00',1,2,0.5,1.5,0,true)",
+		"INSERT INTO momentum.mark_prices VALUES('testnet','d','BTCUSDT','D','2026-01-01 00:00+00',1,2,0.5,1.5,true)",
+		"INSERT INTO momentum.funding VALUES('testnet','d','BTCUSDT','2026-01-01 00:00+00',0)",
+		"INSERT INTO momentum.candle_import_progress(environment,dataset_id,symbol,interval_code,lower_open,upper_open,next_end) VALUES('testnet','d','BTCUSDT','D','2026-01-01 00:00+00','2026-01-04 00:00+00','2026-01-03 23:59:59.999+00')",
+	} {
+		marketStatement(t, db, query, true)
+	}
+	saved := make(map[string]string)
+	for _, table := range []string{"datasets", "candles", "mark_prices", "funding", "candle_import_progress"} {
+		saved[table] = migrationValue(t, db, "SELECT json_agg(r)::text FROM momentum."+table+" r")
+	}
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	if !strings.Contains(migrationState(t, db), strings.Trim(prefix, "[]")) {
+		t.Fatal("v5 changed applied v1-v4 prefix")
+	}
+	for table, want := range saved {
+		migrationValue(t, db, "SELECT json_agg(r)::text FROM momentum."+table+" r", want)
+	}
+	checksum := sha256.Sum256([]byte(momentumSignalJournalSchema))
+	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=5", fmt.Sprintf("%x", checksum))
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "5")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.signal_batches", "0")
+	payload := []byte{0, 255, '\n', '"', 128}
+	hash := sha256.Sum256(payload)
+	marketStatement(t, db, fmt.Sprintf("INSERT INTO momentum.signal_batches(batch_hash,payload) VALUES(decode('%x','hex'),decode('%x','hex'))", hash[:], payload), true)
+	journal := migrationValue(t, db, "SELECT row_to_json(r)::text FROM (SELECT *,xmin::text AS version,ctid::text AS locator FROM momentum.signal_batches) r")
+	before := migrationState(t, db)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	if migrationState(t, db) != before {
+		t.Fatal("repeat changed exact committed history")
+	}
+	migrationValue(t, db, "SELECT encode(payload,'hex') FROM momentum.signal_batches", fmt.Sprintf("%x", payload))
+	migrationValue(t, db, "SELECT row_to_json(r)::text FROM (SELECT *,xmin::text AS version,ctid::text AS locator FROM momentum.signal_batches) r", journal)
+	collision := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(context.Background(), collision, specs), nil)
+	before = migrationState(t, collision)
+	marketStatement(t, collision, "CREATE TABLE momentum.signal_batches(owned_marker TEXT)", true)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), collision), ErrMigration)
+	if migrationState(t, collision) != before {
+		t.Fatal("failed v5 changed v1-v4 prefix")
+	}
+	migrationValue(t, collision, "SELECT count(*) FROM information_schema.columns WHERE table_schema='momentum' AND table_name='signal_batches' AND column_name='owned_marker'", "1")
+}
+
+// TestSignalJournalSchema проверяет byte integrity/PK/time и границы семантики/WORM.
+func TestSignalJournalSchema(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	migrationValue(t, db, "SELECT count(*) FROM momentum.signal_batches", "0")
+	migrationValue(t, db, "SELECT count(*) FROM pg_extension WHERE extname='pgcrypto'", "0")
+	migrationValue(t, db, "SELECT encode(pg_catalog.sha256('abc'::bytea),'hex')", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+	payload := []byte{0, 255, '\n', '"', 128}
+	hash := sha256.Sum256(payload)
+	var defaulted bool
+	err := db.QueryRow(`INSERT INTO momentum.signal_batches(batch_hash,payload) VALUES($1,$2)
+ RETURNING created_at=CURRENT_TIMESTAMP AND isfinite(created_at)`, hash[:], payload).Scan(&defaulted)
+	migrationResult(t, err, nil)
+	if !defaulted {
+		t.Fatal("created_at did not use transaction timestamp")
+	}
+	var got []byte
+	migrationResult(t, db.QueryRow("SELECT payload FROM momentum.signal_batches WHERE batch_hash=$1", hash[:]).Scan(&got), nil)
+	if !bytes.Equal(got, payload) {
+		t.Fatal("binary payload changed, including NUL/non-UTF8")
+	}
+	snapshot := `SELECT row_to_json(r)::text FROM (SELECT encode(batch_hash,'hex') AS hash,
+ encode(payload,'hex') AS payload,created_at,xmin::text AS version,ctid::text AS locator FROM momentum.signal_batches) r`
+	before := migrationValue(t, db, snapshot)
+	marketStatement(t, db, "INSERT INTO momentum.signal_batches SELECT * FROM momentum.signal_batches", false)
+	marketStatement(t, db, "INSERT INTO momentum.signal_batches SELECT * FROM momentum.signal_batches ON CONFLICT(batch_hash) DO NOTHING", true)
+	migrationValue(t, db, snapshot, before)
+	for _, change := range []string{"batch_hash=NULL", "payload=NULL", "created_at=NULL",
+		"batch_hash=decode('','hex')", "batch_hash=decode(repeat('00',31),'hex')", "batch_hash=decode(repeat('00',33),'hex')",
+		"batch_hash=set_byte(batch_hash,0,get_byte(batch_hash,0)#1)", "payload=payload||decode('01','hex')",
+		"payload=''::bytea,batch_hash=pg_catalog.sha256(''::bytea)",
+		"created_at='infinity'", "created_at='-infinity'", "created_at='1969-12-31 23:59:59.999+00'", "created_at='294277-01-01 00:00+00'"} {
+		marketStatement(t, db, "UPDATE momentum.signal_batches SET "+change, false)
+	}
+	migrationValue(t, db, snapshot, before)
+	// SQL не проверяет JSON/93 inputs/source/replay и разрешает согласованный raw UPDATE.
+	marketStatement(t, db, "UPDATE momentum.signal_batches SET payload=decode('ff00','hex'),batch_hash=pg_catalog.sha256(decode('ff00','hex')),created_at='1970-01-01 00:00+00'", true)
+	migrationValue(t, db, "SELECT encode(payload,'hex') FROM momentum.signal_batches", "ff00")
+	marketStatement(t, db, "UPDATE momentum.signal_batches SET created_at='2099-01-01 00:00+00'", true)
+	conn, err := db.Conn(context.Background())
+	migrationResult(t, err, nil)
+	defer conn.Close()
+	marketStatement(t, conn, "SET TimeZone='Pacific/Honolulu'", true)
+	marketStatement(t, conn, "UPDATE momentum.signal_batches SET created_at='1970-01-01 03:00+03'", true)
+	var created time.Time
+	migrationResult(t, conn.QueryRowContext(context.Background(), "SELECT created_at FROM momentum.signal_batches").Scan(&created), nil)
+	if !created.Equal(time.Unix(0, 0)) {
+		t.Fatal("timestamp instant depended on session zone")
+	}
 }
 
 // TestImportProgressSchema проверяет все локальные ограничения и честную границу переходов.
