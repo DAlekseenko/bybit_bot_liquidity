@@ -134,7 +134,7 @@ merge/archive facts. Developer после публикации останавл�
    Один developer owner. Независимый reviewer проверяет с fresh context, read-only;
    он не редактирует, не stage/commit/push/PR и не делает self-review.
 4. Держите review в пределах 15 минут: не более 6 файлов, 250 production lines и
-   150 test lines. Если не помещается — designer сужает/делит контракт; бюджеты не
+   300 test lines. Если не помещается — designer сужает/делит контракт; бюджеты не
    ослаблять. Добавляйте или обновляйте тесты для изменённого поведения; явно
    перечисляйте пропущенные проверки. Для Go обязательно: gofmt, targeted tests, `go test ./...` и
    `go vet ./...`. Выполняйте также обязательные CI/docs проверки (build, race,
