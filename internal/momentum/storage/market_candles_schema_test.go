@@ -33,7 +33,7 @@ func TestMarketCandlesMigration(t *testing.T) {
 		checksum := sha256.Sum256([]byte(payload))
 		migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", i+1), fmt.Sprintf("%x", checksum))
 	}
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "5")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "6")
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != before {
