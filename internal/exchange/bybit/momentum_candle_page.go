@@ -29,26 +29,13 @@ func (c *Client) GetMomentumCandlePage(ctx context.Context, symbol, interval str
 	if startMs <= 0 || startMs%step != 0 || endMs < startMs {
 		return empty, fmt.Errorf("get momentum candle page: %w: invalid boundaries", ErrInvalidArgument)
 	}
-	if c.baseURL.Scheme != "https" || c.baseURL.User != nil || c.baseURL.Port() != "" || c.baseURL.Path != "" ||
-		c.baseURL.RawPath != "" || c.baseURL.RawQuery != "" || c.baseURL.ForceQuery || c.baseURL.Fragment != "" || c.baseURL.Opaque != "" {
-		return empty, fmt.Errorf("get momentum candle page: %w: unsupported source", ErrInvalidArgument)
-	}
-	var environment string
-	switch c.baseURL.Host {
-	case "api-testnet.bybit.com":
-		environment = "testnet"
-	case "api.bybit.com":
-		environment = "mainnet"
-	default:
-		return empty, fmt.Errorf("get momentum candle page: %w: unsupported source", ErrInvalidArgument)
+	reader, environment, err := c.momentumMarketPageReader()
+	if err != nil {
+		return empty, fmt.Errorf("get momentum candle page: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return empty, fmt.Errorf("get momentum candle page: %w", err)
 	}
-	reader := &Client{baseURL: c.baseURL, httpClient: &http.Client{
-		Transport: c.httpClient.Transport, Timeout: c.httpClient.Timeout,
-		CheckRedirect: rejectMomentumRedirect,
-	}}
 	query := url.Values{
 		"category": {linearCategory}, "symbol": {symbol}, "interval": {interval}, "limit": {"200"},
 		"start": {strconv.FormatInt(startMs-1, 10)}, "end": {strconv.FormatInt(endMs, 10)},
@@ -75,6 +62,27 @@ func (c *Client) GetMomentumCandlePage(ctx context.Context, symbol, interval str
 		Endpoint:   "https://" + c.baseURL.Host + "/v5/market/kline",
 		ServerTime: time.UnixMilli(serverMs).UTC(), Candles: candles,
 	}, nil
+}
+
+// momentumMarketPageReader допускает канонический origin и копирует только HTTP transport и timeout.
+func (c *Client) momentumMarketPageReader() (*Client, string, error) {
+	if c.baseURL.Scheme != "https" || c.baseURL.User != nil || c.baseURL.Port() != "" || c.baseURL.Path != "" ||
+		c.baseURL.RawPath != "" || c.baseURL.RawQuery != "" || c.baseURL.ForceQuery || c.baseURL.Fragment != "" || c.baseURL.Opaque != "" {
+		return nil, "", fmt.Errorf("%w: unsupported source", ErrInvalidArgument)
+	}
+	var environment string
+	switch c.baseURL.Host {
+	case "api-testnet.bybit.com":
+		environment = "testnet"
+	case "api.bybit.com":
+		environment = "mainnet"
+	default:
+		return nil, "", fmt.Errorf("%w: unsupported source", ErrInvalidArgument)
+	}
+	return &Client{baseURL: c.baseURL, httpClient: &http.Client{
+		Transport: c.httpClient.Transport, Timeout: c.httpClient.Timeout,
+		CheckRedirect: rejectMomentumRedirect,
+	}}, environment, nil
 }
 
 // rejectMomentumRedirect запрещает переход к другому источнику публичных данных.
