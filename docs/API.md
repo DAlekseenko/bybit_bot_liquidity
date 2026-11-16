@@ -65,6 +65,19 @@ canonical endpoint и UTC server time. Источник `api.bybit.com` здес
 пустой non-nil Candles; отсутствующий или null list и свечи за запрошенными
 границами дают ошибку без частичной страницы. Пустая страница сама по себе не
 доказывает полноту диапазона; пагинации и inference полноты этот метод не делает.
+`Client.GetMomentumFundingPage(ctx, symbol, startMs, endMs)` читает одну
+unsigned страницу истории funding через `GET /v5/market/funding/history` с
+`category=linear`, `limit=200` и обеими включительными Unix-ms границами. Символ
+проверяется как canonical `^[A-Z0-9]+USDT$`; `startMs` допускает 0, а `endMs`
+должен быть положительным и не меньше начала. Адаптер принимает только
+канонические HTTPS origins Bybit Testnet/Mainnet, передаёт только исходные
+transport и timeout, очищает credentials/cookie jar и отклоняет redirects.
+`model.FundingPage` хранит среду, endpoint, символ, точные UTC start/end/server
+времена и события с точной signed `model.Decimal` ставкой. Ответ валидируется
+целиком, сортируется по убыванию timestamp; пустой явный список остаётся пустым
+наблюдением, а не доказательством полноты диапазона. Пагинации и заполнения
+пропусков нет, операция не подключена к runtime.
+
 `Client.getDailyKlinePage(ctx, symbol, startBoundaryMs, endBoundaryMs)` —
 внутренний HTTP helper одной страницы: он проверяет uppercase symbol и
 положительные упорядоченные Unix-ms границы, затем вызывает public
