@@ -29,16 +29,14 @@ type CandleImportCheckpoint struct {
 	State    string
 }
 
-// AdvanceCandleImportPage атомарно готовит строки и новый курсор; Commit выполняет вызывающий код.
-func AdvanceCandleImportPage(ctx context.Context, tx *sql.Tx, key CandleImportWindow, expected CandleImportCheckpoint, page model.CandlePage) (next CandleImportCheckpoint, err error) {
-	if tx == nil {
-		return next, candleFailure(ctx, ErrCandleTx)
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+type lockedCandleImport struct {
+	CandleImportCheckpoint
+	width time.Duration
+	args  []any
+}
+
+// lockCandleImportCheckpoint блокирует точное задание и сверяет ожидаемое состояние.
+func lockCandleImportCheckpoint(ctx context.Context, tx *sql.Tx, key CandleImportWindow, expected CandleImportCheckpoint) (next lockedCandleImport, err error) {
 	step, keyErr := candleKey(key.Stream)
 	if keyErr != nil || !candleTime(key.LowerOpen, step) || !candleTime(key.UpperOpen, step) ||
 		!key.LowerOpen.Before(key.UpperOpen) || expected.Revision < 0 ||
@@ -76,18 +74,35 @@ func AdvanceCandleImportPage(ctx context.Context, tx *sql.Tx, key CandleImportWi
 	if (current.State != "pending" && current.State != "progress") || current.Revision == math.MaxInt64 {
 		return next, candleFailure(ctx, ErrCandleImportState)
 	}
-	oldest, valid := candleImportOldest(key, current.NextEnd, time.Duration(step)*time.Millisecond, page)
+	return lockedCandleImport{current, time.Duration(step) * time.Millisecond, args}, nil
+}
+
+// AdvanceCandleImportPage атомарно готовит строки и новый курсор; Commit выполняет вызывающий код.
+func AdvanceCandleImportPage(ctx context.Context, tx *sql.Tx, key CandleImportWindow, expected CandleImportCheckpoint, page model.CandlePage) (next CandleImportCheckpoint, err error) {
+	if tx == nil {
+		return next, candleFailure(ctx, ErrCandleTx)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	current, err := lockCandleImportCheckpoint(ctx, tx, key, expected)
+	if err != nil {
+		return next, err
+	}
+	oldest, valid := candleImportOldest(key, current.NextEnd, current.width, page)
 	if !valid {
 		return next, candleFailure(ctx, ErrCandleArgument)
 	}
-	if err := AppendCandlePage(ctx, tx, stream, page); err != nil {
+	if err := AppendCandlePage(ctx, tx, key.Stream, page); err != nil {
 		return next, err
 	}
 	candidate := CandleImportCheckpoint{Revision: current.Revision + 1, NextEnd: oldest.Add(-time.Millisecond).UTC(), State: "progress"}
 	if oldest.Equal(key.LowerOpen) {
 		candidate.State = "complete"
 	}
-	args = append(args, candidate.Revision, candidate.NextEnd, candidate.State, page.ServerTime.UTC())
+	args := append(current.args, candidate.Revision, candidate.NextEnd, candidate.State, page.ServerTime.UTC())
 	result, err := tx.ExecContext(ctx, `UPDATE momentum.candle_import_progress
 	 SET revision=$7,next_end=$8,state=$9,last_server_time=$10
 	 WHERE environment=$1 AND dataset_id=$2 AND symbol=$3 AND interval_code=$4
