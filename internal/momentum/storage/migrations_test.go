@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
+
 	"bybit_bot_liquidity/internal/momentum/config"
 )
 
@@ -93,7 +95,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("6:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("7:1:%x:true", checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -237,4 +239,118 @@ func TestConfigSnapshotSchema(t *testing.T) {
 	}
 	migrationValue(t, db, "SELECT count(*) FROM momentum.config_snapshots", "2")
 	migrationValue(t, db, "SELECT bool_and(isfinite(created_at)) FROM momentum.config_snapshots", "true")
+}
+
+// TestRebalanceRunMigration проверяет новый суффикс и сохранность префикса со снимком.
+func TestRebalanceRunMigration(t *testing.T) {
+	ctx := context.Background()
+	prefix := []migrationSpec{
+		{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema},
+		{4, momentumImportProgressSchema}, {5, momentumSignalJournalSchema}, {6, momentumConfigSnapshotSchema},
+	}
+	db := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(ctx, db, prefix), nil)
+	oldHistory := migrationState(t, db)
+	marketStatement(t, db, "INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES(sha256('kept'::bytea),'kept'::bytea)", true)
+	snapshot := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.config_snapshots r")
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	migrationValue(t, db, `SELECT json_agg(r ORDER BY version)::text FROM (
+ SELECT version,encode(checksum,'hex') AS checksum,applied_at FROM momentum.schema_migrations WHERE version<=6) r`, oldHistory)
+	checksum := sha256.Sum256([]byte(momentumRebalanceRunSchema))
+	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=7", fmt.Sprintf("%x", checksum))
+	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.config_snapshots r", snapshot)
+	migrationValue(t, db, "SELECT count(*) FROM momentum.rebalance_runs", "0")
+	after := migrationState(t, db)
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	if migrationState(t, db) != after {
+		t.Fatal("repeat changed the committed migration history")
+	}
+
+	collision := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(ctx, collision, prefix), nil)
+	before := migrationState(t, collision)
+	marketStatement(t, collision, "CREATE FUNCTION momentum.reject_rebalance_run_mutation() RETURNS int LANGUAGE SQL AS 'SELECT 5'", true)
+	migrationResult(t, MigrateMomentumPostgres(ctx, collision), ErrMigration)
+	if migrationState(t, collision) != before {
+		t.Fatal("failed migration changed the committed prefix")
+	}
+	migrationValue(t, collision, "SELECT to_regclass('momentum.rebalance_runs') IS NULL", "true")
+	migrationValue(t, collision, "SELECT momentum.reject_rebalance_run_mutation()", "5")
+}
+
+// TestRebalanceRunSchema проверяет ключи, целостность и запрет мутации записи запуска.
+func TestRebalanceRunSchema(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	marketStatement(t, db, `INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES
+ (sha256('profile-a'::bytea),'profile-a'::bytea), (sha256('profile-b'::bytea),'profile-b'::bytea)`, true)
+	const insert = "INSERT INTO momentum.rebalance_runs(run_id,account_id,strategy_id,scheduled_at,onboarding_id,config_hash) VALUES "
+	const insertCreated = "INSERT INTO momentum.rebalance_runs(run_id,account_id,strategy_id,scheduled_at,onboarding_id,config_hash,created_at) VALUES "
+	const at = "'2026-11-16 00:00:00.123456+00'"
+	const a = "sha256('profile-a'::bytea)"
+	const b = "sha256('profile-b'::bytea)"
+	marketStatement(t, db, insert+"('weekly','account','strategy',"+at+",NULL,"+a+")", true)
+	runSchemaSQLState(t, db, "23505", insert+"('different-id','account','strategy','2026-11-16 03:00:00.123456+03',NULL,"+b+")")
+	for _, tc := range []struct{ state, values string }{
+		{"23505", "('weekly','other','strategy'," + at + ",NULL," + a + ")"},
+		{"23503", "('missing-snapshot','account','strategy'," + at + ",'missing',sha256('absent'::bytea))"},
+		{"23502", "('null-hash','account','strategy'," + at + ",'bad-hash',NULL)"},
+		{"23503", "('bad-digest','account','strategy'," + at + ",'bad-digest','x'::bytea)"},
+		{"23514", "('','account','strategy'," + at + ",'bad-run'," + a + ")"},
+		{"23502", "(NULL,'account','strategy'," + at + ",NULL," + a + ")"},
+		{"23514", "('blank-account',E'\t','strategy'," + at + ",'bad-account'," + a + ")"},
+		{"23514", "('blank-strategy','account',' ', " + at + ",'bad-strategy'," + a + ")"},
+		{"23514", "('blank-onboarding','account','strategy'," + at + ",E'\n'," + a + ")"},
+		{"23502", "('null-account',NULL,'strategy'," + at + ",'null-account'," + a + ")"},
+		{"23502", "('null-strategy','account',NULL," + at + ",'null-strategy'," + a + ")"},
+		{"23502", "('null-time','account','strategy',NULL,'null-time'," + a + ")"},
+		{"23514", "('infinity','account','strategy','infinity','infinity'," + a + ")"},
+		{"23514", "('before','account','strategy','1969-12-31 23:59:59+00','before'," + a + ")"},
+	} {
+		runSchemaSQLState(t, db, tc.state, insert+tc.values)
+	}
+	for _, tc := range []struct{ state, values string }{
+		{"23502", "('null-created','account','strategy'," + at + ",NULL," + a + ",NULL)"},
+		{"23514", "('infinite-created','account','strategy'," + at + ",NULL," + a + ",'infinity')"},
+		{"23514", "('early-created','account','strategy'," + at + ",NULL," + a + ",'1969-12-31 23:59:59+00')"},
+	} {
+		runSchemaSQLState(t, db, tc.state, insertCreated+tc.values)
+	}
+	marketStatement(t, db, insert+"('other-account','other','strategy',"+at+",NULL,"+a+")", true)
+	marketStatement(t, db, insert+"('other-strategy','account','other',"+at+",NULL,"+a+")", true)
+	marketStatement(t, db, insert+"('now','account','strategy',"+at+",'onboard',"+a+")", true)
+	runSchemaSQLState(t, db, "23505", insert+"('now-retry','account','strategy','2026-11-17 01:00:00+00','onboard',"+b+")")
+	marketStatement(t, db, insert+"('other-onboard','other','strategy',"+at+",'onboard',"+a+")", true)
+	marketStatement(t, db, insert+"('  Arbitrary ID  ',' Account ','Strategy/β',"+at+",'  Onboard ID  ',"+a+")", true)
+	migrationValue(t, db, "SELECT run_id='  Arbitrary ID  ' AND account_id=' Account ' AND strategy_id='Strategy/β' AND onboarding_id='  Onboard ID  ' FROM momentum.rebalance_runs WHERE run_id='  Arbitrary ID  '", "true")
+	original := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.rebalance_runs r WHERE run_id='now'")
+	for _, statement := range []string{
+		"UPDATE momentum.rebalance_runs SET config_hash=" + b + " WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET scheduled_at=scheduled_at + INTERVAL '1 day' WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET onboarding_id=NULL WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET run_id=run_id WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET account_id=account_id WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET strategy_id=strategy_id WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET scheduled_at=scheduled_at WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET onboarding_id=onboarding_id WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET config_hash=config_hash WHERE run_id='now'",
+		"UPDATE momentum.rebalance_runs SET created_at=created_at WHERE run_id='now'",
+		"DELETE FROM momentum.rebalance_runs WHERE run_id='now'",
+	} {
+		runSchemaSQLState(t, db, "55000", statement)
+	}
+	runSchemaSQLState(t, db, "23503", "DELETE FROM momentum.config_snapshots WHERE config_hash="+a)
+	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.rebalance_runs r WHERE run_id='now'", original)
+	migrationValue(t, db, "SELECT scheduled_at="+at+"::timestamptz AND config_hash="+a+" AND onboarding_id='onboard' AND isfinite(created_at) FROM momentum.rebalance_runs WHERE run_id='now'", "true")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.rebalance_runs", "6")
+}
+
+// runSchemaSQLState проверяет конкретное серверное ограничение для корректного SQL.
+func runSchemaSQLState(t *testing.T, db *sql.DB, want, statement string) {
+	t.Helper()
+	_, err := db.ExecContext(context.Background(), statement)
+	var pgErr *pq.Error
+	if !errors.As(err, &pgErr) || string(pgErr.Code) != want {
+		t.Fatalf("expected SQLSTATE %s, got %v", want, err)
+	}
 }
