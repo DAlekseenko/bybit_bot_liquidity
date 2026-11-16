@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"bybit_bot_liquidity/internal/momentum/config"
 )
 
 // migrationValue читает scalar и при указанном ожидании сразу сверяет его.
@@ -90,7 +93,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("5:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("6:1:%x:true", checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -147,4 +150,91 @@ func TestMigrationRejections(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestConfigSnapshotMigration проверяет применение нового суффикса без потери ранее записанного.
+func TestConfigSnapshotMigration(t *testing.T) {
+	ctx := context.Background()
+	prefix := []migrationSpec{
+		{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema},
+		{4, momentumImportProgressSchema}, {5, momentumSignalJournalSchema},
+	}
+	db := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(ctx, db, prefix), nil)
+	history := migrationState(t, db)
+	marketStatement(t, db, "INSERT INTO momentum.signal_batches(batch_hash,payload) VALUES(sha256('kept'::bytea),'kept'::bytea)", true)
+	saved := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.signal_batches r")
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	migrationValue(t, db, `SELECT json_agg(r ORDER BY version)::text FROM (
+ SELECT version,encode(checksum,'hex') AS checksum,applied_at FROM momentum.schema_migrations WHERE version<=5) r`, history)
+	checksum := sha256.Sum256([]byte(momentumConfigSnapshotSchema))
+	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=6", fmt.Sprintf("%x", checksum))
+	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.signal_batches r", saved)
+	migrationValue(t, db, "SELECT count(*) FROM momentum.config_snapshots", "0")
+	after := migrationState(t, db)
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	if migrationState(t, db) != after {
+		t.Fatal("repeat changed the committed migration history")
+	}
+
+	collision := openTestPostgres(t)
+	migrationResult(t, migrateMomentumPostgres(ctx, collision, prefix), nil)
+	before := migrationState(t, collision)
+	marketStatement(t, collision, "CREATE TABLE momentum.config_snapshots(owned_marker TEXT); INSERT INTO momentum.config_snapshots VALUES ('kept')", true)
+	migrationResult(t, MigrateMomentumPostgres(ctx, collision), ErrMigration)
+	if migrationState(t, collision) != before {
+		t.Fatal("failed migration changed the committed prefix")
+	}
+	migrationValue(t, collision, "SELECT owned_marker FROM momentum.config_snapshots", "kept")
+}
+
+// TestConfigSnapshotSchema проверяет точное сохранение снимка и локальные ограничения целостности.
+func TestConfigSnapshotSchema(t *testing.T) {
+	ctx := context.Background()
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	raw, err := os.ReadFile("../../../configs/momentum.paper.yaml")
+	migrationResult(t, err, nil)
+	for _, document := range []string{string(raw), strings.Replace(string(raw), "next_monday", "now", 1)} {
+		parsed, err := config.Parse([]byte(document))
+		migrationResult(t, err, nil)
+		payload, digest, err := parsed.Snapshot()
+		migrationResult(t, err, nil)
+		key, err := hex.DecodeString(digest)
+		migrationResult(t, err, nil)
+		_, err = db.ExecContext(ctx, "INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES($1,$2)", key, payload)
+		migrationResult(t, err, nil)
+		var stored []byte
+		err = db.QueryRowContext(ctx, "SELECT payload FROM momentum.config_snapshots WHERE config_hash=$1", key).Scan(&stored)
+		migrationResult(t, err, nil)
+		if string(stored) != string(payload) {
+			t.Fatal("snapshot bytes changed")
+		}
+		reparsed, err := config.Parse(stored)
+		migrationResult(t, err, nil)
+		_, again, err := reparsed.Snapshot()
+		migrationResult(t, err, nil)
+		if again != digest {
+			t.Fatal("snapshot hash changed on reparse")
+		}
+		_, err = db.ExecContext(ctx, "INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES($1,$2)", key, payload)
+		if err == nil {
+			t.Fatal("duplicate config hash inserted")
+		}
+	}
+	for _, values := range []string{
+		"(NULL,'new'::bytea,DEFAULT)",
+		"('x'::bytea,'new'::bytea,DEFAULT)",
+		"(sha256('different'::bytea),'new'::bytea,DEFAULT)",
+		"(sha256(''::bytea),''::bytea,DEFAULT)",
+		"(sha256('new'::bytea),NULL,DEFAULT)",
+		"(sha256('new'::bytea),'new'::bytea,NULL)",
+		"(sha256('new'::bytea),'new'::bytea,'infinity')",
+		"(sha256('new'::bytea),'new'::bytea,'-infinity')",
+		"(sha256('new'::bytea),'new'::bytea,'1969-12-31 23:59:59+00')",
+	} {
+		marketStatement(t, db, "INSERT INTO momentum.config_snapshots VALUES "+values, false)
+	}
+	migrationValue(t, db, "SELECT count(*) FROM momentum.config_snapshots", "2")
+	migrationValue(t, db, "SELECT bool_and(isfinite(created_at)) FROM momentum.config_snapshots", "true")
 }
