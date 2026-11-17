@@ -74,19 +74,66 @@ func BlockCandleImport(ctx context.Context, tx *sql.Tx, key CandleImportWindow, 
 
 // candleImportBlockObservation сверяет заявленную причину с источником или точной границей эпохи.
 func candleImportBlockObservation(key CandleImportWindow, current lockedCandleImport, reason CandleImportBlockReason, observation *CandleImportPageObservation) (time.Time, bool) {
-	if reason == CandleImportBlockSourceBoundary {
-		return time.Time{}, observation == nil && key.LowerOpen.UnixMilli() == 0 && current.State == "pending" &&
-			current.NextEnd.Equal(key.UpperOpen.Add(-time.Millisecond))
+	observed, known, valid := classifyCandleImportObservation(key, current, observation)
+	return observed, valid && known != "" && reason == known
+}
+
+// ApplyCandleImportObservation выбирает и применяет один переход по проверенному наблюдению.
+func ApplyCandleImportObservation(ctx context.Context, tx *sql.Tx, key CandleImportWindow, expected CandleImportCheckpoint, observation *CandleImportPageObservation) (next CandleImportCheckpoint, reason CandleImportBlockReason, err error) {
+	if tx == nil {
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		return next, reason, candleFailure(ctx, ErrCandleTx)
 	}
-	if observation == nil || observation.Symbol != key.Stream.Symbol || observation.IntervalCode != key.Stream.IntervalCode ||
+	if ctx == nil {
+		_ = tx.Rollback()
+		return next, reason, candleFailure(context.Background(), ErrCandleArgument)
+	}
+	step, keyErr := candleKey(key.Stream)
+	if keyErr != nil {
+		_, err = BlockCandleImport(ctx, tx, key, expected, "", observation)
+		return next, reason, err
+	}
+	current := lockedCandleImport{CandleImportCheckpoint: expected, width: time.Duration(step) * time.Millisecond}
+	_, reason, valid := classifyCandleImportObservation(key, current, observation)
+	if !valid {
+		_, err = BlockCandleImport(ctx, tx, key, expected, "", observation)
+		return next, "", err
+	}
+	if reason == "" {
+		advanced, err := AdvanceCandleImportPage(ctx, tx, key, expected, observation.Page)
+		if err != nil {
+			return CandleImportCheckpoint{}, "", err
+		}
+		return advanced, "", nil
+	}
+	blocked, err := BlockCandleImport(ctx, tx, key, expected, reason, observation)
+	if err != nil {
+		return CandleImportCheckpoint{}, "", err
+	}
+	return blocked, reason, nil
+}
+
+// classifyCandleImportObservation проверяет evidence и выводит единственный переход.
+func classifyCandleImportObservation(key CandleImportWindow, current lockedCandleImport, observation *CandleImportPageObservation) (time.Time, CandleImportBlockReason, bool) {
+	if observation == nil {
+		validEpoch := key.LowerOpen.UnixMilli() == 0 && current.State == "pending" &&
+			current.NextEnd.Equal(key.UpperOpen.Add(-time.Millisecond))
+		if validEpoch {
+			return time.Time{}, CandleImportBlockSourceBoundary, true
+		}
+		return time.Time{}, "", false
+	}
+	if observation.Symbol != key.Stream.Symbol || observation.IntervalCode != key.Stream.IntervalCode ||
 		!observation.Start.Equal(key.LowerOpen) || !observation.End.Equal(current.NextEnd) || key.LowerOpen.UnixMilli() == 0 {
-		return time.Time{}, false
+		return time.Time{}, "", false
 	}
 	page := observation.Page
 	if page.Candles == nil || len(page.Candles) > 200 || page.Environment != key.Stream.Environment ||
 		page.Source != "bybit_v5" || page.Category != "linear" || !candlePageOrigin(page) ||
 		!candleTime(page.ServerTime, 1) || page.ServerTime.UnixMilli() == 0 {
-		return time.Time{}, false
+		return time.Time{}, "", false
 	}
 	expected := current.NextEnd.Add(time.Millisecond - current.width)
 	var gap bool
@@ -97,22 +144,22 @@ func candleImportBlockObservation(key CandleImportWindow, current lockedCandleIm
 			open.After(current.NextEnd) || open.After(page.ServerTime) ||
 			(i > 0 && !open.Before(page.Candles[i-1].OpenTime)) ||
 			row.Confirmed != !page.ServerTime.Before(open.Add(current.width)) {
-			return time.Time{}, false
+			return time.Time{}, "", false
 		}
 		if _, err := candleWriteValues(row); err != nil {
-			return time.Time{}, false
+			return time.Time{}, "", false
 		}
 		gap = gap || !open.Equal(expected)
 		expected = open.Add(-current.width)
 	}
-	var known CandleImportBlockReason
 	switch {
 	case page.ServerTime.Before(key.UpperOpen):
-		known = CandleImportBlockUnconfirmed
+		return page.ServerTime, CandleImportBlockUnconfirmed, true
 	case len(page.Candles) == 0:
-		known = CandleImportBlockEmpty
+		return page.ServerTime, CandleImportBlockEmpty, true
 	case gap:
-		known = CandleImportBlockGap
+		return page.ServerTime, CandleImportBlockGap, true
+	default:
+		return page.ServerTime, "", true
 	}
-	return page.ServerTime, known != "" && reason == known
 }
