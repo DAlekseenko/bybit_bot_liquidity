@@ -78,6 +78,27 @@ transport и timeout, очищает credentials/cookie jar и отклоняе�
 наблюдением, а не доказательством полноты диапазона. Пагинации и заполнения
 пропусков нет, операция не подключена к runtime.
 
+`Client.GetMomentumMarkPricePage(ctx, symbol, interval, startMs, endMs)` загружает
+одну unsigned страницу `GET /v5/market/mark-price-kline` с `category=linear`,
+`limit=200` и включительными Unix-ms границами. Принимаются canonical
+`^[A-Z0-9]+USDT$`, интервалы `D` и `60`, положительное выровненное по UTC
+начало и конец `>= startMs`, который может быть невыровненным. В запросе обе
+границы передаются напрямую. Используются только canonical HTTPS origins
+Bybit Testnet/Mainnet, исходные transport и timeout; credentials, cookie jar и
+redirect policy не наследуются, redirects запрещены. `model.MarkPricePage`
+содержит environment, source, category, endpoint, symbol, interval и точные UTC
+границы запроса и ответа. Ответ целиком проверяется на identity, список 0–200
+строк по пять полей, положительный серверный timestamp и строго убывающие
+уникальные UTC bucket timestamps внутри границ и не позже server time.
+Положительные цены сохраняются в точном `model.Decimal`; проверяются OHLC
+границы. `Confirmed` вычисляется по серверному времени, в том числе свеча
+считается закрытой ровно на границе следующего bucket. Открытая свеча явно
+остаётся с `Confirmed=false`. Явный `list: []` — успешное пустое наблюдение с
+полным provenance; отсутствующий/null список или любая ошибка строки возвращают
+нулевую страницу без частичного результата. Пропуски сохраняются по исходным
+timestamp. Пагинация и вывод о historical coverage отсутствуют, метод не
+подключён к runtime.
+
 `Client.getDailyKlinePage(ctx, symbol, startBoundaryMs, endBoundaryMs)` —
 внутренний HTTP helper одной страницы: он проверяет uppercase symbol и
 положительные упорядоченные Unix-ms границы, затем вызывает public
