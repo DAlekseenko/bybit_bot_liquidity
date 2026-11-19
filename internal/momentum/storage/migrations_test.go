@@ -17,6 +17,7 @@ import (
 	"github.com/lib/pq"
 
 	"bybit_bot_liquidity/internal/momentum/config"
+	"bybit_bot_liquidity/internal/momentum/model"
 )
 
 // migrationValue читает scalar и при указанном ожидании сразу сверяет его.
@@ -95,7 +96,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("7:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("8:1:%x:true", checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -352,5 +353,177 @@ func runSchemaSQLState(t *testing.T, db *sql.DB, want, statement string) {
 	var pgErr *pq.Error
 	if !errors.As(err, &pgErr) || string(pgErr.Code) != want {
 		t.Fatalf("expected SQLSTATE %s, got %v", want, err)
+	}
+}
+
+// TestPlanRevisionMigration сохраняет прежнюю историю и откатывает неудачный суффикс.
+func TestPlanRevisionMigration(t *testing.T) {
+	ctx := context.Background()
+	prefix := []migrationSpec{
+		{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema},
+		{4, momentumImportProgressSchema}, {5, momentumSignalJournalSchema}, {6, momentumConfigSnapshotSchema},
+		{7, momentumRebalanceRunSchema},
+	}
+	for _, fail := range []bool{false, true} {
+		db := openTestPostgres(t)
+		migrationResult(t, migrateMomentumPostgres(ctx, db, prefix), nil)
+		before := migrationState(t, db)
+		planSchemaRuns(t, db)
+		rows := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.rebalance_runs r WHERE run_id='run'")
+		config := migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.config_snapshots r")
+		if fail {
+			marketStatement(t, db, "CREATE FUNCTION momentum.reject_plan_revision_mutation() RETURNS int LANGUAGE SQL AS 'SELECT 17'", true)
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), ErrMigration)
+			migrationValue(t, db, "SELECT to_regclass('momentum.plan_revisions') IS NULL", "true")
+			migrationValue(t, db, "SELECT momentum.reject_plan_revision_mutation()", "17")
+			if migrationState(t, db) != before {
+				t.Fatal("failed suffix changed history")
+			}
+		} else {
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+			checksum := sha256.Sum256([]byte(momentumPlanRevisionSchema))
+			migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=8", fmt.Sprintf("%x", checksum))
+			migrationValue(t, db, "SELECT count(*) FROM momentum.plan_revisions", "0")
+			migrationValue(t, db, `SELECT json_agg(r ORDER BY version)::text FROM (
+ SELECT version,encode(checksum,'hex') AS checksum,applied_at FROM momentum.schema_migrations WHERE version<=7) r`, before)
+			after := migrationState(t, db)
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+			if migrationState(t, db) != after {
+				t.Fatal("repeat changed committed history")
+			}
+		}
+		migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.rebalance_runs r WHERE run_id='run'", rows)
+		migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.config_snapshots r", config)
+	}
+}
+
+// planSchemaRuns создаёт независимые запуски с действующим снимком конфигурации.
+func planSchemaRuns(t *testing.T, db *sql.DB) {
+	t.Helper()
+	marketStatement(t, db, "INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES(sha256('cfg'::bytea),'cfg'::bytea)", true)
+	marketStatement(t, db, `INSERT INTO momentum.rebalance_runs(run_id,account_id,strategy_id,scheduled_at,config_hash) VALUES
+ ('run','account','strategy','2026-01-01+00',sha256('cfg'::bytea)),
+ ('other','other-account','strategy','2026-01-01+00',sha256('cfg'::bytea))`, true)
+}
+
+// TestPlanRevisionSchema проверяет цепочку, digest и неизменность каждой колонки.
+func TestPlanRevisionSchema(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	planSchemaRuns(t, db)
+	const insert = "INSERT INTO momentum.plan_revisions(run_id,revision,plan_hash,previous_hash,payload,payload_sha256) VALUES "
+	const h = "sha256('one'::bytea)"
+	const p = "'payload'::bytea"
+	const digest = "sha256('payload'::bytea)"
+	marketStatement(t, db, insert+"('run',1,"+h+",NULL,"+p+","+digest+")", true)
+	marketStatement(t, db, insert+"('run',2,sha256('two'::bytea),"+h+","+p+","+digest+")", true)
+	marketStatement(t, db, insert+"('run',3,sha256('three'::bytea),sha256('two'::bytea),"+p+","+digest+")", true)
+	migrationValue(t, db, "SELECT string_agg(revision::text,',' ORDER BY revision) FROM momentum.plan_revisions", "1,2,3")
+	migrationValue(t, db, "SELECT bool_and(isfinite(created_at) AND created_at >= '1970-01-01+00') FROM momentum.plan_revisions", "true")
+	for _, tc := range []struct{ code, values string }{
+		{"23505", "('run',1," + h + ",NULL," + p + "," + digest + ")"},
+		{"23503", "('missing',1," + h + ",NULL," + p + "," + digest + ")"},
+		{"23503", "('other',2,sha256('two'::bytea)," + h + "," + p + "," + digest + ")"},
+		{"23503", "('run',4,sha256('four'::bytea)," + h + "," + p + "," + digest + ")"},
+		{"23503", "('run',5,sha256('five'::bytea),sha256('three'::bytea)," + p + "," + digest + ")"},
+		{"23514", "('other',1," + h + "," + h + "," + p + "," + digest + ")"},
+		{"23514", "('other',2," + h + ",NULL," + p + "," + digest + ")"},
+		{"23514", "('other',2," + h + ",'bad'::bytea," + p + "," + digest + ")"},
+		{"23514", "('other',1,'bad'::bytea,NULL," + p + "," + digest + ")"},
+		{"23514", "('other',1," + h + ",NULL,''::bytea,sha256(''::bytea))"},
+		{"23514", "('other',1," + h + ",NULL," + p + ",'bad'::bytea)"},
+		{"23514", "('other',1," + h + ",NULL," + p + "," + h + ")"},
+		{"23502", "(NULL,1," + h + ",NULL," + p + "," + digest + ")"},
+		{"23502", "('other',NULL," + h + ",NULL," + p + "," + digest + ")"},
+		{"23502", "('other',1,NULL,NULL," + p + "," + digest + ")"},
+		{"23502", "('other',1," + h + ",NULL,NULL," + digest + ")"},
+		{"23502", "('other',1," + h + ",NULL," + p + ",NULL)"},
+	} {
+		runSchemaSQLState(t, db, tc.code, insert+tc.values)
+	}
+	marketStatement(t, db, insert+"('other',1,"+h+",NULL,"+p+","+digest+")", true)
+	marketStatement(t, db, insert+"('other',2,sha256('two'::bytea),"+h+","+p+","+digest+")", true)
+	before := migrationValue(t, db, "SELECT json_agg(r ORDER BY run_id,revision)::text FROM (SELECT *,xmin::text FROM momentum.plan_revisions) r")
+	for _, column := range []string{"run_id", "revision", "plan_hash", "previous_hash", "payload", "payload_sha256", "created_at"} {
+		runSchemaSQLState(t, db, "55000", "UPDATE momentum.plan_revisions SET "+column+"="+column+" WHERE run_id='run' AND revision=1")
+	}
+	for _, set := range []string{"revision=4", "run_id='changed'", "plan_hash=sha256('changed'::bytea)", "payload='changed'::bytea",
+		"payload_sha256=sha256('changed'::bytea)", "previous_hash=sha256('changed'::bytea)", "created_at='2030-01-01+00'"} {
+		runSchemaSQLState(t, db, "55000", "UPDATE momentum.plan_revisions SET "+set+" WHERE run_id='run' AND revision=1")
+	}
+	runSchemaSQLState(t, db, "55000", "DELETE FROM momentum.plan_revisions WHERE run_id='run'")
+	runSchemaSQLState(t, db, "55000", "DELETE FROM momentum.rebalance_runs WHERE run_id='run'")
+	migrationValue(t, db, "SELECT json_agg(r ORDER BY run_id,revision)::text FROM (SELECT *,xmin::text FROM momentum.plan_revisions) r", before)
+}
+
+// TestPlanRevisionBounds проверяет реальные CHECK на полном uint64 без цепочки из миллиардов строк.
+func TestPlanRevisionBounds(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	db.SetMaxOpenConns(1)
+	marketStatement(t, db, "CREATE TEMP TABLE revision_bounds (LIKE momentum.plan_revisions INCLUDING DEFAULTS INCLUDING GENERATED INCLUDING CONSTRAINTS)", true)
+	const insert = "INSERT INTO revision_bounds(run_id,revision,plan_hash,previous_hash,payload,payload_sha256,created_at) VALUES "
+	const rest = ",sha256('plan'::bytea),sha256('previous'::bytea),'p'::bytea,sha256('p'::bytea),"
+	marketStatement(t, db, insert+"('run',18446744073709551615"+rest+"'1970-01-01+00')", true)
+	migrationValue(t, db, "SELECT revision::text || ':' || predecessor_revision::text FROM revision_bounds", "18446744073709551615:18446744073709551614")
+	for _, revision := range []string{"0", "-1", "1.1", "18446744073709551615.1", "18446744073709551616", "'NaN'", "'Infinity'", "'-Infinity'"} {
+		runSchemaSQLState(t, db, "23514", insert+"('bad',"+revision+rest+"'1970-01-01+00')")
+	}
+	for _, timestamp := range []string{"'infinity'", "'-infinity'", "'1969-12-31 23:59:59.999999+00'"} {
+		runSchemaSQLState(t, db, "23514", insert+"('bad',2"+rest+timestamp+")")
+	}
+	runSchemaSQLState(t, db, "23502", insert+"('bad',2"+rest+"NULL)")
+	runSchemaSQLState(t, db, "428C9", "INSERT INTO revision_bounds(run_id,revision,predecessor_revision,plan_hash,payload,payload_sha256) VALUES('bad',1,99,sha256('h'::bytea),'p'::bytea,sha256('p'::bytea))")
+}
+
+// TestPlanRevisionCodec сохраняет точные канонические байты и три реальные ревизии.
+func TestPlanRevisionCodec(t *testing.T) {
+	db := openTestPostgres(t)
+	ctx := context.Background()
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	planSchemaRuns(t, db)
+	one, err := model.ParseAmount("1")
+	migrationResult(t, err, nil)
+	three, err := model.ParseAmount("3")
+	migrationResult(t, err, nil)
+	third, err := one.Quo(three)
+	migrationResult(t, err, nil)
+	stamp := time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.UTC)
+	snapshot, err := model.NewPortfolioSnapshot(model.SnapshotInput{
+		Environment: "paper", AccountID: "account", ConfigVersion: "v1", CapturedAt: stamp,
+		Equity: third, Prices: map[string]model.Decimal{"BTCUSDT": one}, Positions: map[string]model.Decimal{},
+	})
+	migrationResult(t, err, nil)
+	previous := ""
+	for revision := uint64(1); revision <= 3; revision++ {
+		plan, err := model.NewTradePlan(model.PlanInput{Snapshot: snapshot,
+			Metadata: model.PlanMetadata{StrategyID: "strategy", RunID: "run", ProfileID: "opaque\x00\xff", ModelID: "model", FormulaID: "formula",
+				ConfigHash: fmt.Sprintf("%x", sha256.Sum256([]byte("cfg"))), ScheduledAt: stamp, EquityCutoffAt: stamp,
+				Revision: revision, PreviousHash: previous}, Targets: []model.Target{{Symbol: "BTCUSDT", Quantity: third}}})
+		migrationResult(t, err, nil)
+		payload, err := model.EncodeTradePlan(plan)
+		migrationResult(t, err, nil)
+		hash, err := hex.DecodeString(plan.Hash())
+		migrationResult(t, err, nil)
+		var predecessor any
+		if previous != "" {
+			predecessor, err = hex.DecodeString(previous)
+			migrationResult(t, err, nil)
+		}
+		digest := sha256.Sum256(payload)
+		_, err = db.ExecContext(ctx, `INSERT INTO momentum.plan_revisions(run_id,revision,plan_hash,previous_hash,payload,payload_sha256)
+ VALUES($1,$2,$3,$4,$5,$6)`, "run", revision, hash, predecessor, payload, digest[:])
+		migrationResult(t, err, nil)
+		var stored []byte
+		err = db.QueryRowContext(ctx, "SELECT payload FROM momentum.plan_revisions WHERE run_id=$1 AND revision=$2", "run", revision).Scan(&stored)
+		migrationResult(t, err, nil)
+		decoded, err := model.DecodeTradePlan(stored)
+		migrationResult(t, err, nil)
+		comparison, compareErr := decoded.Targets()[0].Quantity.Cmp(third)
+		if string(stored) != string(payload) || decoded.Hash() != plan.Hash() || decoded.Metadata() != plan.Metadata() ||
+			decoded.Snapshot().Hash() != snapshot.Hash() || comparison != 0 || compareErr != nil {
+			t.Fatal("durable plan lost exact metadata, snapshot or rational targets")
+		}
+		previous = plan.Hash()
 	}
 }
