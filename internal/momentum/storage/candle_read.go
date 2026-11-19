@@ -80,8 +80,43 @@ func ReadCandleRange(ctx context.Context, db *sql.DB, key CandleStream, start, e
 		return nil, candleFailure(ctx, nil)
 	}
 	defer tx.Rollback()
+	result, err := readCandleRange(ctx, tx, key, start, end, limit, step)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, candleFailure(ctx, nil)
+	}
+	return result, nil
+}
+
+// ReadCandleRangeTx читает диапазон в общей RR READ ONLY транзакции без commit/rollback.
+func ReadCandleRangeTx(ctx context.Context, tx *sql.Tx, key CandleStream, start, end time.Time, limit int) ([]StoredCandle, error) {
+	if ctx == nil {
+		return nil, errors.Join(ErrCandles, ErrCandleArgument)
+	}
+	step, err := candleKey(key)
+	if err != nil || tx == nil || limit < 1 || limit > 200 || !candleTime(start, step) ||
+		!candleTime(end, step) || !start.Before(end) {
+		return nil, candleFailure(ctx, ErrCandleArgument)
+	}
+	if ctx.Err() != nil {
+		return nil, candleFailure(ctx, nil)
+	}
+	valid, err := readSnapshotMode(ctx, tx)
+	if err != nil {
+		return nil, candleFailure(ctx, nil)
+	}
+	if !valid {
+		return nil, candleFailure(ctx, ErrCandleArgument)
+	}
+	return readCandleRange(ctx, tx, key, start, end, limit, step)
+}
+
+// readCandleRange выполняет общую SQL-проекцию без управления транзакцией.
+func readCandleRange(ctx context.Context, tx *sql.Tx, key CandleStream, start, end time.Time, limit int, step int64) ([]StoredCandle, error) {
 	var source, category string
-	err = tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
+	err := tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
  WHERE environment=$1 AND dataset_id=$2`, key.Environment, key.DatasetID).Scan(&source, &category)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, candleFailure(ctx, ErrCandleDataset)
@@ -125,9 +160,6 @@ func ReadCandleRange(ctx context.Context, db *sql.DB, key CandleStream, start, e
 		}
 	}
 	if rows.Err() != nil || rows.Close() != nil {
-		return nil, candleFailure(ctx, nil)
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, candleFailure(ctx, nil)
 	}
 	return result, nil
