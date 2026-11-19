@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -17,6 +18,7 @@ import (
 	"github.com/lib/pq"
 
 	"bybit_bot_liquidity/internal/momentum/config"
+	"bybit_bot_liquidity/internal/momentum/data"
 	"bybit_bot_liquidity/internal/momentum/model"
 )
 
@@ -96,7 +98,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("9:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("%d:1:%x:true", 10, checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -703,4 +705,188 @@ func TestFundingImportProgressRails(t *testing.T) {
 	for _, assignment := range []string{"next_end=upper_time", "last_page_oldest=NULL", "last_page_count=0", "last_page_oldest='epoch'", "lower_time=upper_time", "last_request_end=NULL", "last_server_time=NULL", "last_page_count=NULL"} {
 		runSchemaSQLState(t, db, "23514", "UPDATE momentum.funding_import_progress SET "+assignment)
 	}
+}
+
+// artifactMigrationPrefix возвращает exact actual prefix без нового migration suffix.
+func artifactMigrationPrefix() []migrationSpec {
+	return []migrationSpec{
+		{1, momentumBootstrap},
+		{2, momentumMarketCandlesSchema},
+		{3, momentumMarketSchema},
+		{4, momentumImportProgressSchema},
+		{5, momentumSignalJournalSchema},
+		{6, momentumConfigSnapshotSchema},
+		{7, momentumRebalanceRunSchema},
+		{8, momentumPlanRevisionSchema},
+		{9, momentumFundingImportProgressSchema},
+	}
+}
+
+// TestDatasetArtifactSchema проверяет точные bytes и append-only SQL boundary.
+func TestDatasetArtifactSchema(t *testing.T) {
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	payload := []byte{0, 255, 10, 123, 125}
+	key := sha256.Sum256(payload)
+	insert := `INSERT INTO momentum.dataset_artifacts(artifact_hash,payload) VALUES ($1,$2)`
+	_, err := db.Exec(insert, key[:], payload)
+	migrationResult(t, err, nil)
+	var got []byte
+	var stamp time.Time
+	migrationResult(t, db.QueryRow(`SELECT payload,created_at FROM momentum.dataset_artifacts WHERE artifact_hash=$1`, key[:]).Scan(&got, &stamp), nil)
+	if !bytes.Equal(payload, got) || stamp.Before(time.Unix(0, 0)) {
+		t.Fatal("lost exact binary payload or timestamp")
+	}
+	xmin := migrationValue(t, db, "SELECT xmin::text FROM momentum.dataset_artifacts")
+	_, err = db.Exec(insert+" ON CONFLICT (artifact_hash) DO NOTHING", key[:], payload)
+	migrationResult(t, err, nil)
+	migrationValue(t, db, "SELECT xmin::text FROM momentum.dataset_artifacts", xmin)
+	_, err = db.Exec(insert, key[:], payload)
+	if err == nil {
+		t.Fatal("duplicate was inserted")
+	}
+	for _, query := range []string{
+		"UPDATE momentum.dataset_artifacts SET payload=payload",
+		"INSERT INTO momentum.dataset_artifacts SELECT artifact_hash,payload,created_at FROM momentum.dataset_artifacts WHERE true ON CONFLICT(artifact_hash) DO UPDATE SET payload=EXCLUDED.payload",
+		"UPDATE momentum.dataset_artifacts SET artifact_hash=artifact_hash WHERE false",
+		"UPDATE momentum.dataset_artifacts SET created_at='epoch'",
+		"DELETE FROM momentum.dataset_artifacts",
+		"DELETE FROM momentum.dataset_artifacts WHERE false",
+		"TRUNCATE momentum.dataset_artifacts",
+		"TRUNCATE momentum.dataset_artifacts CASCADE",
+	} {
+		_, err := db.Exec(query)
+		var failure *pq.Error
+		if !errors.As(err, &failure) || failure.Code != "55000" {
+			t.Fatalf("mutable artifact: %s %v", query, err)
+		}
+	}
+	for _, values := range []string{
+		"(NULL,decode('01','hex'),DEFAULT)",
+		"(decode('01','hex'),decode('01','hex'),DEFAULT)",
+		"(decode(repeat('00',32),'hex'),decode('01','hex'),DEFAULT)",
+		"(sha256(''::bytea),''::bytea,DEFAULT)",
+		"(sha256('x'::bytea),NULL,DEFAULT)",
+		"(sha256('x'::bytea),'x'::bytea,NULL)",
+		"(sha256('x'::bytea),'x'::bytea,'infinity')",
+		"(sha256('x'::bytea),'x'::bytea,'-infinity')",
+		"(sha256('x'::bytea),'x'::bytea,'1969-12-31')",
+	} {
+		marketStatement(t, db, "INSERT INTO momentum.dataset_artifacts VALUES "+values, false)
+	}
+	large := bytes.Repeat([]byte{0, 1, 255, 10}, 262144)
+	largeKey := sha256.Sum256(large)
+	_, err = db.Exec(insert, largeKey[:], large)
+	migrationResult(t, err, nil)
+	migrationResult(t, db.QueryRow("SELECT payload FROM momentum.dataset_artifacts WHERE artifact_hash=$1", largeKey[:]).Scan(&got), nil)
+	if !bytes.Equal(got, large) {
+		t.Fatal("large content changed")
+	}
+	migrationValue(t, db, "SELECT count(*) FROM momentum.dataset_artifacts", "2")
+}
+
+// TestDatasetArtifactLateSource отделяет сохранённый content от поздних исходных строк.
+func TestDatasetArtifactLateSource(t *testing.T) {
+	db, key := fundingReadFixture(t)
+	input := data.FundingContentInput{Environment: key.Environment, DatasetID: key.DatasetID, Source: "bybit_v5", Category: "linear", Symbol: key.Symbol, Endpoint: "https://api-testnet.bybit.com/v5/market/funding/history", Start: time.UnixMilli(0), End: time.UnixMilli(10000)}
+	var err error
+	input.Events, err = ReadFundingRange(context.Background(), db, key, input.Start, input.End.Add(-time.Millisecond), 200)
+	migrationResult(t, err, nil)
+	before, digest, err := data.EncodeFundingContent(input)
+	migrationResult(t, err, nil)
+	hash, _ := hex.DecodeString(digest)
+	_, err = db.Exec("INSERT INTO momentum.dataset_artifacts(artifact_hash,payload) VALUES ($1,$2)", hash, before)
+	migrationResult(t, err, nil)
+	marketStatement(t, db, "INSERT INTO momentum.funding VALUES ('testnet','fixture','BTCUSDT','1970-01-01 00:00:00.005+00',0.001)", true)
+	input.Events, err = ReadFundingRange(context.Background(), db, key, input.Start, input.End.Add(-time.Millisecond), 200)
+	migrationResult(t, err, nil)
+	after, changedDigest, err := data.EncodeFundingContent(input)
+	migrationResult(t, err, nil)
+	if changedDigest == digest || bytes.Equal(before, after) {
+		t.Fatal("late insert was not visible in mutable source")
+	}
+	marketStatement(t, db, "UPDATE momentum.funding SET rate=0.002 WHERE funding_time='epoch'", true)
+	input.Events, err = ReadFundingRange(context.Background(), db, key, input.Start, input.End.Add(-time.Millisecond), 200)
+	migrationResult(t, err, nil)
+	updated, updatedDigest, err := data.EncodeFundingContent(input)
+	migrationResult(t, err, nil)
+	if updatedDigest == digest || updatedDigest == changedDigest || bytes.Equal(updated, before) || bytes.Equal(updated, after) {
+		t.Fatal("funding update was not visible in mutable source")
+	}
+	var stored []byte
+	migrationResult(t, db.QueryRow("SELECT payload FROM momentum.dataset_artifacts WHERE artifact_hash=$1", hash).Scan(&stored), nil)
+	actual := sha256.Sum256(stored)
+	if !bytes.Equal(before, stored) || hex.EncodeToString(actual[:]) != digest {
+		t.Fatal("late source rows changed pinned artifact")
+	}
+}
+
+// TestDatasetArtifactRollback проверяет коллизию и транзакционный откат DDL.
+func TestDatasetArtifactRollback(t *testing.T) {
+	for _, collision := range []string{
+		"CREATE TABLE momentum.dataset_artifacts(owned_marker TEXT); INSERT INTO momentum.dataset_artifacts VALUES('foreign')",
+		"CREATE FUNCTION momentum.reject_dataset_artifact_mutation() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'",
+	} {
+		db := openTestPostgres(t)
+		migrationResult(t, migrateMomentumPostgres(context.Background(), db, artifactMigrationPrefix()), nil)
+		marketStatement(t, db, "INSERT INTO momentum.datasets VALUES ('testnet','keep','bybit_v5','linear',DEFAULT)", true)
+		prefix := migrationState(t, db)
+		marketStatement(t, db, collision, true)
+		definition := ""
+		if strings.HasPrefix(collision, "CREATE FUNCTION") {
+			definition = migrationValue(t, db, "SELECT pg_get_functiondef('momentum.reject_dataset_artifact_mutation()'::regprocedure)")
+		}
+		migrationResult(t, MigrateMomentumPostgres(context.Background(), db), ErrMigration)
+		if migrationState(t, db) != prefix {
+			t.Fatal("collision changed migration prefix")
+		}
+		migrationValue(t, db, "SELECT count(*) FROM momentum.datasets WHERE dataset_id='keep'", "1")
+		if strings.HasPrefix(collision, "CREATE FUNCTION") {
+			migrationValue(t, db, "SELECT to_regclass('momentum.dataset_artifacts') IS NULL", "true")
+			migrationValue(t, db, "SELECT pg_get_functiondef('momentum.reject_dataset_artifact_mutation()'::regprocedure)", definition)
+		} else {
+			migrationValue(t, db, "SELECT count(*) FROM information_schema.columns WHERE table_schema='momentum' AND table_name='dataset_artifacts' AND column_name='owned_marker'", "1")
+			migrationValue(t, db, "SELECT owned_marker FROM momentum.dataset_artifacts", "foreign")
+		}
+	}
+}
+
+// TestDatasetArtifactMigration проверяет exact prefix/data, новый checksum и повтор без изменений.
+func TestDatasetArtifactMigration(t *testing.T) {
+	ctx := context.Background()
+	db := openTestPostgres(t)
+	prefix := artifactMigrationPrefix()
+	if len(prefix)+1 != 10 {
+		t.Fatal("version 10 must follow the actual prefix")
+	}
+	migrationResult(t, migrateMomentumPostgres(ctx, db, prefix), nil)
+	before := migrationState(t, db)
+	planSchemaRuns(t, db)
+	migrationResult(t, RegisterDataset(ctx, db, "testnet", "kept"), nil)
+	marketStatement(t, db, `INSERT INTO momentum.candles VALUES('testnet','kept','BTCUSDT','D','epoch',1,1,1,1,0,true);
+ INSERT INTO momentum.funding VALUES('testnet','kept','BTCUSDT','epoch',0);
+ INSERT INTO momentum.plan_revisions(run_id,revision,plan_hash,payload,payload_sha256)
+ VALUES('run',1,sha256('plan'::bytea),'kept'::bytea,sha256('kept'::bytea));
+ INSERT INTO momentum.funding_import_progress(environment,dataset_id,symbol,lower_time,upper_time,next_end)
+ VALUES('testnet','kept','BTCUSDT','epoch','epoch'::timestamptz+INTERVAL '100 ms','epoch'::timestamptz+INTERVAL '100 ms')`, true)
+	const dataSQL = `SELECT json_build_object('datasets',(SELECT json_agg(r) FROM momentum.datasets r),'config',(SELECT json_agg(r) FROM momentum.config_snapshots r),
+ 'runs',(SELECT json_agg(r) FROM momentum.rebalance_runs r),'plans',(SELECT json_agg(r) FROM momentum.plan_revisions r),
+ 'candles',(SELECT json_agg(r) FROM momentum.candles r),'funding',(SELECT json_agg(r) FROM momentum.funding r),
+ 'progress',(SELECT json_agg(r) FROM momentum.funding_import_progress r))::text`
+	saved := migrationValue(t, db, dataSQL)
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	prefixSQL := fmt.Sprintf(`SELECT json_agg(r ORDER BY version)::text FROM
+ (SELECT version,encode(checksum,'hex') AS checksum,applied_at FROM momentum.schema_migrations WHERE version<%d) r`, 10)
+	migrationValue(t, db, prefixSQL, before)
+	migrationValue(t, db, dataSQL, saved)
+	checksum := sha256.Sum256([]byte(momentumDatasetArtifactSchema))
+	migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", 10), fmt.Sprintf("%x", checksum))
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", fmt.Sprint(10))
+	migrationValue(t, db, "SELECT count(*) FROM momentum.dataset_artifacts", "0")
+	after := migrationState(t, db)
+	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+	if migrationState(t, db) != after {
+		t.Fatal("repeat changed exact committed history")
+	}
+	migrationValue(t, db, dataSQL, saved)
 }
