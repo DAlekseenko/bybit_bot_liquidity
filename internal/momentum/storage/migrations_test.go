@@ -96,7 +96,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("8:1:%x:true", checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("9:1:%x:true", checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -525,5 +525,182 @@ func TestPlanRevisionCodec(t *testing.T) {
 			t.Fatal("durable plan lost exact metadata, snapshot or rational targets")
 		}
 		previous = plan.Hash()
+	}
+}
+
+// TestFundingImportProgressMigration проверяет новый суффикс, сохранность данных и откат коллизии.
+func TestFundingImportProgressMigration(t *testing.T) {
+	ctx := context.Background()
+	prefix := []migrationSpec{
+		{1, momentumBootstrap}, {2, momentumMarketCandlesSchema}, {3, momentumMarketSchema},
+		{4, momentumImportProgressSchema}, {5, momentumSignalJournalSchema}, {6, momentumConfigSnapshotSchema},
+		{7, momentumRebalanceRunSchema}, {8, momentumPlanRevisionSchema},
+	}
+	for _, collision := range []bool{false, true} {
+		db := openTestPostgres(t)
+		migrationResult(t, migrateMomentumPostgres(ctx, db, prefix), nil)
+		before := migrationState(t, db)
+		planSchemaRuns(t, db)
+		migrationResult(t, RegisterDataset(ctx, db, "testnet", "preserved"), nil)
+		marketStatement(t, db, `INSERT INTO momentum.funding VALUES('testnet','preserved','BTCUSDT','1970-01-01 00:00:00.123+00',0);
+ INSERT INTO momentum.plan_revisions(run_id,revision,plan_hash,payload,payload_sha256)
+ VALUES('run',1,sha256('plan'::bytea),'kept'::bytea,sha256('kept'::bytea))`, true)
+		const data = `SELECT json_build_object('runs',(SELECT json_agg(r) FROM momentum.rebalance_runs r),
+ 'config',(SELECT json_agg(r) FROM momentum.config_snapshots r),
+ 'plans',(SELECT json_agg(r) FROM momentum.plan_revisions r),
+ 'funding',(SELECT json_agg(r) FROM momentum.funding r))::text`
+		saved := migrationValue(t, db, data)
+		if collision {
+			marketStatement(t, db, "CREATE TABLE momentum.funding_import_progress(owned_marker TEXT)", true)
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), ErrMigration)
+			migrationValue(t, db, "SELECT count(*) FROM information_schema.columns WHERE table_schema='momentum' AND table_name='funding_import_progress' AND column_name='owned_marker'", "1")
+			if migrationState(t, db) != before {
+				t.Fatal("collision changed migration history")
+			}
+		} else {
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+			migrationValue(t, db, "SELECT count(*) FROM momentum.funding_import_progress", "0")
+			migrationValue(t, db, `SELECT json_agg(r ORDER BY version)::text FROM (
+ SELECT version,encode(checksum,'hex') AS checksum,applied_at FROM momentum.schema_migrations WHERE version<=8) r`, before)
+			checksum := sha256.Sum256([]byte(momentumFundingImportProgressSchema))
+			migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=9", fmt.Sprintf("%x", checksum))
+			after := migrationState(t, db)
+			migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)
+			if migrationState(t, db) != after {
+				t.Fatal("repeat changed history")
+			}
+		}
+		migrationValue(t, db, data, saved)
+	}
+}
+
+// fundingProgressDatabase создаёт отдельную базу и два пространства имён.
+func fundingProgressDatabase(t *testing.T) *sql.DB {
+	t.Helper()
+	db := openTestPostgres(t)
+	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
+	for _, environment := range []string{"testnet", "mainnet"} {
+		for _, dataset := range []string{"funding", "other"} {
+			migrationResult(t, RegisterDataset(context.Background(), db, environment, dataset), nil)
+		}
+	}
+	return db
+}
+
+const fundingProgressPending = `INSERT INTO momentum.funding_import_progress
+ (environment,dataset_id,symbol,lower_time,upper_time,next_end)
+ VALUES('testnet','funding','HYPEUSDT','2026-01-01 00:00:00.123+00','2026-01-01 01:00:00.987+00','2026-01-01 01:00:00.987+00')`
+
+const fundingProgressContinue = `revision=1,action='continue',
+ last_request_end=upper_time,last_server_time=upper_time+INTERVAL '1 second',
+ last_page_count=200,last_page_oldest=upper_time-INTERVAL '7 milliseconds',
+ next_end=upper_time-INTERVAL '8 milliseconds'`
+
+// TestFundingImportProgressStates проверяет все исходы страницы без предположения о cadence.
+func TestFundingImportProgressStates(t *testing.T) {
+	db := fundingProgressDatabase(t)
+	marketStatement(t, db, fundingProgressPending, true)
+	migrationValue(t, db, "SELECT action || ':' || revision::text FROM momentum.funding_import_progress", "pending:0")
+	runSchemaSQLState(t, db, "23505", strings.ReplaceAll(fundingProgressPending, "2026-01-01 01:00:00.987+00", "2026-01-01 04:00:00.987+03"))
+	for _, statement := range []string{
+		strings.Replace(fundingProgressPending, "'testnet'", "'mainnet'", 1),
+		strings.Replace(fundingProgressPending, "'funding'", "'other'", 1),
+		strings.Replace(fundingProgressPending, "'HYPEUSDT'", "'BTCUSDT'", 1),
+		strings.Replace(fundingProgressPending, "00:00:00.123", "00:00:00.124", 1),
+	} {
+		marketStatement(t, db, statement, true)
+	}
+	migrationValue(t, db, "SELECT count(*) FROM momentum.funding_import_progress", "5")
+	marketStatement(t, db, "DELETE FROM momentum.funding_import_progress WHERE environment<>'testnet' OR dataset_id<>'funding' OR symbol<>'HYPEUSDT' OR lower_time<>'2026-01-01 00:00:00.123+00'", true)
+	marketStatement(t, db, "UPDATE momentum.funding_import_progress SET "+fundingProgressContinue, true)
+	migrationValue(t, db, "SELECT next_end=last_page_oldest-INTERVAL '1 millisecond' AND last_page_count=200 FROM momentum.funding_import_progress", "true")
+	marketStatement(t, db, `UPDATE momentum.funding_import_progress SET revision=2,action='lower_reached',
+ last_request_end=next_end,next_end=NULL,last_page_count=1,last_page_oldest=lower_time`, true)
+	migrationValue(t, db, "SELECT action || ':' || (next_end IS NULL)::text FROM momentum.funding_import_progress", "lower_reached:true")
+	marketStatement(t, db, "DELETE FROM momentum.funding_import_progress", true)
+	marketStatement(t, db, strings.ReplaceAll(fundingProgressPending, "2026-01-01 00:00:00.123+00", "2026-01-01 01:00:00.987+00"), true)
+	marketStatement(t, db, `UPDATE momentum.funding_import_progress SET revision=1,action='empty',
+ last_request_end=upper_time,last_server_time=upper_time-INTERVAL '1 second',last_page_count=0,next_end=NULL`, true)
+	migrationValue(t, db, "SELECT last_server_time<last_request_end AND last_page_oldest IS NULL AND next_end IS NULL FROM momentum.funding_import_progress", "true")
+	marketStatement(t, db, "DELETE FROM momentum.funding_import_progress", true)
+	marketStatement(t, db, `INSERT INTO momentum.funding_import_progress
+ (environment,dataset_id,symbol,lower_time,upper_time,next_end,revision,action,last_request_end,last_server_time,last_page_count,last_page_oldest)
+ VALUES('testnet','funding','HYPEUSDT','epoch','1970-01-01 00:00:00.001+00',NULL,1,'source_boundary',
+ '1970-01-01 00:00:00.001+00','1970-01-01 00:00:00.001+00',1,'1970-01-01 00:00:00.001+00')`, true)
+	migrationValue(t, db, "SELECT action || ':' || (next_end IS NULL)::text FROM momentum.funding_import_progress", "source_boundary:true")
+}
+
+// TestFundingImportProgressInvalid проверяет явные NULL и все семейства ограничений.
+func TestFundingImportProgressInvalid(t *testing.T) {
+	db := fundingProgressDatabase(t)
+	marketStatement(t, db, fundingProgressPending, true)
+	for _, tc := range []struct{ code, assignment string }{
+		{"23502", "environment=NULL"}, {"23503", "environment='paper'"},
+		{"23502", "dataset_id=NULL"}, {"23503", "dataset_id='missing'"},
+		{"23502", "symbol=NULL"}, {"23514", "symbol='hypeusdt'"},
+		{"23502", "lower_time=NULL"}, {"23514", "lower_time='-infinity'"},
+		{"23514", "lower_time='1969-12-31 23:59:59.999+00'"}, {"23514", "lower_time=lower_time+INTERVAL '1 microsecond'"},
+		{"23502", "upper_time=NULL"}, {"23514", "upper_time='infinity'"},
+		{"23514", "upper_time=lower_time-INTERVAL '1 millisecond'"},
+		{"23514", "lower_time='epoch',upper_time='epoch',next_end='epoch'"},
+		{"23514", "upper_time='294276-12-31 23:59:59.999999+00'"},
+		{"23514", "upper_time=upper_time+INTERVAL '1 microsecond'"},
+		{"23514", "next_end=NULL"}, {"23514", "next_end=lower_time-INTERVAL '1 millisecond'"},
+		{"23514", "next_end=upper_time+INTERVAL '1 millisecond'"}, {"23514", "next_end=next_end+INTERVAL '1 microsecond'"},
+		{"23514", "next_end='epoch'"}, {"23514", "next_end='infinity'"},
+		{"23502", "revision=NULL"}, {"23514", "revision=-1"}, {"22003", "revision=9223372036854775808"},
+		{"23514", "revision=1"}, {"23502", "action=NULL"}, {"23514", "action='complete'"},
+		{"23514", "last_request_end=upper_time"}, {"23514", "last_server_time=upper_time"},
+		{"23514", "last_page_count=0"}, {"23514", "last_page_oldest=lower_time"},
+	} {
+		runSchemaSQLState(t, db, tc.code, "UPDATE momentum.funding_import_progress SET "+tc.assignment)
+	}
+	marketStatement(t, db, "UPDATE momentum.funding_import_progress SET "+fundingProgressContinue, true)
+	for _, assignment := range []string{
+		"revision=0", "last_request_end=NULL", "last_server_time=NULL", "last_page_count=NULL", "last_page_oldest=NULL", "next_end=NULL",
+		"last_page_count=-1", "last_page_count=201", "last_page_count=0",
+		"last_request_end=lower_time-INTERVAL '1 millisecond'", "last_request_end=upper_time+INTERVAL '1 millisecond'",
+		"last_request_end=last_request_end+INTERVAL '1 microsecond'", "last_request_end='infinity'", "last_request_end='epoch'",
+		"last_server_time='epoch'", "last_server_time='infinity'", "last_server_time=last_server_time+INTERVAL '1 microsecond'",
+		"last_server_time='294276-12-31 23:59:59.999999+00'", "last_server_time=lower_time",
+		"last_page_oldest=lower_time-INTERVAL '1 millisecond'", "last_page_oldest=upper_time+INTERVAL '1 millisecond'",
+		"last_page_oldest=last_page_oldest+INTERVAL '1 microsecond'", "last_page_oldest='infinity'",
+		"last_server_time=upper_time-INTERVAL '3 milliseconds',last_page_oldest=upper_time-INTERVAL '2 milliseconds',next_end=upper_time-INTERVAL '3 milliseconds'",
+		"next_end=last_page_oldest", "next_end=last_page_oldest-INTERVAL '2 milliseconds'",
+		"action='lower_reached',next_end=NULL", "action='source_boundary',next_end=NULL",
+		"action='empty',last_page_count=0,next_end=NULL",
+	} {
+		runSchemaSQLState(t, db, "23514", "UPDATE momentum.funding_import_progress SET "+assignment)
+	}
+	marketStatement(t, db, "UPDATE momentum.funding_import_progress SET revision=9223372036854775807", true)
+	migrationValue(t, db, "SELECT revision::text FROM momentum.funding_import_progress", "9223372036854775807")
+}
+
+// TestFundingImportProgressRails проверяет точную верхнюю границу и остановки с NULL-курсорoм.
+func TestFundingImportProgressRails(t *testing.T) {
+	db := fundingProgressDatabase(t)
+	const upper = "294276-12-31 23:59:59.999+00"
+	statement := strings.ReplaceAll(strings.ReplaceAll(fundingProgressPending, "2026-01-01 00:00:00.123+00", upper), "2026-01-01 01:00:00.987+00", upper)
+	marketStatement(t, db, statement, true)
+	marketStatement(t, db, `UPDATE momentum.funding_import_progress SET revision=1,action='lower_reached',
+ last_request_end=upper_time,last_server_time=upper_time,last_page_count=1,last_page_oldest=lower_time,next_end=NULL`, true)
+	migrationValue(t, db, "SELECT extract(milliseconds FROM last_server_time)::text || ':' || (last_server_time=lower_time AND next_end IS NULL)::text FROM momentum.funding_import_progress", "59999.000:true")
+	for _, assignment := range []string{"next_end=upper_time", "last_page_oldest=NULL", "last_page_count=0", "last_request_end=NULL", "last_server_time=NULL", "last_page_count=NULL"} {
+		runSchemaSQLState(t, db, "23514", "UPDATE momentum.funding_import_progress SET "+assignment)
+	}
+	marketStatement(t, db, "DELETE FROM momentum.funding_import_progress", true)
+	marketStatement(t, db, fundingProgressPending, true)
+	marketStatement(t, db, `UPDATE momentum.funding_import_progress SET revision=1,action='empty',
+ last_request_end=upper_time,last_server_time=upper_time,last_page_count=0,next_end=NULL`, true)
+	for _, assignment := range []string{"next_end=upper_time", "last_page_oldest=lower_time", "last_page_count=1", "last_request_end=NULL", "last_server_time=NULL", "last_page_count=NULL"} {
+		runSchemaSQLState(t, db, "23514", "UPDATE momentum.funding_import_progress SET "+assignment)
+	}
+	marketStatement(t, db, "DELETE FROM momentum.funding_import_progress", true)
+	marketStatement(t, db, `INSERT INTO momentum.funding_import_progress
+ (environment,dataset_id,symbol,lower_time,upper_time,next_end,revision,action,last_request_end,last_server_time,last_page_count,last_page_oldest)
+ VALUES('testnet','funding','HYPEUSDT','epoch','1970-01-01 00:00:00.001+00',NULL,1,'source_boundary',
+ '1970-01-01 00:00:00.001+00','1970-01-01 00:00:00.001+00',1,'1970-01-01 00:00:00.001+00')`, true)
+	for _, assignment := range []string{"next_end=upper_time", "last_page_oldest=NULL", "last_page_count=0", "last_page_oldest='epoch'", "lower_time=upper_time", "last_request_end=NULL", "last_server_time=NULL", "last_page_count=NULL"} {
+		runSchemaSQLState(t, db, "23514", "UPDATE momentum.funding_import_progress SET "+assignment)
 	}
 }

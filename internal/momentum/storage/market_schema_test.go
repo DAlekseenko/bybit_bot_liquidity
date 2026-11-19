@@ -26,7 +26,7 @@ func TestReferenceMigration(t *testing.T) {
 		checksum := sha256.Sum256([]byte(payload))
 		migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", i+1), fmt.Sprintf("%x", checksum))
 	}
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "8")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "9")
 	migrationValue(t, db, "SELECT row_to_json(c)::text FROM momentum.candles c", saved)
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
@@ -158,7 +158,7 @@ func TestImportProgressMigration(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumImportProgressSchema))
 	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=4", fmt.Sprintf("%x", checksum))
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "8")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "9")
 	migrationValue(t, db, "SELECT row_to_json(r)::text FROM momentum.candles r", saved)
 	before := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
@@ -204,7 +204,7 @@ func TestSignalJournalMigration(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumSignalJournalSchema))
 	migrationValue(t, db, "SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=5", fmt.Sprintf("%x", checksum))
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "8")
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", "9")
 	migrationValue(t, db, "SELECT count(*) FROM momentum.signal_batches", "0")
 	payload := []byte{0, 255, '\n', '"', 128}
 	hash := sha256.Sum256(payload)
