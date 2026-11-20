@@ -1,0 +1,22 @@
+# Issue #323 — funding import state read/write
+
+- Contract: `codex-cm013-funding-import-job:v1`, [Issue #323](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/323).
+- Phase: `READY`; stop here and wait for a separate G10 `ACTIVE` grant before review or publication.
+- Owner: `/root/issue323_developer`, `developer-middle`; implementation chat `01a1f5c1-a47a-78a0-b5d5-49ec71a81a01`.
+- Worktree: `/private/tmp/bybit-issue-323`; branch `codex/323-funding-import-job`; base `605be511b55700e6bb749f0db29a4ab366eca573`.
+- Exact paths: `internal/momentum/storage/funding_import_job.go`, `internal/momentum/storage/funding_import_job_test.go`, `.ai/handoffs/issue-323.md`. No other files changed; full v1–v9 catalog/schema retained. Production 183 lines, tests 294 lines.
+- Implementation creates pending state once through the registered `bybit_v5/linear` dataset provenance and reads a validated exact-key snapshot. It preserves existing progress, treats uncertain insert outcomes distinctly, validates all five persisted actions, and returns zero metadata on read errors. No events, cursor advancement, HTTP, runner, or trade path added.
+- Verification on Go 1.26.11: gofmt, diff check, targeted unit tests, `go test -count=1 -coverprofile ... ./...` (DSN unset), `go test -count=1 -race ./...` (DSN unset), `go vet ./...`, `go build ./...`, golangci-lint 2.10.1, and CI govulncheck v1.1.4 all passed. Ordinary coverage was 2940/4169 statements (70.520508515231%). Security scan found 0 reachable vulnerabilities and 1 module-only finding.
+- PostgreSQL 17.11 targeted race ran the ten `TestFundingImport*` groups, including migration regression coverage, with zero skips/failures. Exact disposable container `b15dee8e69eb5aa7f591a34620b4c5ac6af298ba3b35e3d2b144b4909df658e7` (`issue323-pg1711`) was removed; subsequent inspect returned “No such object” and exact-ID container listing was empty. Full logs and SHA256 manifest: `/private/tmp/issue323-gates/` and `/private/tmp/issue323-ready.json`.
+- Blockers: none for DEV/READY. No files staged or committed; no GitHub/queue writes, review, publication, trade, or deployment.
+- Next action: wait for G10 to grant a separate `ACTIVE` before any reviewer or publication work.
+
+## G10 ACTIVE checkpoint — master revalidation
+
+- Native task/chat: `01a1f5c1-a47a-78a0-b5d5-49ec71a81a01`; owner `/root/issue323_developer`; role `developer-middle`; effort `medium`.
+- G10 granted the sole `ACTIVE_SINGLE_SLOT` for #323 at canonical queue comment #55 revision 400; contract marker/body remain `codex-cm013-funding-import-job:v1`. The coordinator confirmed this is the same implementation task/chat and the only permitted paths below.
+- The same branch was fast-forwarded from `605be511b55700e6bb749f0db29a4ab366eca573` to `a5d22593299f6ca47959e76bdaa845a7255bd2b3` (tree `9c8140fb2b4333b92223f264bbea121d33f20aa7`). No reset/rebase/force. Go source/test SHA256 remain identical to the original READY blobs: `908fb0b18dd2f957ec9e9eee7a3d4189379151510e78d9577407b8cbf7883825` and `5d35eab13e744ee3ccdfb9a49d29745a1b2184587ed327cc7c7a60f57a912186`.
+- Go 1.26.11 checks on this base passed: targeted unit tests; full unit + ordinary coverage with `MOMENTUM_TEST_POSTGRES_DSN` unset; full race with DSN unset; `go vet ./...`; `go build ./...`; full gofmt and `git diff --check`; golangci-lint 2.10.1 (0 issues); offline govulncheck v1.1.4 against `/private/tmp/g10-public-vulndb.Q6sE6qf4/db` (0 reachable vulnerabilities, one module-only finding). Coverage: 3546/4955 statements (71.564076690212%).
+- Real PostgreSQL 17.11 targeted race passed all ten `TestFundingImport*` groups with no skips/failures. Test input file hashes before/after were identical. Temporary container `8d9e589abf520813cbe2b6a30ccbeb01f67e9e88a4bcd9c97594f6852a85d10a` (`issue323-active-pg1711`, loopback `127.0.0.1:61488`) was removed; post-cleanup `docker inspect` returned not-found and exact-ID listing was empty.
+- Final evidence and exact SHA256/Git blob/log manifest: `/private/tmp/issue323-active-ready.json`; logs: `/private/tmp/issue323-active-gates/`. The original READY handoff prefix is preserved byte-for-byte before this appended checkpoint.
+- Phase: `READY_FOR_INDEPENDENT_REVIEW`; stop and wait for orchestrator to authorize reviewer. No reviewer was started. Index is empty; no commit, push, PR, GitHub/queue write, imports, funding cadence, trade, or deployment actions occurred.
