@@ -160,17 +160,24 @@ fallback symbols.
 Cutoff lifecycle, min/max Qty/notional/delta normalization, TradePlan
 construction, runtime и execution остаются вне wrapper.
 
-## Детерминированный порядок и отказ: предложение D-07/D-08
+## Детерминированный порядок и отказ
 
-Для одинакового UTC timestamp предлагается: (1) сохранить входные market и
-funding events с устойчивыми event IDs; funding применить к позиции *до*
-планового rebalance, (2) оценить equity по свежему mark, (3) проверить halt/stop,
-(4) только при отсутствии halt построить недельный план, (5) исполнить
-уменьшения и сверить fills/нулевые позиции для reset, (6) только затем входы.
-При совпадении stop и rebalance stop побеждает. Явно версионировать порядок в
-manifest; без подтверждения D-07 не объявлять сравнимый эталон backtest.
+Подтверждённый владельцем D-07 задаёт только порядок offline backtest для
+одинакового UTC timestamp: (1) применить funding к старым позициям; (2) оценить
+эти позиции по mark и вычислить wallet/equity после funding; (3) проверить stop;
+(4) выполнить rebalance только если stop не сработал. Если stop совпал по времени
+с rebalance, первым применяется stop. Подтверждение: [каноническая запись
+владельца](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55#issuecomment-6668604794);
+этап funding/valuation — [Issue #356](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/356).
 
-Различать deadlines готовности данных, RPC timeout, ожидание fill/reconciliation,
+Стабильные event IDs и версия последовательности в manifest — технические
+требования для воспроизводимости backtest, а не дополнительные финансовые
+решения владельца. Существующая проверка reset отдельно требует исполнить
+уменьшения и сверить fills/нулевые позиции до reset; она не входит в новое
+подтверждение D-07, а post-close equity и сопоставимость reset остаются открытым
+D-02. D-07 не разрешает торговое исполнение.
+
+Остающееся предложением D-08: различать deadlines готовности данных, RPC timeout, ожидание fill/reconciliation,
 максимальный возраст snapshot и плана. Числа — D-04/D-08, не подставлять
 умолчания. Истечение data deadline запрещает новые входы без старых свечей.
 Timeout отправки означает `UNKNOWN`, а не отказ или исполнение: сохранить intent,

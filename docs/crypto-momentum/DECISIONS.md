@@ -1,7 +1,8 @@
 # Crypto Momentum: решения и вопросы
 
-Статус CM-001: D-01 утверждён для pure planning; остальные вопросы ниже
-остаются предложениями к review, не применёнными runtime-решениями.
+Статус CM-001: D-01 утверждён для pure planning, D-07 утверждён как порядок
+учёта/backtest; остальные вопросы ниже остаются предложениями к review, не
+применёнными runtime-решениями.
 Каноническое ТЗ — [Issue #55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55),
 локальный контракт — [SPEC.md](SPEC.md). Исторические решения legacy MVP в
 [общем журнале](../DECISIONS.md) не отменены и не распространяются автоматически
@@ -15,7 +16,7 @@
 | D-04 | **Владелец/оператор:** численные fee, slippage, freshness, REST/RPC deadlines и fallback для версии профиля. | Реалистичный paper и Testnet gate. |
 | D-05 | **Владелец:** stop по умолчанию disabled; threshold/action и resume требуют отдельного решения. | Активация stop на бирже. |
 | D-06 | **Владелец/оператор:** выделенный subaccount, isolated/one-way, фактическая доступность BTC/ETH/HYPE на нужной среде и географическая применимость; adapter повторно проверяет API. | Ручная Testnet проверка. |
-| D-07 | **Инженерное предложение:** funding старой позиции → mark/equity → stop → rebalance; tie-breaks и manifest в SPEC. Требуется review до golden fixtures. | Эталон backtest. |
+| D-07 | **Утверждено владельцем для offline backtest:** (1) применить funding к старым позициям; (2) оценить их mark и вычислить post-funding wallet/equity; (3) проверить stop; (4) выполнить rebalance только если stop не сработал. [Каноническое подтверждение](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55#issuecomment-6668604794); этап 4 — [Issue #356](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/356). Это не решение по reset/D-02 и не разрешение торговли. | Эталон backtest. |
 | D-08 | **Инженерное предложение:** timeout отправки = `UNKNOWN`, без слепого retry; численный stale-plan/absence contract ещё открыт. | Private отправки и recovery. |
 | D-09 | **Инженерный выбор в отдельной Issue:** PostgreSQL driver/version, точный NUMERIC scale, migrations и rollback без потери данных. | Storage реализация. |
 | D-10 | **Владелец + инженер:** значение «вход», модель liquidation, допуск P&L и cutoff. | Итоговый report. |
