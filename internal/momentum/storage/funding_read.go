@@ -31,8 +31,42 @@ func ReadFundingRange(ctx context.Context, db *sql.DB, key FundingStream, start,
 	}
 	defer tx.Rollback()
 
+	result, err := readFundingRange(ctx, tx, key, start, end, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fundingFailure(ctx, nil)
+	}
+	return result, nil
+}
+
+// ReadFundingRangeTx читает включительный диапазон в caller-owned RR READ ONLY без commit/rollback.
+func ReadFundingRangeTx(ctx context.Context, tx *sql.Tx, key FundingStream, start, end time.Time, limit int) ([]model.FundingEvent, error) {
+	if ctx == nil {
+		return nil, fundingFailure(ctx, ErrFundingArgument)
+	}
+	if ctx.Err() != nil {
+		return nil, fundingFailure(ctx, nil)
+	}
+	if tx == nil || !validFundingStream(key) || limit < 1 || limit > 200 || !candleTime(start, 1) || !candleTime(end, 1) || end.Before(start) {
+		return nil, fundingFailure(ctx, ErrFundingArgument)
+	}
+	valid, err := readSnapshotMode(ctx, tx)
+	if err != nil {
+		return nil, fundingFailure(ctx, nil)
+	}
+	if !valid {
+		return nil, fundingFailure(ctx, ErrFundingArgument)
+	}
+	return readFundingRange(ctx, tx, key, start, end, limit)
+}
+
+// readFundingRange выполняет прежнюю provenance/row проекцию без управления транзакцией.
+func readFundingRange(ctx context.Context, tx *sql.Tx, key FundingStream, start, end time.Time, limit int) ([]model.FundingEvent, error) {
 	var source, category string
-	err = tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
+	err := tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
 WHERE environment=$1 AND dataset_id=$2`, key.Environment, key.DatasetID).Scan(&source, &category)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fundingFailure(ctx, ErrFundingDataset)
@@ -75,9 +109,6 @@ ORDER BY funding_time LIMIT $6`, key.Environment, key.DatasetID, key.Symbol, sta
 		result = append(result, event)
 	}
 	if rows.Err() != nil || rows.Close() != nil {
-		return nil, fundingFailure(ctx, nil)
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, fundingFailure(ctx, nil)
 	}
 	return result, nil
