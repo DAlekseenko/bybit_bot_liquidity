@@ -46,8 +46,43 @@ func ReadMarkPriceRange(ctx context.Context, db *sql.DB, key CandleStream, start
 		return nil, markReadFailure(ctx, nil)
 	}
 	defer tx.Rollback()
+	result, err := readMarkPriceRange(ctx, tx, key, start, end, limit, step)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, markReadFailure(ctx, nil)
+	}
+	return result, nil
+}
+
+// ReadMarkPriceRangeTx читает mark OHLC в caller-owned RR READ ONLY без её завершения.
+func ReadMarkPriceRangeTx(ctx context.Context, tx *sql.Tx, key CandleStream, start, end time.Time, limit int) ([]model.MarkPriceCandle, error) {
+	if ctx == nil {
+		return nil, markReadFailure(ctx, ErrMarkPriceReadArgument)
+	}
+	if ctx.Err() != nil {
+		return nil, markReadFailure(ctx, nil)
+	}
+	step, keyErr := candleKey(key)
+	if tx == nil || keyErr != nil || limit < 1 || limit > 200 || !candleTime(start, 1) ||
+		!candleTime(end, 1) || !start.Before(end) {
+		return nil, markReadFailure(ctx, ErrMarkPriceReadArgument)
+	}
+	valid, err := readSnapshotMode(ctx, tx)
+	if err != nil {
+		return nil, markReadFailure(ctx, nil)
+	}
+	if !valid {
+		return nil, markReadFailure(ctx, ErrMarkPriceReadArgument)
+	}
+	return readMarkPriceRange(ctx, tx, key, start, end, limit, step)
+}
+
+// readMarkPriceRange выполняет общую точную проекцию без commit/rollback.
+func readMarkPriceRange(ctx context.Context, tx *sql.Tx, key CandleStream, start, end time.Time, limit int, step int64) ([]model.MarkPriceCandle, error) {
 	var source, category string
-	err = tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
+	err := tx.QueryRowContext(ctx, `SELECT source,category FROM momentum.datasets
  WHERE environment=$1 AND dataset_id=$2`, key.Environment, key.DatasetID).Scan(&source, &category)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (source != "bybit_v5" || category != "linear")) {
 		return nil, markReadFailure(ctx, ErrMarkPriceReadDataset)
@@ -87,9 +122,6 @@ func ReadMarkPriceRange(ctx context.Context, db *sql.DB, key CandleStream, start
 		result = append(result, row)
 	}
 	if rows.Err() != nil || rows.Close() != nil {
-		return nil, markReadFailure(ctx, nil)
-	}
-	if err := tx.Commit(); err != nil {
 		return nil, markReadFailure(ctx, nil)
 	}
 	return result, nil
