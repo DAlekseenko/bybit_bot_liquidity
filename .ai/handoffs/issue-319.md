@@ -1,0 +1,17 @@
+# Передача реализации Issue #319
+
+## issue-319-c1 — READY, ожидает независимой проверки
+
+- Контракт: [Issue #319](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/319), marker `codex-cm014-mark-page-cursor:v1`; parent #69. Текущий результат: `UNREVIEWED`; отдельный ACTIVE не получен. Публикации нет.
+- Owner: `/root/issue319_developer` (`developer-middle`); ветка `codex/319-mark-page-cursor`, изолированная копия `/private/tmp/bybit-issue-319`, точная база `6880bba6bf295d430ed45422d8835cb26d4a4884`. HEAD остаётся на базе; коммитов нет.
+- Ровно три пути: `internal/momentum/model/mark_price_pagination.go`, `internal/momentum/model/mark_price_pagination_test.go`, `.ai/handoffs/issue-319.md`. Production 119 строк, тестовый файл 216 строк. Реализация проверяет источник/запрос, все строки и exact OHLC до решения, включая D/60 grid, PostgreSQL row-year bound, положительные Unix-ms metadata вплоть до int64, UTC-equivalent bounds, numeric-only symbol и неизменность аргументов. Cursor выдаётся только для непрерывной закрытой страницы.
+- Проверки на Go 1.26.11; `MOMENTUM_TEST_POSTGRES_DSN` unset. Targeted model test/race и полный `go test ./...` / `go test -race ./...` прошли. Обычное покрытие `2911/4113 = 70.775589593970%`. `go vet ./...`, `go build ./...`, gofmt, `git diff --check`, golangci-lint v2.10.1 (0 issues) прошли. govulncheck v1.1.4: 0 reachable vulnerabilities, 1 module-only advisory.
+- Логи проверок: `/private/tmp/issue319-logs/`; машинный READY с SHA256/Git blob IDs файлов, логов и состоянием индекса: `/private/tmp/issue319-ready.json`.
+- Индекс Git-копии пуст; staged diff пуст. Нет review, commit, push, PR, merge или изменения очереди. Ожидаемый следующий шаг: отдельный ACTIVE на exact base, затем свежая независимая проверка трёх exact blobs.
+
+## issue-319-c2 — ACTIVE base refresh, READY for independent review
+
+- Same contract, owner, task/chat, branch and worktree. Exact base/head `c139815614943bd3b1d4f63168324e28a8bb42a3`, tree `0fec4b24eea65bf70fc3301fd6753ece5cd2b961`; advanced only by fast-forward from c1 base `6880bba6bf295d430ed45422d8835cb26d4a4884` using the read-only local master source. Original Go files retained byte-for-byte. The complete c1 section above is preserved; c1 handoff SHA256 `79d8108856c261fc02a852c992912102ff381930f576da1db336bc003a447a4c`. Original READY manifest remains unchanged at `/private/tmp/issue319-ready.json`, SHA256 `f46150663f702a6789c698475aad23f81843baaddeabd2f20800c5a3a0811b2a`.
+- Exact three paths remain `internal/momentum/model/mark_price_pagination.go`, `internal/momentum/model/mark_price_pagination_test.go`, `.ai/handoffs/issue-319.md`. Final hashes and Git blobs are in `/private/tmp/issue319-active-ready.json`; fresh gate logs are under `/private/tmp/issue319-active-logs/`.
+- Fresh Go 1.26.11 checks on c139815: targeted/full tests and race, vet, build, gofmt, diff-check all PASS; `MOMENTUM_TEST_POSTGRES_DSN` unset. Ordinary coverage `3105/4350 = 71.379310344828%`. golangci-lint v2.10.1: 0 issues. govulncheck v1.1.4: 0 reachable vulnerabilities, 1 module-only advisory. No PostgreSQL integration was needed for this pure model contract.
+- State: `READY_FOR_REVIEW`, not yet independently reviewed. No commit, push or PR. Next: root performs read-only review of these exact three final blobs; after GREEN, this same owner publishes the reviewed blobs through an ordinary commit, non-force push and one PR.
