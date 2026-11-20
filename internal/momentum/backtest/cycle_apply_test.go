@@ -16,9 +16,7 @@ func applyFixture(t *testing.T) (BaselineCycleInput, PreparedBaselineCycle, []Ne
 	t.Helper()
 	input := cycleFixture(t, "now")
 	prepared, err := PrepareBaselineCycle(input)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	opens := []NextOpenReference{}
 	for _, symbol := range input.Config.Values().Symbols {
 		opens = append(opens, NextOpenReference{Symbol: symbol, Price: amount(t, "100")})
@@ -31,9 +29,7 @@ func TestApplyZeroSlipBaselineCycle(t *testing.T) {
 	input, prepared, opens := applyFixture(t)
 	before := cloneCycleInput(input)
 	result, err := ApplyZeroSlipBaselineCycle(input, prepared, opens)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	assertDecimal(t, result.WalletUSDT, "8967.001")
 	assertDecimal(t, result.FeesUSDT, "2.999")
 	assertDecimal(t, result.CashDeltaUSDT, "-2.999")
@@ -70,9 +66,7 @@ func TestApplyZeroSlipBaselineCycle(t *testing.T) {
 	opens[1].Price = amount(t, "100")
 	opens[0].Price = amount(t, "99.9999")
 	cheaper, err := ApplyZeroSlipBaselineCycle(input, prepared, opens)
-	if err != nil {
-		t.Fatal(err)
-	}
+	requireNoError(t, err)
 	assertDecimal(t, cheaper.Positions["BTCUSDT"].Quantity, "29.86")
 	result.Positions["BTCUSDT"] = model.LongPosition{}
 	result.Postings[0].Fill.ExecutionID = "changed"
@@ -86,6 +80,7 @@ func TestApplyZeroSlipBaselineCycle(t *testing.T) {
 	}
 	opens[0].Price = amount(t, "100")
 	input.At = input.At.In(time.FixedZone("test", 3600))
+	prepared.Cutoff.AsOf = input.At
 	shifted, err := ApplyZeroSlipBaselineCycle(input, prepared, opens)
 	if err != nil || !reflect.DeepEqual(again, shifted) {
 		t.Fatal("equivalent UTC instant changed output")
@@ -103,7 +98,9 @@ func TestApplyZeroSlipBaselineCycle(t *testing.T) {
 func TestApplyZeroSlipRefusesMalformed(t *testing.T) {
 	for _, name := range []string{"zero model", "nonzero slip", "wrong run", "wrong cycle", "wrong cutoff", "wrong equity",
 		"wrong projection", "missing price", "extra price", "duplicate price", "invalid price", "zero price", "negative price",
-		"quantity", "basis", "missing position", "wrong kind", "zero plan", "missing valuation", "residual", "wrong model"} {
+		"quantity", "basis", "missing position", "wrong kind", "zero plan", "missing valuation", "residual", "wrong model",
+		"cutoff wallet", "input wallet", "input funding", "funding identity",
+		"funding cash", "funding total", "valuation", "unrealized"} {
 		t.Run(name, func(t *testing.T) {
 			input, prepared, opens := applyFixture(t)
 			switch name {
@@ -120,13 +117,36 @@ func TestApplyZeroSlipRefusesMalformed(t *testing.T) {
 				}
 				var err error
 				input.Model, err = NewSimulationModel(input.Config, input.Dataset.Manifest, parameters)
-				if err != nil {
-					t.Fatal(err)
-				}
+				requireNoError(t, err)
 				prepared, err = PrepareBaselineCycle(input)
-				if err != nil {
-					t.Fatal(err)
+				requireNoError(t, err)
+			case "cutoff wallet":
+				prepared.Cutoff.WalletUSDT = amount(t, "9970")
+			case "input wallet":
+				input.WalletUSDT = amount(t, "10000")
+			case "input funding":
+				input.Funding[0].Event.Rate = amount(t, "0.02")
+				input.Funding[1].Event.Rate = amount(t, "-0.05")
+			case "funding identity":
+				input.Funding[0].FundingID = "same-cash-different-source"
+			case "funding cash":
+				prepared.Cutoff.FundingPostings[0].CashDeltaUSDT = model.Zero()
+			case "funding total":
+				prepared.Cutoff.FundingCashDeltaUSDT = model.Zero()
+			case "valuation":
+				for symbol, text := range map[string]string{"BTCUSDT": "101", "ETHUSDT": "96"} {
+					mark := input.Marks[symbol]
+					mark.Price = amount(t, text)
+					input.Marks[symbol] = mark
 				}
+				value, err := ProjectAccountingStep(AccountingInput{
+					Symbols: input.Config.Values().Symbols, AsOf: input.At, MarkMaxAge: time.Hour,
+					WalletUSDT: input.WalletUSDT, Positions: input.Positions, Marks: input.Marks, Funding: input.Funding,
+				})
+				requireNoError(t, err)
+				prepared.Cutoff = value
+			case "unrealized":
+				prepared.Cutoff.UnrealizedPnLUSDT = amount(t, "1000")
 			case "wrong model":
 				parameters := input.Model.Parameters()
 				parameters.FeeRate = amount(t, "0.002")
@@ -209,13 +229,9 @@ func TestApplyZeroSlipShapes(t *testing.T) {
 				}
 			}
 			prepared, err := PrepareBaselineCycle(input)
-			if err != nil {
-				t.Fatal(err)
-			}
+			requireNoError(t, err)
 			result, err := ApplyZeroSlipBaselineCycle(input, prepared, opens)
-			if err != nil {
-				t.Fatal(err)
-			}
+			requireNoError(t, err)
 			switch name {
 			case "zero fee":
 				assertDecimal(t, result.FeesUSDT, "0")
@@ -233,12 +249,9 @@ func TestApplyZeroSlipShapes(t *testing.T) {
 	}
 	maximum := amount(t, strings.Repeat("9", 63)+"."+strings.Repeat("9", 64))
 	notional, err := maximum.Mul(maximum)
-	if err != nil {
-		t.Fatal("maximum valid notional overflowed", err)
-	}
-	if _, err := notional.Mul(maximum); err != nil {
-		t.Fatal("maximum valid fee overflowed", err)
-	}
+	requireNoError(t, err)
+	_, err = notional.Mul(maximum)
+	requireNoError(t, err)
 }
 
 // TestApplyZeroSlipArithmeticOverflow проверяет reserve и позднюю ledger арифметику.
@@ -255,14 +268,10 @@ func TestApplyZeroSlipArithmeticOverflow(t *testing.T) {
 			for range power {
 				var err error
 				divisor, err = divisor.Mul(multiplier)
-				if err != nil {
-					t.Fatal(err)
-				}
+				requireNoError(t, err)
 			}
 			epsilon, err := amount(t, "1").Quo(divisor)
-			if err != nil {
-				t.Fatal(err)
-			}
+			requireNoError(t, err)
 			if kind == "reserve" {
 				input.WalletUSDT, input.Funding = epsilon, nil
 				for symbol := range input.Positions {
@@ -271,15 +280,11 @@ func TestApplyZeroSlipArithmeticOverflow(t *testing.T) {
 				opens[0].Price = amount(t, "1"+strings.Repeat("0", 127))
 			} else {
 				input.WalletUSDT, err = input.WalletUSDT.Add(epsilon)
-				if err != nil {
-					t.Fatal(err)
-				}
+				requireNoError(t, err)
 				opens[1].Price = amount(t, "99."+strings.Repeat("9", 61))
 			}
 			prepared, err = PrepareBaselineCycle(input)
-			if err != nil {
-				t.Fatalf("authentic Prepare failed: %v", err)
-			}
+			requireNoError(t, err)
 			before := cloneCycleInput(input)
 			got, err := ApplyZeroSlipBaselineCycle(input, prepared, opens)
 			cause := ErrZeroSlipBaselineReserve

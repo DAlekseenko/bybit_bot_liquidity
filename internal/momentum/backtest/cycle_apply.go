@@ -60,6 +60,14 @@ func ApplyZeroSlipBaselineCycle(input BaselineCycleInput, prepared PreparedBasel
 		prepared.Projection.PlanHash() != prepared.Plan.Hash() {
 		return BaselineFillBatchResult{}, ErrZeroSlipBaselineApply
 	}
+	verified, err := ProjectAccountingStep(AccountingInput{
+		Symbols: cfg.Symbols, AsOf: input.At, MarkMaxAge: parameters.MarkMaxAge,
+		WalletUSDT: input.WalletUSDT, Positions: input.Positions, Marks: input.Marks, Funding: input.Funding,
+	})
+	if err != nil || !sameApplyAccounting(verified, prepared.Cutoff) {
+		return BaselineFillBatchResult{}, errors.Join(ErrZeroSlipBaselineApply, err)
+	}
+	planPrices := prepared.Plan.Snapshot().Prices()
 	if len(input.Positions) != len(cfg.Symbols) || len(prepared.Cutoff.Valuations) != len(cfg.Symbols) {
 		return BaselineFillBatchResult{}, ErrZeroSlipBaselineApply
 	}
@@ -67,6 +75,7 @@ func ApplyZeroSlipBaselineCycle(input BaselineCycleInput, prepared PreparedBasel
 		old, exists := input.Positions[symbol]
 		valuation := prepared.Cutoff.Valuations[i]
 		if !exists || valuation.Mark.Symbol != symbol ||
+			!sameApplyDecimal(planPrices[symbol], valuation.Mark.Price) ||
 			!sameApplyDecimal(old.Quantity, valuation.Position.Quantity) ||
 			!sameApplyDecimal(old.CostBasisUSDT, valuation.Position.CostBasisUSDT) {
 			return BaselineFillBatchResult{}, ErrZeroSlipBaselineApply
@@ -155,4 +164,49 @@ func ApplyZeroSlipBaselineCycle(input BaselineCycleInput, prepared PreparedBasel
 func sameApplyDecimal(left, right model.Decimal) bool {
 	comparison, err := left.Cmp(right)
 	return err == nil && comparison == 0
+}
+
+// sameApplyAccounting сравнивает полную проекцию без повторного начисления или округления.
+func sameApplyAccounting(a, b AccountingResult) bool {
+	if !a.AsOf.Equal(b.AsOf) || len(a.FundingPostings) != len(b.FundingPostings) || len(a.Valuations) != len(b.Valuations) {
+		return false
+	}
+	pairs := [][2]model.Decimal{
+		{a.WalletUSDT, b.WalletUSDT},
+		{a.FundingCashDeltaUSDT, b.FundingCashDeltaUSDT},
+		{a.UnrealizedPnLUSDT, b.UnrealizedPnLUSDT},
+		{a.EquityUSDT, b.EquityUSDT},
+	}
+	for i, p := range a.FundingPostings {
+		q := b.FundingPostings[i]
+		if p.Assessment.FundingID != q.Assessment.FundingID || p.Assessment.Symbol != q.Assessment.Symbol || !p.Assessment.Event.FundingTime.Equal(q.Assessment.Event.FundingTime) {
+			return false
+		}
+		pairs = append(pairs,
+			[2]model.Decimal{p.Assessment.Event.Rate, q.Assessment.Event.Rate},
+			[2]model.Decimal{p.Assessment.MarkPrice, q.Assessment.MarkPrice},
+			[2]model.Decimal{p.Position.Quantity, q.Position.Quantity},
+			[2]model.Decimal{p.Position.CostBasisUSDT, q.Position.CostBasisUSDT},
+			[2]model.Decimal{p.CashDeltaUSDT, q.CashDeltaUSDT},
+		)
+	}
+	for i, p := range a.Valuations {
+		q := b.Valuations[i]
+		if p.Mark.Symbol != q.Mark.Symbol || !p.AsOf.Equal(q.AsOf) || !p.Mark.ObservedAt.Equal(q.Mark.ObservedAt) {
+			return false
+		}
+		pairs = append(pairs,
+			[2]model.Decimal{p.Position.Quantity, q.Position.Quantity},
+			[2]model.Decimal{p.Position.CostBasisUSDT, q.Position.CostBasisUSDT},
+			[2]model.Decimal{p.Mark.Price, q.Mark.Price},
+			[2]model.Decimal{p.NotionalUSDT, q.NotionalUSDT},
+			[2]model.Decimal{p.UnrealizedPnLUSDT, q.UnrealizedPnLUSDT},
+		)
+	}
+	for _, pair := range pairs {
+		if !sameApplyDecimal(pair[0], pair[1]) {
+			return false
+		}
+	}
+	return true
 }
