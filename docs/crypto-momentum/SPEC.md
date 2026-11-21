@@ -7,8 +7,8 @@
 
 ## Область и разделение ответственности
 
-- Отдельный `cmd/momentum`; legacy `cmd/bot`, его SQLite, SL/TP и preflight
-  `REGULAR_MARGIN` не становятся контрактами Momentum.
+- Отдельный `cmd/momentum`. Legacy `cmd/bot` удалён (тег `legacy-liquidity-final`);
+  его SQLite, SL/TP и preflight `REGULAR_MARGIN` не являются контрактами Momentum.
 - Один чистый planner получает проверенный общий UTC-срез трёх символов и
   portfolio snapshot, не выполняет I/O и возвращает неизменяемый `TradePlan`.
   План хранит account/environment, strategy/run/config/profile/model IDs,

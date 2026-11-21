@@ -6,13 +6,6 @@
 /dist/
 /.gocache/
 
-# Runtime data
-/data/*.db
-/data/*.db-*
-
 # Local configuration
 /.env
-/certs/*.cer
-/certs/*.crt
-/certs/*.pem
 /.serena/

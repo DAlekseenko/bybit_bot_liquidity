@@ -5,7 +5,7 @@
 применёнными runtime-решениями.
 Каноническое ТЗ — [Issue #55](https://github.com/DAlekseenko/bybit_bot_liquidity/issues/55),
 локальный контракт — [SPEC.md](SPEC.md). Исторические решения legacy MVP в
-[общем журнале](../DECISIONS.md) не отменены и не распространяются автоматически
+[общем журнале](https://github.com/DAlekseenko/bybit_bot_liquidity/tree/legacy-liquidity-final/docs/DECISIONS.md) (тег `legacy-liquidity-final`) не отменены и не распространяются автоматически
 на Momentum.
 
 | ID | Предложение / требуемый ответ | Блокирует |

@@ -1,189 +1,51 @@
-# Bybit Liquidity Bot
+# Bybit trading engine — Crypto Momentum
 
-MVP алгоритмического торгового бота на Go для проверки стратегии, использующей
-свечи, open interest и ликвидации Bybit. Целевая среда — Bybit Testnet, один
-линейный инструмент (`BTCUSDT` в примере конфигурации).
+Go-система автоматической торговли на Bybit V5 по заранее утверждённому
+детерминированному алгоритму. Цель — в [PROJECT_GOAL.md](PROJECT_GOAL.md).
 
-Долгосрочная цель — автоматическая торговля на Bybit по заранее заданному
-алгоритму; [цель проекта](PROJECT_GOAL.md) описывает целевую систему и её
-обязанности. Это целевое состояние, а не описание текущей готовности проекта.
+Первая стратегия — **Crypto Momentum**: портфель из трёх USDT perpetual, дневной
+ROC30, доля `equity/3` на символ, недельная ребалансировка, LONG или USDT.
+Спецификация — [docs/crypto-momentum/SPEC.md](docs/crypto-momentum/SPEC.md),
+задачи — GitHub Issues (эпик #55).
 
-> **Состояние проекта:** это компилируемый каркас, но ещё не работающий торговый
-> бот. Запуск загружает конфигурацию и запускает read-only цикл на Bybit Testnet:
-> свечи, open interest и ликвидации поступают из public API, сигнал сохраняется и
-> логируется. Public ticker и signed read-only Unified balance реализованы как
-> будущие входы executor; account preflight допускает только Unified account с
-> `REGULAR_MARGIN`, position и current-leverage read models — только one-way
-> mode. Leverage preflight сверяет текущее плечо с instrument limits, но не
-> меняет его. Execution readiness объединяет эти проверки с balance и market
-> price; при наличии env credentials он один раз выполняется на startup и
-> безопасно логирует итог. `PlaceOrder` и `ClosePosition` возвращают
-> `ErrNotImplemented`, исполнение сделок отсутствует. Не используйте проект для
-> реальных средств.
+Сейчас система работает только с публичными данными Bybit Testnet и
+офлайн-бэктестом; заявки не отправляются.
 
-## Что уже есть
+## Структура
 
-- доменные типы и интерфейс биржи;
-- публичные Bybit V5 REST-запросы linear 1m candles и open interest с
-  настраиваемым поддерживаемым Bybit-интервалом и unit-тестами;
-- public instrument info и нормализация Qty/SL/TP по биржевым шагам и лимитам;
-- public linear ticker, подписанные read-only Unified account info/balance,
-  one-way position и текущее leverage;
-- fail-closed account preflight для Unified `REGULAR_MARGIN` и leverage preflight
-  по диапазону/шагу инструмента;
-- агрегированный read-only execution readiness для account, позиции, balance,
-  market price и leverage с безопасным startup-reporting;
-- сборка снимка свечей и open interest;
-- read-only цикл в `cmd/bot`, который раз в 30 секунд получает market data и
-  рассчитывает сигнал при переходе к следующему OI-окну, сохраняет и логирует его;
-- публичный Bybit V5 WebSocket `allLiquidation` с heartbeat, reconnect,
-	экспоненциальным backoff с jitter и потокобезопасным настраиваемым окном
-	ликвидаций (`5` минут в примере);
-- правила сигналов `LONG`/`SHORT`/`NONE` и unit-тесты;
-- расчёт фиксированного риска с резервами комиссии/проскальзывания, SL/TP и
-  unit-тесты;
-- paper-trade аналитика с виртуальным балансом `$1,000`: расчётный вход,
-  SL/TP, комиссии, проскальзывание, причина выхода и net virtual PnL сохраняются
-  в SQLite без отправки ордеров;
-- исполнение сигнала с проверкой открытой позиции и cooldown;
-- SQLite-хранилище: startup-миграция, сохранение каждого сигнала вместе с полным
-  снимком OI/volume/candle/liquidations и расчёт статистики;
-- конфигурация Testnet, JSON-логирование и Dockerfile.
+| Путь | Что внутри |
+| --- | --- |
+| `cmd/momentum` | CLI; сейчас только `collect-once` |
+| `internal/momentum/*` | model, planner, data, history, storage (PostgreSQL), backtest, signals, config |
+| `internal/exchange`, `internal/exchange/bybit` | Адаптер Bybit V5: public/signed REST, WebSocket, правила инструментов |
+| `internal/controlapi` | Политика авторизации операторского API |
+| `configs/momentum.paper.yaml` | Пример конфигурации Momentum |
+| `.ai/`, `AGENTS.md` | Правила и контекст для разработчиков и AI-агентов |
 
-Разрыв между компонентами и готовым MVP перечислен в
-[архитектуре](docs/ARCHITECTURE.md#текущее-состояние-и-разрывы).
+Прежний бот Liquidity (`cmd/bot`, SQLite, Docker) удалён; его код доступен по тегу
+`legacy-liquidity-final`.
 
-## Требования
-
-- безопасный toolchain Go 1.26.10; уровень совместимости исходников сохранён на
-  Go 1.24.13 через `go.mod`;
-- Git — только для получения и совместной разработки рабочей копии;
-- Docker — опционально, для контейнерной сборки.
-
-Для SQLite используется CGo-free драйвер `modernc.org/sqlite`, совместимый со
-сборкой Alpine. Для WebSocket используется `github.com/gorilla/websocket`;
-остальной прикладной код опирается преимущественно на стандартную библиотеку.
-
-## Установка и быстрый запуск
-
-Получите рабочую копию репозитория и из её корня выполните:
+## Проверки
 
 ```bash
+test -z "$(gofmt -l cmd internal)"
 go test ./...
-go run ./cmd/bot -config configs/config.yaml
+go test -race ./...
+go vet ./...
+go build ./...
 ```
 
-Ожидаемый результат — JSON-запись об инициализации. Процесс продолжит ждать
-`SIGINT`/`SIGTERM`; остановите его `Ctrl+C`. При запуске выполняются read-only
-REST- и WebSocket-запросы к публичному Bybit Testnet API; рассчитанные сигналы
-сохраняются в `data/trades.db`. Ордера при текущей реализации не отправляются.
+Тесты PostgreSQL пропускаются без `MOMENTUM_TEST_POSTGRES_DSN` — одноразовой
+локальной базы с именем `momentum_test_*`. В CI их запускает
+[momentum-postgres.yml](.github/workflows/momentum-postgres.yml).
 
-Read-only REST-запросы имеют ограниченный retry только для классифицированных
-временных ошибок (rate limit, 5xx и сетевые timeout). После разрыва WebSocket
-накопленное окно ликвидаций сбрасывается: Bybit не предоставляет replay этого
-потока, поэтому неполное окно не выдаётся за полное. Polling не делает catch-up
-burst после долгого запроса — следующий запуск отсчитывается от завершения
-предыдущего.
+## Запуск
 
-Контейнерный вариант с локально доступным SQLite-файлом:
+Однократный сбор публичных данных и запись signal batch в PostgreSQL:
 
 ```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f bot
+MOMENTUM_POSTGRES_DSN='postgres://…' \
+  go run ./cmd/momentum collect-once -config configs/momentum.paper.yaml -timeout 2m
 ```
 
-Compose запускает один непривилегированный контейнер бота без входящих портов.
-Конфигурация монтируется read-only, а контейнерный `/app/data/trades.db`
-соответствует локальному файлу `./data/trades.db`. Файл сохраняется после
-`docker compose down` и доступен локальным SQLite-инструментам. Отдельный
-постоянный контейнер СУБД не используется: SQLite встроен в приложение. Для
-ручных запросов доступен опциональный SQLite CLI к тому же каталогу:
-
-```bash
-docker compose run --rm sqlite
-```
-
-CLI открывает `/data/trades.db` в режиме только чтения. Выйти можно командой
-`.quit`; бот при этом продолжает работать.
-
-Если `sqlite3` установлен локально, тот же файл можно открыть напрямую:
-
-```bash
-sqlite3 -readonly ./data/trades.db
-```
-
-Последние сигналы со всеми условиями входа:
-
-```sql
-SELECT created_at, signal_type, reason,
-       oi_growth_percent, oi_growth_threshold_percent, oi_condition_met,
-       current_volume, volume_sma, volume_ratio, volume_threshold,
-       volume_condition_met, candle_direction,
-       short_liquidations_usd, long_liquidations_usd,
-       liquidation_threshold_usd,
-       short_liquidation_condition_met, long_liquidation_condition_met,
-       long_setup_met, short_setup_met
-FROM signals
-ORDER BY id DESC
-LIMIT 20;
-```
-
-Проверить целостность контейнерной базы можно без остановки:
-
-```bash
-docker compose exec bot /app/bot \
-  -config /app/configs/config.yaml \
-  -check-storage
-```
-
-Для опционального signed read-only readiness скопируйте `.env.example` в `.env`
-и заполните обе переменные. Public-only запуск работает с пустыми значениями.
-Если Docker работает через корпоративный TLS proxy, положите его публичный CA в
-`certs/local-ca.pem` и задайте `CUSTOM_CA_FILE=./certs/local-ca.pem` в `.env`;
-TLS-проверка при этом остаётся включённой.
-Подробные команды остановки, диагностики и удаления данных приведены в
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#docker-compose).
-
-## Конфигурация
-
-Версионируемый пример безопасно указывает на Testnet. Загрузчик жёстко отклоняет
-`testnet: false`, mainnet endpoints и API credentials в YAML. Опциональная пара
-`BYBIT_API_KEY`/`BYBIT_API_SECRET` читается только из окружения и используется
-только для read-only account info, wallet balance, position info и current
-leverage. Полная пара включает один startup readiness check; ошибка логируется
-без account values и не останавливает public loop. Торговые private endpoints ещё
-не реализованы. Нельзя задавать только одну переменную из пары.
-
-Текущий загрузчик поддерживает используемое проектом простое подмножество YAML,
-а не произвольный YAML. Параметры OI, volume SMA, ликвидаций, риска, SL/TP и
-резервов sizing находятся в секциях `strategy` и `risk`. Секция `trading`
-содержит `dry_run`, виртуальный баланс, лимит позиций, cooldown и дневной лимит
-сделок. Виртуальный контур использует эти параметры для аналитики; реальный
-executor не подключён, поэтому даже `dry_run: false` не активирует отправку
-ордеров. Все поля и правила локальной настройки описаны в
-[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#конфигурация-и-переменные-окружения).
-
-Прямая интеграция с Telegram удалена в #177. Будущий Gateway/Hermes описан в
-#127 и пока не реализован.
-
-## Документация
-
-- [Цель проекта](PROJECT_GOAL.md) — целевая автоматическая торговая система и её границы.
-- [Архитектура](docs/ARCHITECTURE.md) — компоненты, зависимости, потоки и границы.
-- [Предметная область](docs/DOMAIN.md) — термины и точные бизнес-правила.
-- [Разработка](docs/DEVELOPMENT.md) — окружение, запуск, тесты и миграции.
-- [API и интеграции](docs/API.md) — Go-контракты, события и Bybit.
-- [Решения](docs/DECISIONS.md) — принятые ограничения и открытые вопросы.
-- [Эксплуатация](docs/OPERATIONS.md) — ручной запуск, gated Testnet image deploy, диагностика и SQLite backup/restore.
-- [Roadmap](docs/ROADMAP.md) — следующие безопасные этапы развития.
-- [Инструкции участникам](AGENTS.md) — правила изменения проекта.
-- [Краткий контекст](.ai/CONTEXT.md), [handoffs Issue](.ai/handoffs/) и
-[правила передачи](AGENTS.md); `.ai/HANDOFF.md` сохранён как legacy.
-
-## Безопасность
-
-Не коммитьте ключи, `.env` и файлы базы из `data/`; они исключены через
-`.gitignore`. Загрузчик допускает только официальные REST/WebSocket endpoints
-Bybit Testnet. Реальная торговля, модель разрешений API-ключа и аварийное
-отключение не спроектированы и остаются вне текущей готовности проекта.
+Торговых вызовов команда не делает.
