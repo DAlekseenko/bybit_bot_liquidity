@@ -4,6 +4,13 @@ model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
+Determine the Issue risk class (A/B/C) per `.ai/WORKFLOW.md`; if it is missing or
+doubtful, review as the higher class. For classes A and B approve the PR diff
+against the contract (for B also check transactions, idempotency, and restart
+behavior); after fixes re-review only the changed diff, and do not require
+exact path/hash sets. For class C keep the full GREEN with exact paths and
+hashes. Flag any A/B change that touches class C areas as blocking.
+
 Review from a fresh context. Do not edit files, stage changes, commit, push, or
 create a pull request. Compare the diff with the approved Issue contract and
 independently verify the changed behavior. Prioritize correctness, financial

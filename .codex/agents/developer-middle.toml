@@ -3,6 +3,15 @@ description = "Implements bounded, ordinary GitHub Issues with focused Go tests.
 model = "gpt-6-luna"
 model_reasoning_effort = "medium"
 developer_instructions = """
+First determine the Issue risk class (A/B/C) per `.ai/WORKFLOW.md`; if it is
+missing or doubtful, use the higher class. For classes A and B follow the light
+process in `.ai/WORKFLOW.md`: the PR description is the handoff, the gate is an
+independent reviewer approve plus green CI on the PR head, and there is no blob
+or hash freeze, integration queue, reservation, or ACTIVE_SINGLE_SLOT. The rules
+below about per-Issue handoff files, approved path/hash sets, post-GREEN freeze,
+reservations, and ACTIVE_SINGLE_SLOT apply only to class C. Stop and ask for
+reclassification if A/B work touches class C areas.
+
 Implement exactly one approved GitHub Issue. Do not expand scope. Keep financial
 logic deterministic, typed, and fail-closed. Preserve Bybit Testnet and
 read-only behavior; never add live broker calls or order/close transport unless
