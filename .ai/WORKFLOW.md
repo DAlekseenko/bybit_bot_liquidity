@@ -42,14 +42,23 @@ system-designer, developer и reviewer при работе над Issue; ссы�
 5. **Review.** Один независимый reviewer из свежего контекста, read-only, без
    self-review; сверяет diff с контрактом. Для B дополнительно проверяет
    транзакционность, идемпотентность и поведение после рестарта. Исправления после
-   review повторно проверяются только по изменённому diff.
-6. **Gate.** Approve reviewer и все CI checks зелёные на head PR. Заморозка
-   хэшей, очередь интеграции, `ACTIVE_SINGLE_SLOT` и reservations не применяются.
-   Исключение: PR, меняющие список миграций `internal/momentum/storage`,
-   мерджатся по одному после rebase на свежий default branch.
-7. **Merge.** Выполняет владелец или orchestrator по полномочию владельца;
-   Issue закрывается через `Closes #<n>`. Checkpoint-комментарии, readback и
-   архивация чатов не требуются.
+   review повторно проверяются только по изменённому diff. Штатный reviewer —
+   Codex GitHub review (`chatgpt-codex-connector`): он запускается при открытии
+   PR, повтор — комментарием `@codex review` после исправлений. Автор кода не
+   засчитывает себе review.
+6. **Gate.** Review без открытых замечаний и все CI checks зелёные на head PR.
+   Для Codex review это последний комментарий `codex-review-state:v1`, где
+   `code_review.status` = `completed`, `code_review.commit_sha` равен head SHA PR
+   и `has_unresolved_findings` = `false`. Заморозка хэшей, очередь интеграции,
+   `ACTIVE_SINGLE_SLOT` и reservations не применяются. Исключение: PR, меняющие
+   список миграций `internal/momentum/storage`, мерджатся по одному после rebase
+   на свежий default branch.
+7. **Merge.** Владелец 2026-11-21 дал постоянное полномочие: PR классов A и B
+   вливает агент-исполнитель сам, когда gate шага 6 выполнен на текущем head SHA;
+   иначе merge не выполняется. Класс C вливает только владелец. Issue
+   закрывается через `Closes #<n>`. Checkpoint-комментарии, readback и архивация
+   чатов не требуются. После merge агент коротко сообщает владельцу PR, merge SHA
+   и итог проверок.
 8. **Прерывание.** Если работа останавливается до PR, оставьте
    `.ai/handoffs/issue-<n>.md` (5–10 строк: ветка, сделано, проверки, blocker,
    следующий шаг). Файл можно перезаписывать; архивы и версии не нужны.
