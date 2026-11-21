@@ -1,7 +1,8 @@
 # Инструкции участникам разработки
 
-Источники истины: код, тесты, `go.mod`, Docker-файлы и `configs/*.yaml` — что
-реализовано; [DOMAIN](docs/DOMAIN.md) и [DECISIONS](docs/DECISIONS.md) — что решено.
+Источники истины: код, тесты, `go.mod` и `configs/*.yaml` — что реализовано;
+[SPEC](docs/crypto-momentum/SPEC.md) и [DECISIONS](docs/crypto-momentum/DECISIONS.md)
+Momentum — что решено.
 
 ## О проекте
 
@@ -11,13 +12,14 @@ Go-система автоматической торговли на Bybit V5 п
 идемпотентные заявки, сверка с биржей, восстановление после рестарта и
 аварийная остановка. Поиск и оптимизация стратегий в задачи системы не входят.
 
-В репозитории два изолированных контура; код, схемы БД, runtime и Compose
-между ними не смешиваются:
-
-| Контур | Код и хранилище | Что делает |
+| Часть | Код и хранилище | Что делает |
 | --- | --- | --- |
-| Liquidity (legacy) | `cmd/bot`, `internal/{strategy,risk,papertrade,execution,storage,...}`, SQLite | Каждые 30 с читает 1m свечи, open interest и ликвидации одного символа, считает `LONG`/`SHORT`/`NONE`, ведёт paper-trade с net PnL; signed read-only проверки аккаунта |
 | Crypto Momentum | `cmd/momentum`, `internal/momentum/*`, PostgreSQL | Портфель из трёх USDT perpetual (пример: BTC, ETH, HYPE): дневной ROC30, доля `equity/3` на символ, недельная ребалансировка, LONG или USDT; точная арифметика `big.Rat`, ledger |
+| Адаптер биржи | `internal/exchange`, `internal/exchange/bybit` | Bybit V5: public/signed REST, WebSocket, правила инструментов; без торговых правил |
+| Control API | `internal/controlapi` | Политика авторизации операторских команд |
+
+Прежний бот Liquidity (`cmd/bot`, SQLite) удалён; код — по тегу
+`legacy-liquidity-final`. Не восстанавливайте его без отдельной Issue.
 
 Спецификация Momentum — [docs/crypto-momentum/SPEC.md](docs/crypto-momentum/SPEC.md),
 задачи — GitHub Issues (эпик #55, CM-001…CM-062).
@@ -26,7 +28,8 @@ Go-система автоматической торговли на Bybit V5 п
 
 - Только Testnet и read-only. Не подключайте отправку и закрытие ордеров, live
   broker calls и order/close transport без отдельной Issue с явным одобрением
-  владельца. `dry_run: false` не должен включать торговлю.
+  владельца. Смена полей конфигурации (`mode`, `environment`) сама по себе не
+  должна включать торговлю.
 - Paper-trade — виртуальная аналитика, не исполнение. Fill не выводится из
   отсутствующей заявки: доказательство — только исполненная операция биржи.
 - Live trading, deploy, изменение risk limits и destructive migrations требуют
@@ -43,12 +46,9 @@ Go-система автоматической торговли на Bybit V5 п
 | Краткая архитектура и подтверждённые решения | [.ai/CONTEXT.md](.ai/CONTEXT.md) |
 | Процедура Issue, роли, handoff, публикация | [.ai/WORKFLOW.md](.ai/WORKFLOW.md) |
 | Handoffs Issue | [`.ai/handoffs/`](.ai/handoffs/); `.ai/HANDOFF.md` — legacy |
-| Бизнес-правила и формулы | [docs/DOMAIN.md](docs/DOMAIN.md) |
-| Компоненты и зависимости | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Go и внешние контракты | [docs/API.md](docs/API.md) |
-| Команды и конфигурация | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) |
-| Принятые ограничения и TODO | [docs/DECISIONS.md](docs/DECISIONS.md) |
-| Спецификация Momentum | [docs/crypto-momentum/SPEC.md](docs/crypto-momentum/SPEC.md) |
+| Правила, формулы, архитектура Momentum | [docs/crypto-momentum/SPEC.md](docs/crypto-momentum/SPEC.md) |
+| Решения владельца и открытые вопросы | [docs/crypto-momentum/DECISIONS.md](docs/crypto-momentum/DECISIONS.md) |
+| Запуск и структура | [README.md](README.md) |
 
 Контекст проекта: `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Knowledge-Hub/01 Projects/Momentum trading bot`
 
@@ -56,18 +56,18 @@ Go-система автоматической торговли на Bybit V5 п
 
 - Совместимость с Go 1.24 из `go.mod`, `gofmt`, стандартная библиотека; новую
   dependency обоснуйте, а если она влияет на архитектуру — обновите
-  `docs/DECISIONS.md`.
+  `docs/crypto-momentum/DECISIONS.md`.
 - `context.Context` первым у внешних/долгих операций, ошибки с контекстом на
   границах, без глобального изменяемого состояния. Секреты только в env, не в Git
   и логах. Не редактируйте IDE-файлы и чужие изменения.
 - Краткие русские комментарии к каждой функции/методу, включая private и test
   helpers; комментарий экспортируемого идентификатора начинается с его имени.
 - Constructor injection; интерфейсы принадлежат потребителю и минимальны.
-- `strategy` и `risk` без I/O, биржевой адаптер без торговых правил, SQL только
-  в `storage`, координация — в `execution` или composition root.
+- `planner`, `model` и расчёты backtest без I/O; биржевой адаптер без торговых
+  правил; SQL только в `internal/momentum/storage`; координация — в `cmd/*`.
+- Деньги, цены и количества — точный decimal (`big.Rat`), не `float64`.
 - Sentinel errors для ожидаемых ветвей, структурированный `slog`, время в UTC.
-- Доменные типы и единицы сохраняйте либо явно документируйте изменение в DOMAIN
-  и API.
+- Доменные типы и единицы сохраняйте либо явно документируйте изменение в SPEC.
 - Табличные или точечные unit-тесты рядом с пакетом; реальные заявки в тестах
   запрещены. Не запускайте бота для теста.
 
@@ -85,7 +85,7 @@ CI дополнительно запускает golangci-lint, govulncheck и c
 Momentum без `MOMENTUM_TEST_POSTGRES_DSN` пропускаются (`t.Skip`), и зелёный
 `go test ./...` их не проверяет. Для них нужен одноразовый локальный PostgreSQL с
 базой `momentum_test_*`; в CI — [momentum-postgres.yml](.github/workflows/momentum-postgres.yml).
-Запуск бинарников и конфигурация — в [DEVELOPMENT](docs/DEVELOPMENT.md).
+Запуск и конфигурация — в [README](README.md).
 
 ## Процесс Issue
 
