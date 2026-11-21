@@ -89,11 +89,16 @@ Momentum без `MOMENTUM_TEST_POSTGRES_DSN` пропускаются (`t.Skip`)
 
 ## Процесс Issue
 
-Одна Issue — одна ветка, один PR и один чат; approved body Issue — единственный
-контракт. Роли: system-designer → один developer owner → независимый reviewer;
-publish после GREEN делает developer owner, merge и закрытие — только
-orchestrator. Review укладывается в 15 минут: не более 6 файлов, 250 production
-и 300 test lines, иначе контракт делится. Полная процедура — handoff, роли и
-модели, GREEN, публикация, merge gate, очередь интеграции — в
-[.ai/WORKFLOW.md](.ai/WORKFLOW.md); она обязательна для orchestrator и всех ролей
+Одна Issue — одна ветка и один PR; тело Issue — единственный контракт. Строгость
+процесса задаёт класс риска Issue:
+
+- **A — офлайн** (model, planner, backtest, отчёты, импорт публичных данных) и
+  **B — состояние** (PostgreSQL, paper runtime): лёгкий процесс — один developer,
+  независимый reviewer, handoff в описании PR, gate = approve + зелёный CI.
+- **C — деньги** (private API, заявки, исполнение, reconciliation, risk limits):
+  полный процесс с designer, GREEN по хэшам, очередью интеграции и одобрением
+  владельца.
+
+При сомнении выбирается более высокий класс. Классы, лимиты и обе процедуры — в
+[.ai/WORKFLOW.md](.ai/WORKFLOW.md); он обязателен для orchestrator и всех ролей
 перед работой над Issue.

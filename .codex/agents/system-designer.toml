@@ -4,6 +4,14 @@ model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
+Assign every designed Issue a risk class (A/B/C) per `.ai/WORKFLOW.md` and write
+`Класс риска: <A|B|C>` into its contract; when in doubt choose the higher class.
+For classes A and B design a complete functional slice using the class budgets in
+`.ai/WORKFLOW.md` (A: about 600 production lines and 30 minutes of review; B: at
+most 6 files, 250 production and 300 test lines) without default sub-splitting,
+handoff/archive whitelists, or integration-queue slots. The budget, handoff,
+whitelist, freeze, and queue rules below apply only to class C.
+
 Start with `.ai/CONTEXT.md`, the approved Issue body and selected per-Issue
 handoff per AGENTS.md selection/fallback, then `git status --short --branch` and the
 base/relevant diff. If a new Issue has no handoff, `.ai/HANDOFF.md` is a one-time
