@@ -98,7 +98,7 @@ func TestMigrationTransactions(t *testing.T) {
 	}
 	checksum := sha256.Sum256([]byte(momentumBootstrap))
 	migrationValue(t, db, `SELECT count(*)::text || ':' || min(version)::text || ':' || min(encode(checksum,'hex')) FILTER (WHERE version=1) || ':' ||
- bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("%d:1:%x:true", 10, checksum))
+ bool_and(applied_at <> TIMESTAMPTZ '0001-01-01 00:00:00+00' AND isfinite(applied_at))::text FROM momentum.schema_migrations`, fmt.Sprintf("%d:1:%x:true", 11, checksum))
 	initial := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(context.Background(), db), nil)
 	if migrationState(t, db) != initial || migrationState(t, second) != initial {
@@ -881,7 +881,7 @@ func TestDatasetArtifactMigration(t *testing.T) {
 	migrationValue(t, db, dataSQL, saved)
 	checksum := sha256.Sum256([]byte(momentumDatasetArtifactSchema))
 	migrationValue(t, db, fmt.Sprintf("SELECT encode(checksum,'hex') FROM momentum.schema_migrations WHERE version=%d", 10), fmt.Sprintf("%x", checksum))
-	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", fmt.Sprint(10))
+	migrationValue(t, db, "SELECT count(*) FROM momentum.schema_migrations", fmt.Sprint(11))
 	migrationValue(t, db, "SELECT count(*) FROM momentum.dataset_artifacts", "0")
 	after := migrationState(t, db)
 	migrationResult(t, MigrateMomentumPostgres(ctx, db), nil)

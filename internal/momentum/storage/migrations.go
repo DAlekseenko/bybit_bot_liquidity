@@ -19,6 +19,7 @@ func MigrateMomentumPostgres(ctx context.Context, db *sql.DB) error {
 		{version: 8, sql: momentumPlanRevisionSchema},
 		{version: 9, sql: momentumFundingImportProgressSchema},
 		{version: 10, sql: momentumDatasetArtifactSchema},
+		{version: 11, sql: momentumExecutionLedgerSchema},
 	})
 }
 
