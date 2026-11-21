@@ -269,6 +269,15 @@ func TestJournalRoleAndBindingMatrix(t *testing.T) {
 	if _, err := ProjectAccountingJournalSegment(run, cycle, plan, "hourly", value, symbols); !errors.Is(err, ErrReplayJournal) {
 		t.Fatal("non-cycle role accepted cycle binding")
 	}
+	value.Valuations = append(value.Valuations, value.Valuations[2])
+	value.Valuations[3].Mark.Symbol = "XUSDT"
+	for _, count := range []int{1, 2, 4} {
+		subset := value
+		subset.Valuations = value.Valuations[:count]
+		if _, err := ProjectAccountingJournalSegment(run, "", "", "initial", subset, append(symbols, "XUSDT")[:count]); err != nil {
+			t.Fatalf("universe size %d rejected: %v", count, err)
+		}
+	}
 }
 
 // TestJournalLargeRatioAndZeroFailure проверяет крупную дробь и нулевой результат при ошибке.

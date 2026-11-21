@@ -1,7 +1,6 @@
 package backtest
 
 import (
-	"bybit_bot_liquidity/internal/momentum/config"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -101,6 +100,7 @@ func journalAccountingRows(run, cycle, plan, role string, value AccountingResult
 }
 
 var journalHashPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var journalSymbolPattern = regexp.MustCompile(`^[A-Z0-9]+USDT$`)
 
 // ReplayJournalSegment хранит отдельный проверенный участок полного журнала.
 type ReplayJournalSegment struct {
@@ -132,10 +132,14 @@ func sealJournalSegment(rows []journalAccountingRow, err error) (ReplayJournalSe
 
 // ProjectAccountingJournalSegment кодирует funding и полную оценку портфеля.
 func ProjectAccountingJournalSegment(run, cycle, plan, role string, value AccountingResult, symbols []string) (ReplayJournalSegment, error) {
-	canonical, err := config.CanonicalSymbols(symbols)
 	cyclic := role == "pretrade" || role == "posttrade"
-	if err != nil || !slices.Equal(canonical, symbols) || !journalHashPattern.MatchString(run) || cyclic && (!journalHashPattern.MatchString(cycle) || !journalHashPattern.MatchString(plan)) || !cyclic && (cycle != "" || plan != "") {
+	if len(symbols) == 0 || !journalHashPattern.MatchString(run) || cyclic && (!journalHashPattern.MatchString(cycle) || !journalHashPattern.MatchString(plan)) || !cyclic && (cycle != "" || plan != "") {
 		return ReplayJournalSegment{}, ErrReplayJournal
+	}
+	for i, symbol := range symbols {
+		if !journalSymbolPattern.MatchString(symbol) || i > 0 && symbols[i-1] >= symbol {
+			return ReplayJournalSegment{}, ErrReplayJournal
+		}
 	}
 	switch role {
 	case "initial", "posttrade", "terminal":
