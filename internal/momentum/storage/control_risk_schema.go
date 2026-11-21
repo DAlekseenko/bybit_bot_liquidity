@@ -94,6 +94,9 @@ CREATE FUNCTION momentum.require_halt_resume() RETURNS trigger
    SELECT c.mode INTO previous_mode FROM momentum.control_revisions c
     WHERE c.environment = NEW.environment AND c.account_id = NEW.account_id
       AND c.strategy_id = NEW.strategy_id AND c.revision = NEW.revision - 1;
+   IF NEW.revision > 1 AND NOT FOUND THEN
+     RAISE EXCEPTION USING ERRCODE = '23503', MESSAGE = 'momentum control revision predecessor is absent';
+   END IF;
    IF previous_mode = 'HALTED' AND NEW.mode <> 'HALTED' AND NEW.action <> 'RESUME' THEN
      RAISE EXCEPTION USING ERRCODE = '23514', MESSAGE = 'momentum halt can be left only by confirmed RESUME';
    END IF;

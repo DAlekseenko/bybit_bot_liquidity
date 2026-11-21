@@ -56,6 +56,17 @@ func TestControlRevisionChain(t *testing.T) {
 	runSchemaSQLState(t, db, "55000", "DELETE FROM momentum.control_revisions WHERE revision=4")
 }
 
+// TestControlRevisionBatchInsert проверяет, что пакетная вставка не обходит запрет выхода из halt.
+func TestControlRevisionBatchInsert(t *testing.T) {
+	db := controlDatabase(t)
+	marketStatement(t, db, controlInsert+controlRow(1, "ACTIVE", "INITIALIZE", "SYSTEM", "NULL", "NULL"), true)
+	pause, halt := controlRow(3, "PAUSED_ENTRIES", "PAUSE_ENTRIES", "OPERATOR", "NULL", "NULL"),
+		controlRow(2, "HALTED", "HALT", "RISK_CONTROLLER", "NULL", "NULL")
+	runSchemaSQLState(t, db, "23503", controlInsert+pause+","+halt)
+	runSchemaSQLState(t, db, "23514", controlInsert+halt+","+pause)
+	migrationValue(t, db, "SELECT count(*) FROM momentum.control_revisions", "1")
+}
+
 // TestEquitySnapshotSchema проверяет тождество equity, ключ и неизменность.
 func TestEquitySnapshotSchema(t *testing.T) {
 	db := controlDatabase(t)
