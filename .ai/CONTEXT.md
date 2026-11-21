@@ -25,6 +25,10 @@
 
 ## Подтверждённые границы
 
+Движок общий, стратегии подключаемые
+([ADR-001](../docs/adr/ADR-001-engine-and-strategies.md)): стратегия — чистый
+planner → `TradePlan`, всё остальное — движок. Momentum — первая стратегия.
+
 Граница: planner → immutable `TradePlan` → отдельная confirmation/authorization
 policy → execution → подтверждённые fills → ledger. Это целевая граница, не
 реализованное поведение; она не требует ручного подтверждения каждого плана и не
