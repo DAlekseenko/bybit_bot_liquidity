@@ -8,7 +8,12 @@ import (
 
 // MigrateMomentumPostgres применяет встроенный каталог в одной транзакции.
 func MigrateMomentumPostgres(ctx context.Context, db *sql.DB) error {
-	return migrateMomentumPostgres(ctx, db, []migrationSpec{
+	return migrateMomentumPostgres(ctx, db, momentumMigrations())
+}
+
+// momentumMigrations возвращает новый экземпляр упорядоченного встроенного каталога миграций.
+func momentumMigrations() []migrationSpec {
+	return []migrationSpec{
 		{version: 1, sql: momentumBootstrap},
 		{version: 2, sql: momentumMarketCandlesSchema},
 		{version: 3, sql: momentumMarketSchema},
@@ -20,7 +25,8 @@ func MigrateMomentumPostgres(ctx context.Context, db *sql.DB) error {
 		{version: 9, sql: momentumFundingImportProgressSchema},
 		{version: 10, sql: momentumDatasetArtifactSchema},
 		{version: 11, sql: momentumExecutionLedgerSchema},
-	})
+		{version: 12, sql: momentumControlRiskSchema},
+	}
 }
 
 // migrateMomentumPostgres сериализует проверку истории и применение суффикса.
