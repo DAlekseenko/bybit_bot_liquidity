@@ -95,7 +95,7 @@ Momentum без `MOMENTUM_TEST_POSTGRES_DSN` пропускаются (`t.Skip`)
 - **A — офлайн** (model, planner, backtest, отчёты, импорт публичных данных) и
   **B — состояние** (PostgreSQL, paper runtime): лёгкий процесс — один developer,
   независимый reviewer (Codex GitHub review), handoff в описании PR; после
-  review без замечаний и зелёного CI агент вливает PR сам.
+  review без замечаний и зелёного CI PR вливает Codex.
 - **C — деньги** (private API, заявки, исполнение, reconciliation, risk limits):
   полный процесс с designer, GREEN по хэшам, очередью интеграции и одобрением
   владельца.
