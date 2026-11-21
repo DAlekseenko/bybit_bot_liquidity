@@ -88,6 +88,27 @@ func TestSummaryJSONClosedFields(t *testing.T) {
 	}
 }
 
+// TestRationalMoneyExported проверяет, что дробные суммы ledger (29/3) экспортируются точно.
+func TestRationalMoneyExported(t *testing.T) {
+	in := summaryInput(t)
+	third, _ := dec(t, "1").Quo(dec(t, "3"))
+	in.Totals.RealizedPnLUSDT, _ = dec(t, "29").Quo(dec(t, "3"))
+	in.Daily[2].EquityUSDT, _ = dec(t, "1020").Add(third)
+	s, err := BuildSummary(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := SummaryJSON(s)
+	if err != nil || !strings.Contains(string(b), `"realized_pnl_usdt": "29/3"`) ||
+		!strings.Contains(string(b), `"final_equity_usdt": "3061/3"`) {
+		t.Fatalf("json: %v\n%s", err, b)
+	}
+	csv, err := EquityCSV(in.Daily)
+	if err != nil || !strings.Contains(string(csv), ",3061/3,0,3061/3\n") {
+		t.Fatalf("csv: %v\n%s", err, csv)
+	}
+}
+
 // TestRatioJSONTruncation проверяет точную пару и усечение к нулю для обоих знаков.
 func TestRatioJSONTruncation(t *testing.T) {
 	third, _ := dec(t, "1").Quo(dec(t, "3"))

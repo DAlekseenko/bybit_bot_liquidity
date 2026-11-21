@@ -74,10 +74,10 @@ func SummaryJSON(s Summary) ([]byte, error) {
 	out.RunID, out.StrategyID, out.ProfileID = s.RunID, s.StrategyID, s.ProfileID
 	out.ConfigHash, out.DatasetHash, out.Scenario = s.ConfigHash, s.DatasetHash, s.Scenario
 	out.Start, out.End = timeText(s.Start), timeText(s.End)
-	if out.InitialEquityUSDT, err = s.InitialEquityUSDT.WireDecimal(); err != nil {
+	if out.InitialEquityUSDT, err = exactText(s.InitialEquityUSDT); err != nil {
 		return nil, ErrInvalidReportInput
 	}
-	if out.FinalEquityUSDT, err = s.FinalEquityUSDT.WireDecimal(); err != nil {
+	if out.FinalEquityUSDT, err = exactText(s.FinalEquityUSDT); err != nil {
 		return nil, ErrInvalidReportInput
 	}
 	if out.NetReturn, err = ratioJSON(s.NetReturn); err != nil {
@@ -167,11 +167,25 @@ func writeCSV(rows [][]string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// wireAll превращает конечные decimal значения в строки.
+// exactText возвращает точное значение без скрытого округления: конечную
+// десятичную строку, а для бесконечной дроби — сокращённую дробь «num/den».
+// Правило денежного округления ещё не утверждено (SPEC), поэтому отчёт его не вводит.
+func exactText(d model.Decimal) (string, error) {
+	if s, err := d.WireDecimal(); err == nil {
+		return s, nil
+	}
+	num, den, err := d.CanonicalRatio()
+	if err != nil {
+		return "", ErrInvalidReportInput
+	}
+	return num + "/" + den, nil
+}
+
+// wireAll превращает decimal значения в точные строки.
 func wireAll(values ...model.Decimal) ([]string, error) {
 	out := make([]string, len(values))
 	for i, v := range values {
-		s, err := v.WireDecimal()
+		s, err := exactText(v)
 		if err != nil {
 			return nil, ErrInvalidReportInput
 		}
@@ -184,7 +198,7 @@ func wireAll(values ...model.Decimal) ([]string, error) {
 func decimalMap(values map[string]model.Decimal) (map[string]string, error) {
 	out := make(map[string]string, len(values))
 	for k, v := range values {
-		s, err := v.WireDecimal()
+		s, err := exactText(v)
 		if err != nil {
 			return nil, ErrInvalidReportInput
 		}
