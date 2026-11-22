@@ -3,11 +3,24 @@ package execution
 import (
 	"errors"
 	"testing"
+
+	"bybit_bot_liquidity/internal/momentum/model"
 )
 
-// leg строит заявку ревизии 1 с указанной ролью.
+// leg строит заявку ревизии 1 на 0.01 с указанной ролью.
 func leg(link string, l Leg) OrderIntent {
-	return OrderIntent{OrderLinkID: link, PlanHash: "h", PlanRevision: 1, Leg: l}
+	qty, _ := model.ParseQty("0.01")
+	return OrderIntent{OrderLinkID: link, PlanHash: "h", PlanRevision: 1, Leg: l, Quantity: qty}
+}
+
+// bind привязывает lifecycles к ключам карты, как их хранит storage по orderLinkId.
+func bind(states map[string]Lifecycle) map[string]Lifecycle {
+	out := make(map[string]Lifecycle, len(states))
+	for link, l := range states {
+		l.orderLinkID = link
+		out[link] = l
+	}
+	return out
 }
 
 // lifecycle проводит заявку на 0.01 через свидетельства.
@@ -52,11 +65,24 @@ func TestRebalanceOrdering(t *testing.T) {
 		{"done", map[string]Lifecycle{"r1": filled, "r2": filled, "i1": filled}, nil, PhaseDone, "", ""},
 	} {
 		for restart := 0; restart < 2; restart++ { // тот же durable вход после рестарта даёт тот же шаг
-			step, err := r.Next(tc.states, tc.gate)
+			step, err := r.Next(bind(tc.states), tc.gate)
 			if err != nil || step.Phase != tc.phase || links(step) != tc.send || step.Reason != tc.reason {
 				t.Fatalf("%s: %+v %v", tc.name, step, err)
 			}
 		}
+	}
+	if _, err := r.Next(map[string]Lifecycle{"r1": filled}, nil); !errors.Is(err, ErrRebalance) {
+		t.Fatalf("lifecycle of another order must be rejected: %v", err)
+	}
+	small, _ := NewLifecycle("r1", dec(t, "0.001"))
+	if _, err := r.Next(map[string]Lifecycle{"r1": small}, nil); !errors.Is(err, ErrRebalance) {
+		t.Fatalf("lifecycle with another quantity must be rejected: %v", err)
+	}
+	capped := leg("c1", LegReduce)
+	capped.UnplannedQty = dec(t, "0.005")
+	residual, _ := NewRebalance(IntentBatch{Intents: []OrderIntent{capped, leg("i1", LegIncrease)}})
+	if step, err := residual.Next(bind(map[string]Lifecycle{"c1": filled}), nil); err != nil || step.Phase != PhaseBlocked {
+		t.Fatalf("reduction residual must block increases: %+v %v", step, err)
 	}
 	if _, err := r.Next(map[string]Lifecycle{"r1": {}, "r2": filled}, nil); !errors.Is(err, ErrRebalance) {
 		t.Fatalf("zero lifecycle must not release increases: %v", err)
