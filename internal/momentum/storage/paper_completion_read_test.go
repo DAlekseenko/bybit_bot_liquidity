@@ -51,6 +51,9 @@ func paperInputFixture(t *testing.T, db *sql.DB, sequence uint64, previous paper
 		migrationResult(t, err, nil)
 	}
 	run := RebalanceRunInput{RunID: fmt.Sprintf("paper-run-%d", sequence), AccountID: account, StrategyID: cfg.Values().StrategyID, ScheduledAt: at, Config: cfg}
+	if sequence == 1 {
+		run.OnboardingID = "paper-start"
+	}
 	if db != nil {
 		_, err = CreateOrReadRebalanceRun(context.Background(), db, run)
 		migrationResult(t, err, nil)
@@ -70,7 +73,7 @@ func paperInputFixture(t *testing.T, db *sql.DB, sequence uint64, previous paper
 	}
 	state := paperwire.PortfolioState{AsOf: at, FundingThrough: at, WalletUSDT: ratio, EquityUSDT: one, Positions: held}
 	d := paperwire.CycleDocument{
-		Run:      paperwire.RunBinding{RunID: run.RunID, AccountID: run.AccountID, StrategyID: run.StrategyID, ScheduledAt: at, Config: cfg},
+		Run:      paperwire.RunBinding{RunID: run.RunID, AccountID: run.AccountID, StrategyID: run.StrategyID, OnboardingID: run.OnboardingID, ScheduledAt: at, Config: cfg},
 		Sequence: sequence, Purpose: paperwire.Purpose{Kind: "rebalance"}, Profile: profile,
 		Observation: paperwire.Observation{CapturedAt: at, SourceClock: at}, Before: state, Cutoff: state, ExpectedAfter: state, Plan: plan,
 	}
@@ -214,6 +217,7 @@ func TestPaperCompletionReadCorrupt(t *testing.T) {
 		"previous-input":         "UPDATE momentum.paper_run_inputs SET previous_input_hash=NULL",
 		"previous-receipt":       "UPDATE momentum.paper_run_inputs SET previous_resolution_hash=NULL",
 		"missing-run":            "DELETE FROM momentum.rebalance_runs",
+		"run-onboarding":         "UPDATE momentum.rebalance_runs SET onboarding_id='other-start' WHERE run_id='paper-run-2'",
 		"run-account":            "UPDATE momentum.rebalance_runs SET account_id='paper/other'",
 		"run-strategy":           "UPDATE momentum.rebalance_runs SET strategy_id='other'",
 		"run-time":               "UPDATE momentum.rebalance_runs SET scheduled_at=scheduled_at+interval '1 second'",

@@ -37,9 +37,9 @@ func readPaperCompletion(ctx context.Context, q paperCompletionReader, input pap
 	if ctx == nil || input.Hash() == "" || !paperControlScope(ControlScope(h.Scope)) {
 		return paperwire.ResolutionRecord{}, false, ErrPaperCompletionArgument
 	}
-	cfg := input.Values().Run.Config
-	configBytes, configHash, err := cfg.Snapshot()
-	if err != nil || configHash != h.ConfigHash || h.ModelHash != cfg.Values().ModelID {
+	run := input.Values().Run
+	configBytes, configHash, err := run.Config.Snapshot()
+	if err != nil || configHash != h.ConfigHash || h.ModelHash != run.Config.Values().ModelID {
 		return paperwire.ResolutionRecord{}, false, ErrPaperCompletionArgument
 	}
 
@@ -51,7 +51,7 @@ func readPaperCompletion(ctx context.Context, q paperCompletionReader, input pap
  AND i.environment=$4 AND i.account_id=$5 AND i.strategy_id=$6 AND i.sequence=$7::numeric
  AND i.previous_input_hash IS NOT DISTINCT FROM decode(nullif($8,''),'hex')
  AND i.previous_resolution_hash IS NOT DISTINCT FROM decode(nullif($9,''),'hex')
- AND r.account_id=$5 AND r.strategy_id=$6
+ AND r.account_id=$5 AND r.strategy_id=$6 AND r.onboarding_id IS NOT DISTINCT FROM nullif($12,'')
  AND r.config_hash=decode($10,'hex') AND c.payload=$11 AND isfinite(x.completed_at),
  CASE WHEN isfinite(r.scheduled_at) THEN r.scheduled_at END,
  x.outcome,x.reason,
@@ -62,7 +62,7 @@ func readPaperCompletion(ctx context.Context, q paperCompletionReader, input pap
  LEFT JOIN momentum.rebalance_runs r ON r.run_id=x.run_id
  LEFT JOIN momentum.config_snapshots c ON c.config_hash=r.config_hash
  WHERE x.run_id=$1`, h.RunID, input.Payload(), input.Hash(), h.Scope.Environment, h.Scope.AccountID, h.Scope.StrategyID,
-		strconv.FormatUint(h.Sequence, 10), h.PreviousInputHash, h.PreviousResolutionHash, configHash, configBytes).
+		strconv.FormatUint(h.Sequence, 10), h.PreviousInputHash, h.PreviousResolutionHash, configHash, configBytes, run.OnboardingID).
 		Scan(&valid, &scheduled, &outcome, &reason, &revision, &planHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return paperwire.ResolutionRecord{}, false, nil
