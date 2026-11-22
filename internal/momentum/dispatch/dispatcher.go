@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"bybit_bot_liquidity/internal/exchange/bybit"
 	"bybit_bot_liquidity/internal/momentum/execution"
@@ -35,7 +36,7 @@ type Permit interface {
 // Exchange — нужные диспетчеру операции Testnet-адаптера bybit.Client.
 type Exchange interface {
 	CreateMomentumOrder(ctx context.Context, request json.RawMessage) (bybit.OrderAck, error)
-	LookupMomentumOrder(ctx context.Context, symbol, orderLinkID string) (bybit.OrderRecord, bool, error)
+	LookupMomentumOrder(ctx context.Context, symbol, orderLinkID string, sentAt time.Time) (bybit.OrderRecord, bool, error)
 }
 
 // Dispatcher связывает хранилище, право владельца и биржу.
@@ -44,6 +45,7 @@ type Dispatcher struct {
 	Owner    Permit
 	Exchange Exchange
 	Slippage execution.Slippage
+	Now      func() time.Time // время отправки для окна сверки; nil — time.Now
 }
 
 // Outcome — итог отправки или сверки; Record заполнен, если заявку нашли на бирже.
@@ -70,13 +72,14 @@ func (d Dispatcher) Send(ctx context.Context, intent execution.OrderIntent) (Out
 	if err := d.Store.MarkState(ctx, intent.OrderLinkID, execution.StateSent); err != nil {
 		return Outcome{}, errors.Join(ErrDispatch, ErrNotSent, err)
 	}
+	sentAt := d.now()
 	ack, err := d.Exchange.CreateMomentumOrder(ctx, body)
 	switch {
 	case err == nil:
 		return Outcome{State: execution.StateAcknowledged, Ack: &ack},
 			d.mark(ctx, intent.OrderLinkID, execution.StateAcknowledged)
 	case errors.Is(err, bybit.ErrOrderLinkDuplicate):
-		return d.Reconcile(ctx, intent)
+		return d.Reconcile(ctx, intent, sentAt)
 	case errors.Is(err, bybit.ErrOrderRejected):
 		if markErr := d.mark(ctx, intent.OrderLinkID, execution.StateRejected); markErr != nil {
 			return Outcome{State: execution.StateRejected}, markErr
@@ -86,13 +89,14 @@ func (d Dispatcher) Send(ctx context.Context, intent execution.OrderIntent) (Out
 	if markErr := d.mark(ctx, intent.OrderLinkID, execution.StateUnknown); markErr != nil {
 		return Outcome{State: execution.StateUnknown}, markErr
 	}
-	return d.Reconcile(ctx, intent)
+	return d.Reconcile(ctx, intent, sentAt)
 }
 
-// Reconcile ищет заявку по тому же orderLinkId. Найдена — ACKNOWLEDGED (дальнейший
+// Reconcile ищет заявку по тому же orderLinkId в окне от времени отправки sentAt
+// (после рестарта — время SENT из хранилища). Найдена — ACKNOWLEDGED (дальнейший
 // статус ведёт Lifecycle); не найдена — остаётся UNKNOWN, fill не выводится.
-func (d Dispatcher) Reconcile(ctx context.Context, intent execution.OrderIntent) (Outcome, error) {
-	record, found, err := d.Exchange.LookupMomentumOrder(ctx, intent.Symbol, intent.OrderLinkID)
+func (d Dispatcher) Reconcile(ctx context.Context, intent execution.OrderIntent, sentAt time.Time) (Outcome, error) {
+	record, found, err := d.Exchange.LookupMomentumOrder(ctx, intent.Symbol, intent.OrderLinkID, sentAt)
 	if err != nil || !found {
 		if err != nil {
 			err = errors.Join(ErrDispatch, err)
@@ -105,12 +109,20 @@ func (d Dispatcher) Reconcile(ctx context.Context, intent execution.OrderIntent)
 // Retry повторяет отправку UNKNOWN-заявки с тем же orderLinkId, только если сверка
 // подтвердила, что биржа её не знает. Биржа отвергает дубликат orderLinkId, поэтому
 // повтор не создаёт вторую заявку.
-func (d Dispatcher) Retry(ctx context.Context, intent execution.OrderIntent) (Outcome, error) {
-	outcome, err := d.Reconcile(ctx, intent)
+func (d Dispatcher) Retry(ctx context.Context, intent execution.OrderIntent, sentAt time.Time) (Outcome, error) {
+	outcome, err := d.Reconcile(ctx, intent, sentAt)
 	if err != nil || outcome.State != execution.StateUnknown {
 		return outcome, err
 	}
 	return d.Send(ctx, intent)
+}
+
+// now возвращает время по инжектированным часам.
+func (d Dispatcher) now() time.Time {
+	if d.Now == nil {
+		return time.Now().UTC()
+	}
+	return d.Now().UTC()
 }
 
 // mark сохраняет состояние после ответа биржи; сбой не отменяет факт отправки.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"bybit_bot_liquidity/internal/exchange/bybit"
 	"bybit_bot_liquidity/internal/momentum/execution"
@@ -67,8 +68,11 @@ func (e *fakeExchange) CreateMomentumOrder(_ context.Context, body json.RawMessa
 }
 
 // LookupMomentumOrder возвращает следующее значение found.
-func (e *fakeExchange) LookupMomentumOrder(context.Context, string, string) (bybit.OrderRecord, bool, error) {
+func (e *fakeExchange) LookupMomentumOrder(_ context.Context, _, _ string, sentAt time.Time) (bybit.OrderRecord, bool, error) {
 	e.lookups++
+	if sentAt.IsZero() {
+		return bybit.OrderRecord{}, false, errors.New("send time required")
+	}
 	found := len(e.found) > 0 && e.found[0]
 	if len(e.found) > 0 {
 		e.found = e.found[1:]
@@ -143,12 +147,12 @@ func TestRetryAndResidual(t *testing.T) {
 	ctx := context.Background()
 	ex := &fakeExchange{found: []bool{true}}
 	d := Dispatcher{Store: &fakeStore{}, Owner: fakeOwner{}, Exchange: ex}
-	if out, err := d.Retry(ctx, testIntent(t)); err != nil || out.State != execution.StateAcknowledged || ex.sends != 0 {
+	if out, err := d.Retry(ctx, testIntent(t), time.Unix(1700000000, 0)); err != nil || out.State != execution.StateAcknowledged || ex.sends != 0 {
 		t.Fatalf("found order must not be resent: %+v %v", out, err)
 	}
 	ex = &fakeExchange{found: []bool{false}}
 	d.Exchange = ex
-	if out, err := d.Retry(ctx, testIntent(t)); err != nil || out.State != execution.StateAcknowledged || ex.sends != 1 ||
+	if out, err := d.Retry(ctx, testIntent(t), time.Unix(1700000000, 0)); err != nil || out.State != execution.StateAcknowledged || ex.sends != 1 ||
 		!strings.Contains(ex.bodies[0], testIntent(t).OrderLinkID) {
 		t.Fatalf("absent order must be resent once with the same link: %+v %v %d", out, err, ex.sends)
 	}
