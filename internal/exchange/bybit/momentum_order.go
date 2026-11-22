@@ -70,6 +70,8 @@ func classifyOrderError(op string, err error) error {
 	switch api.Code {
 	case 110072: // OrderLinkedID is duplicate
 		return fmt.Errorf("%s: %w: %w", op, ErrOrderLinkDuplicate, err)
+	case 10014: // invalid duplicate request: исход первого запроса неизвестен — сверять, не отказ
+		return fmt.Errorf("%s: %w: %w", op, ErrPostOutcomeUnknown, err)
 	// 110001 — заявки нет или поздно отменять; 110008 — заявка уже исполнена
 	// или отменена; 110010 — уже отменена. Во всех случаях заявка неактивна, и
 	// итог нужно сверить по истории, а не считать обычным отказом запроса.

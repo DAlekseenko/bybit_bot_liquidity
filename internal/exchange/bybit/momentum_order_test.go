@@ -51,6 +51,7 @@ func TestMomentumOrderErrors(t *testing.T) {
 		{"reject", `{"retCode":10001,"retMsg":"params error","result":{},"time":1}`, 200, ErrOrderRejected},
 		{"duplicate", `{"retCode":110072,"retMsg":"OrderLinkedID is duplicate","result":{},"time":1}`, 200, ErrOrderLinkDuplicate},
 		{"server-error", `oops`, 502, ErrPostOutcomeUnknown},
+		{"duplicate-request", `{"retCode":10014,"retMsg":"invalid duplicate request","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
 		{"busy", `{"retCode":10016,"retMsg":"busy","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
 		{"foreign-ack", `{"retCode":0,"retMsg":"OK","result":{"orderId":"o9","orderLinkId":"other"},"time":1}`, 200, ErrOrderAckMalformed},
 		{"empty-ack", `{"retCode":0,"retMsg":"OK","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
