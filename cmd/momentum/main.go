@@ -23,7 +23,7 @@ type success struct {
 	CutoffUTC string `json:"cutoff_utc"`
 }
 
-// main запускает только однократный публичный сбор без торговых вызовов.
+// main запускает публичный сбор или офлайн-бэктест без торговых вызовов.
 func main() {
 	if err := run(os.Args[1:], os.Stdout, nil); err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -31,8 +31,11 @@ func main() {
 	}
 }
 
-// run запускает команду с реальным открытием локального журнала.
+// run запускает выбранную команду, сохраняя существующий путь сбора.
 func run(args []string, stdout io.Writer, transport http.RoundTripper) error {
+	if len(args) > 0 && args[0] == "backtest" {
+		return runBacktest(context.Background(), args[1:], stdout)
+	}
 	return runWithJournal(args, stdout, transport, storage.OpenMomentumPostgres)
 }
 
