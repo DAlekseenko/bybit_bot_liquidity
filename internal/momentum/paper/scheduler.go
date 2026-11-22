@@ -49,6 +49,7 @@ type RunStore interface {
 	ReadRunCompletion(ctx context.Context, runID string) (storage.RunCompletion, bool, error)
 	ReadLatestPlanRevision(ctx context.Context, runID string) (storage.StoredPlanRevision, bool, error)
 	CompleteRebalanceRun(ctx context.Context, c storage.RunCompletion) (storage.RunCompletion, error)
+	ReadUnfinishedPlannedRun(ctx context.Context, accountID, strategyID string) (storage.StoredRebalanceRun, bool, error)
 }
 
 // DataReadiness сообщает границу общего закрытого дневного среза: все символы
@@ -70,12 +71,19 @@ type Scheduler struct {
 
 // Tick принимает одно решение для момента now. Повторные пробуждения
 // идемпотентны: ключ run детерминирован, поэтому на слот создаётся одна запись.
+// Run с сохранённым планом и без итога (в том числе из прошлой недели)
+// продолжается раньше выбора нового слота и без проверки готовности данных.
 func (s Scheduler) Tick(ctx context.Context, now time.Time) (Decision, error) {
 	values := s.Config.Values()
 	now = now.UTC()
 	if ctx == nil || s.Store == nil || s.Data == nil || s.AccountID == "" || s.Deadline <= 0 || s.Poll <= 0 ||
 		s.Deadline > 7*24*time.Hour || (values.StartPolicy == "now") != (s.OnboardingID != "") {
 		return Decision{}, errors.Join(ErrScheduler, ErrSchedulerConfig)
+	}
+	if run, found, err := s.Store.ReadUnfinishedPlannedRun(ctx, s.AccountID, values.StrategyID); err != nil {
+		return Decision{}, errors.Join(ErrScheduler, err)
+	} else if found {
+		return Decision{Action: ActionRun, Run: run, Resume: true}, nil
 	}
 	monday := mondayOf(now)
 	next := monday.AddDate(0, 0, 7)
@@ -195,6 +203,11 @@ func (d DBRunStore) ReadRunCompletion(ctx context.Context, runID string) (storag
 // ReadLatestPlanRevision делегирует storage.ReadLatestPlanRevision.
 func (d DBRunStore) ReadLatestPlanRevision(ctx context.Context, runID string) (storage.StoredPlanRevision, bool, error) {
 	return storage.ReadLatestPlanRevision(ctx, d.DB, runID)
+}
+
+// ReadUnfinishedPlannedRun делегирует storage.ReadUnfinishedPlannedRun.
+func (d DBRunStore) ReadUnfinishedPlannedRun(ctx context.Context, accountID, strategyID string) (storage.StoredRebalanceRun, bool, error) {
+	return storage.ReadUnfinishedPlannedRun(ctx, d.DB, accountID, strategyID)
 }
 
 // CompleteRebalanceRun делегирует storage.CompleteRebalanceRun.

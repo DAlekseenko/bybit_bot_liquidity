@@ -56,11 +56,28 @@ func (f *fakeStore) CompleteRebalanceRun(_ context.Context, c storage.RunComplet
 	return c, nil
 }
 
-// fakeData возвращает заданную границу закрытого среза.
-type fakeData struct{ through time.Time }
+// ReadUnfinishedPlannedRun возвращает самый ранний run с планом и без итога.
+func (f *fakeStore) ReadUnfinishedPlannedRun(_ context.Context, account, strategy string) (storage.StoredRebalanceRun, bool, error) {
+	var found storage.StoredRebalanceRun
+	ok := false
+	for id, run := range f.runs {
+		_, done := f.done[id]
+		if f.planned[id] && !done && run.AccountID == account && run.StrategyID == strategy &&
+			(!ok || run.ScheduledAt.Before(found.ScheduledAt)) {
+			found, ok = run, true
+		}
+	}
+	return found, ok, nil
+}
 
-// ClosedThrough возвращает границу.
-func (d *fakeData) ClosedThrough(context.Context) (time.Time, error) { return d.through, nil }
+// fakeData возвращает заданную границу закрытого среза или ошибку чтения.
+type fakeData struct {
+	through time.Time
+	err     error
+}
+
+// ClosedThrough возвращает границу или ошибку.
+func (d *fakeData) ClosedThrough(context.Context) (time.Time, error) { return d.through, d.err }
 
 var monday = time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
 
@@ -163,5 +180,30 @@ func TestSchedulerOnboarding(t *testing.T) {
 	}
 	if store.creates != 2 {
 		t.Fatalf("records=%d, want onboarding + one weekly", store.creates)
+	}
+}
+
+// TestSchedulerResumeUnfinished проверяет resume плана прошлой недели и сохранённого плана без готовых данных.
+func TestSchedulerResumeUnfinished(t *testing.T) {
+	s, store, data := testScheduler(t, "next_monday", "")
+	data.through = monday
+	d := tick(t, s, monday, ActionRun)
+	store.planned[d.Run.RunID] = true
+	nextMonday := monday.AddDate(0, 0, 7)
+	data.through = nextMonday
+	if got := tick(t, s, nextMonday.Add(time.Hour), ActionRun); got.Run.RunID != d.Run.RunID || !got.Resume {
+		t.Fatalf("restart in a later week must resume the unfinished run, got %+v", got)
+	}
+	data.err = errors.New("daily data unavailable")
+	if got := tick(t, s, monday.Add(time.Minute), ActionRun); got.Run.RunID != d.Run.RunID || !got.Resume {
+		t.Fatalf("saved plan must resume before data readiness, got %+v", got)
+	}
+	if store.creates != 1 {
+		t.Fatalf("resume must not create a new cycle, got %d records", store.creates)
+	}
+	store.done[d.Run.RunID] = storage.RunCompletion{RunID: d.Run.RunID, Outcome: storage.RunCompleted}
+	data.err = nil
+	if got := tick(t, s, nextMonday.Add(time.Hour), ActionRun); got.Resume || !got.Run.ScheduledAt.Equal(nextMonday) {
+		t.Fatalf("after completion the current week starts, got %+v", got)
 	}
 }
