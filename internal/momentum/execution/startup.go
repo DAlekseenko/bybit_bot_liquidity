@@ -12,6 +12,7 @@ type StoredIntent struct {
 	Side                          model.FillSide
 	State                         OrderState
 	Quantity                      model.Decimal
+	Filled                        model.Decimal // сумма fills в хранилище
 	FillIDs                       map[string]bool
 }
 
@@ -69,6 +70,8 @@ const (
 	FindingForeignPosition  FindingKind = "foreign_position"  // позиция по символу без позиции в ledger
 	FindingPositionMismatch FindingKind = "position_mismatch" // размер позиции не равен ledger с учётом починки
 	FindingInvalidInput     FindingKind = "invalid_input"
+	FindingOrderUnresolved  FindingKind = "order_unresolved" // принятая заявка не найдена: исход остатка неизвестен
+	FindingFillsMissing     FindingKind = "fills_missing"    // биржа сообщает больше исполненного, чем известно fills
 )
 
 // Finding — расхождение с объектом, к которому оно относится.
@@ -96,21 +99,26 @@ func ReconcileStartup(in StartupInput) StartupReport {
 		intents[it.OrderLinkID] = it
 	}
 	delta := map[string]model.Decimal{}
+	recovered := map[string]model.Decimal{}
+	seen := map[string]bool{}
 	var fills []Repair
 	for _, bf := range in.Fills {
 		it, ok := intents[bf.OrderLinkID]
 		switch {
 		case !ok:
 			r.find(FindingOrphanOrder, bf.OrderLinkID)
-		case !it.FillIDs[bf.Fill.ExecutionID]:
+		case !it.FillIDs[bf.Fill.ExecutionID] && !seen[bf.Fill.ExecutionID]:
+			seen[bf.Fill.ExecutionID] = true
 			fills = append(fills, Repair{Kind: RepairRecordFill, OrderLinkID: bf.OrderLinkID, Fill: bf.Fill})
-			if !addSigned(delta, bf.Fill) {
+			sum, err := addQty(recovered[bf.OrderLinkID], bf.Fill.Quantity)
+			if !addSigned(delta, bf.Fill) || err != nil {
 				r.find(FindingInvalidInput, bf.OrderLinkID)
 			}
+			recovered[bf.OrderLinkID] = sum
 		}
 	}
 	for _, it := range in.Intents {
-		r.intent(in, it)
+		r.intent(in, it, recovered[it.OrderLinkID])
 	}
 	// Состояния применяются до fills: RecordFill сам выводит PARTIALLY_FILLED/FILLED
 	// и сохраняет CANCELLED, а SetOrderIntentState после FILLED невозможен.
@@ -133,8 +141,9 @@ func ReconcileStartup(in StartupInput) StartupReport {
 	return r
 }
 
-// intent сверяет одно неурегулированное намерение с поиском на бирже.
-func (r *StartupReport) intent(in StartupInput, it StoredIntent) {
+// intent сверяет одно неурегулированное намерение с поиском на бирже и
+// проверяет, что исполненный биржей объём покрыт известными fills.
+func (r *StartupReport) intent(in StartupInput, it StoredIntent, recovered model.Decimal) {
 	if it.State == StateFilled || it.State == StateCancelled || it.State == StateRejected || it.State == StatePending {
 		return
 	}
@@ -146,7 +155,14 @@ func (r *StartupReport) intent(in StartupInput, it StoredIntent) {
 	case !lookup.Found:
 		if it.State == StateSent || it.State == StateUnknown {
 			r.find(FindingSendUnconfirmed, it.OrderLinkID)
+		} else {
+			r.find(FindingOrderUnresolved, it.OrderLinkID)
 		}
+		return
+	}
+	known, err := addQty(it.Filled, recovered)
+	if c, cmpErr := lookup.CumExecQty.Cmp(known); err != nil || cmpErr != nil || c > 0 {
+		r.find(FindingFillsMissing, it.OrderLinkID)
 		return
 	}
 	state := StateAcknowledged
@@ -211,6 +227,17 @@ func (r *StartupReport) positions(in StartupInput, delta map[string]model.Decima
 // find добавляет расхождение.
 func (r *StartupReport) find(kind FindingKind, subject string) {
 	r.Findings = append(r.Findings, Finding{Kind: kind, Subject: subject})
+}
+
+// addQty складывает количества; нулевое значение Decimal трактуется как ноль.
+func addQty(a, b model.Decimal) (model.Decimal, error) {
+	if _, err := a.Cmp(model.Zero()); err != nil {
+		a = model.Zero()
+	}
+	if _, err := b.Cmp(model.Zero()); err != nil {
+		b = model.Zero()
+	}
+	return a.Add(b)
 }
 
 // addSigned прибавляет к позиции символа количество fill со знаком стороны.

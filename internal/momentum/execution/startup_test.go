@@ -61,6 +61,7 @@ func TestReconcileStartupRestarts(t *testing.T) {
 	}
 	in = startupBase(t)
 	active(t, &in, "cm-part", "p2", StatePartiallyFilled)
+	in.Intents[len(in.Intents)-1].Filled = dec(t, "0.002")
 	in.Lookups["cm-part"] = BrokerLookup{Found: true, Status: "PartiallyFilledCanceled", CumExecQty: dec(t, "0.002")}
 	if r = ReconcileStartup(in); len(r.Repairs) != 1 || r.Repairs[0].State != StateCancelled {
 		t.Fatalf("partial then cancelled must be repaired to CANCELLED: %+v", r.Repairs)
@@ -98,5 +99,30 @@ func TestReconcileStartupBlocks(t *testing.T) {
 	in.Inventory.Positions[0].Size = dec(t, "0.02")
 	if r = ReconcileStartup(in); findings(r) != "position_mismatch:BTCUSDT" {
 		t.Fatalf("size mismatch=%s", findings(r))
+	}
+}
+
+// TestReconcileStartupCompleteness проверяет ненайденную принятую заявку, повтор fill и неучтённые исполнения.
+func TestReconcileStartupCompleteness(t *testing.T) {
+	in := startupBase(t)
+	active(t, &in, "cm-ack", "p2", StateAcknowledged)
+	in.Lookups["cm-ack"] = BrokerLookup{Found: false}
+	if r := ReconcileStartup(in); r.EntriesAllowed || findings(r) != "order_unresolved:cm-ack" {
+		t.Fatalf("missing acknowledged order must block: %s", findings(r))
+	}
+	in = startupBase(t)
+	active(t, &in, "cm-dup", "p2", StateAcknowledged)
+	in.Lookups["cm-dup"] = BrokerLookup{Found: true, Status: "PartiallyFilled", CumExecQty: dec(t, "0.004")}
+	dup := BrokerFill{OrderLinkID: "cm-dup", Fill: fill(t, "e7", "0.004").Fill}
+	in.Fills = append(in.Fills, dup, dup)
+	in.Inventory.Positions[0].Size = dec(t, "0.014")
+	if r := ReconcileStartup(in); !r.EntriesAllowed || len(r.Repairs) != 1 {
+		t.Fatalf("duplicate history row must count once: %+v %s", r.Repairs, findings(r))
+	}
+	in = startupBase(t)
+	active(t, &in, "cm-gap", "p2", StateAcknowledged)
+	in.Lookups["cm-gap"] = BrokerLookup{Found: true, Status: "PartiallyFilledCanceled", CumExecQty: dec(t, "0.004")}
+	if r := ReconcileStartup(in); r.EntriesAllowed || findings(r) != "fills_missing:cm-gap" || len(r.Repairs) != 0 {
+		t.Fatalf("unaccounted executions must block without terminal repair: %+v %s", r.Repairs, findings(r))
 	}
 }
