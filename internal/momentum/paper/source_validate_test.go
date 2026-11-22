@@ -43,16 +43,18 @@ func TestSavedObservationRejects(t *testing.T) {
 		"daily-provenance": func(r *SourceRequest, o *paperwire.Observation) {
 			o.TradeWindows[0].Page.Endpoint = "https://api.bybit.com/v5/market/kline"
 		},
-		"trade-page-order": func(r *SourceRequest, o *paperwire.Observation) {
-			o.TradeWindows[0], o.TradeWindows[1] = o.TradeWindows[1], o.TradeWindows[0]
+		"trade-key-replaced": func(r *SourceRequest, o *paperwire.Observation) {
+			o.TradeWindows[1] = o.TradeWindows[0]
+			o.TradeWindows[1].Page.ServerTime = o.CapturedAt.Add(-time.Millisecond)
 		},
 		"trade-future": func(r *SourceRequest, o *paperwire.Observation) {
 			o.TradeWindows[1].Page.ServerTime = r.Run.ScheduledAt.Add(-2 * time.Hour)
 		},
 		"mark-missing": func(r *SourceRequest, o *paperwire.Observation) { o.MarkPages = o.MarkPages[1:] },
 		"mark-empty":   func(r *SourceRequest, o *paperwire.Observation) { o.MarkPages[0].Candles = nil },
-		"mark-page-order": func(r *SourceRequest, o *paperwire.Observation) {
-			o.MarkPages[0], o.MarkPages[1] = o.MarkPages[1], o.MarkPages[0]
+		"mark-key-replaced": func(r *SourceRequest, o *paperwire.Observation) {
+			o.MarkPages[1] = o.MarkPages[0]
+			o.MarkPages[1].ServerTime = o.CapturedAt.Add(-time.Millisecond)
 		},
 		"mark-unconfirmed": func(r *SourceRequest, o *paperwire.Observation) { o.MarkPages[0].Candles[0].Confirmed = false },
 		"mark-boundary": func(r *SourceRequest, o *paperwire.Observation) {
@@ -114,9 +116,7 @@ func TestSavedObservationRejects(t *testing.T) {
 			}
 			r.Transport = nil
 			edit(&r, &o)
-			if _, err = ValidateCycleObservation(r, o); err == nil {
-				t.Fatal("corruption accepted")
-			}
+			rejectReplay(t, r, o)
 		})
 	}
 }
