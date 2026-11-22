@@ -81,3 +81,18 @@ func TestMomentumTransactions(t *testing.T) {
 		t.Fatalf("non-USDT transaction=%v", err)
 	}
 }
+
+// TestHistoryRefusesMainnet проверяет, что приватная история читается только с Testnet.
+func TestHistoryRefusesMainnet(t *testing.T) {
+	client, err := NewAuthenticatedClient("https://api.bybit.com", "key", "secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window := HistoryWindow{Start: time.UnixMilli(1700000000000), End: time.UnixMilli(1700000005000)}
+	if _, err := client.MomentumExecutions(context.Background(), "BTCUSDT", window); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("executions on mainnet: %v", err)
+	}
+	if _, err := client.MomentumTransactions(context.Background(), window); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("transactions on mainnet: %v", err)
+	}
+}

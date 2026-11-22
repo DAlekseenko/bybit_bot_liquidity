@@ -5,35 +5,32 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 )
 
-// historyServer отвечает фиксированным result по пути и записывает запросы.
+// historyServer отвечает фиксированным result по пути через fake transport Testnet и записывает запросы.
 func historyServer(t *testing.T, results map[string]any) (*Client, *[]string) {
 	t.Helper()
 	var seen []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := testPostClient(t, "https://api-testnet.bybit.com", roundTripperFunc(func(r *http.Request) (*http.Response, error) {
 		seen = append(seen, r.URL.Path+"?"+r.URL.RawQuery)
-		result, ok := results[r.URL.Path]
-		if !ok {
-			_ = json.NewEncoder(w).Encode(map[string]any{"retCode": 10001, "retMsg": "bad", "result": map[string]any{}})
-			return
+		body := map[string]any{"retCode": 10001, "retMsg": "bad", "result": map[string]any{}}
+		if result, ok := results[r.URL.Path]; ok {
+			body = map[string]any{"retCode": 0, "retMsg": "OK", "result": result, "time": 1700000009000}
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"retCode": 0, "retMsg": "OK", "result": result, "time": 1700000009000})
+		raw, _ := json.Marshal(body)
+		return timeResponse(r, http.StatusOK, string(raw)), nil
 	}))
-	t.Cleanup(server.Close)
-	client, err := NewAuthenticatedClient(server.URL, "key", "secret", server.Client())
-	if err != nil {
-		t.Fatal(err)
-	}
 	return client, &seen
 }
 
 // list оборачивает элементы в формат Bybit.
 func list(items ...map[string]string) map[string]any {
+	if items == nil {
+		items = []map[string]string{}
+	}
 	return map[string]any{"list": items, "nextPageCursor": "next"}
 }
 
@@ -75,6 +72,17 @@ func TestLookupMomentumOrder(t *testing.T) {
 		if _, found, err = client.LookupMomentumOrder(ctx, "BTCUSDT", "l1", sent); err == nil || found {
 			t.Fatalf("%s: want error, got found=%v", name, found)
 		}
+	}
+	client, _ = historyServer(t, map[string]any{"/v5/order/realtime": list(), "/v5/order/history": map[string]any{}})
+	if _, found, err = client.LookupMomentumOrder(ctx, "BTCUSDT", "l1", sent); !errors.Is(err, ErrHistoryData) || found {
+		t.Fatalf("missing list must be an error, not absence: %v %v", found, err)
+	}
+	mainnet, err := NewAuthenticatedClient("https://api.bybit.com", "key", "secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = mainnet.LookupMomentumOrder(ctx, "BTCUSDT", "l1", sent); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("mainnet private read must be refused: %v", err)
 	}
 	if _, _, err = client.LookupMomentumOrder(ctx, "BTCUSDT", "", sent); !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("empty link=%v", err)
