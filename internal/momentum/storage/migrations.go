@@ -26,6 +26,8 @@ func momentumMigrations() []migrationSpec {
 		{version: 10, sql: momentumDatasetArtifactSchema},
 		{version: 11, sql: momentumExecutionLedgerSchema},
 		{version: 12, sql: momentumControlRiskSchema},
+		{version: 13, sql: momentumMarkImportProgressSchema},
+		{version: 14, sql: momentumRunCompletionSchema},
 	}
 }
 

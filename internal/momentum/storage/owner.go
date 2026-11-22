@@ -2,12 +2,9 @@ package storage
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
 	"database/sql/driver"
-	"encoding/binary"
 	"errors"
-	"strings"
 	"sync"
 	"time"
 )
@@ -27,10 +24,6 @@ import (
 // сверки с биржей (MarkReconciled).
 
 var (
-	// ErrOwner — общая категория ошибок владения.
-	ErrOwner = errors.New("momentum execution owner failed")
-	// ErrOwnerArgument означает невалидную identity или время.
-	ErrOwnerArgument = errors.New("invalid momentum execution owner argument")
 	// ErrOwnerBusy означает, что область уже принадлежит живому владельцу.
 	ErrOwnerBusy = errors.New("momentum execution scope is owned by another session")
 	// ErrOwnerLost означает потерю lock или завершение владения; отправка запрещена.
@@ -38,12 +31,6 @@ var (
 	// ErrOwnerReconciliationRequired означает takeover без подтверждённой сверки.
 	ErrOwnerReconciliationRequired = errors.New("momentum execution takeover requires reconciliation")
 )
-
-// OwnerIdentity описывает процесс-кандидат во владельцы области.
-type OwnerIdentity struct {
-	SessionID, Environment, AccountID, StrategyID, Host string
-	ProcessID                                           int64
-}
 
 // ExecutionOwner — удерживаемое владение областью исполнения.
 type ExecutionOwner struct {
@@ -69,7 +56,7 @@ func AcquireExecutionOwner(ctx context.Context, db *sql.DB, id OwnerIdentity, no
 	if err != nil {
 		return nil, errors.Join(ErrOwner, ctx.Err())
 	}
-	owner := &ExecutionOwner{db: db, conn: conn, id: id, key: ownerLockKey(id), done: make(chan struct{})}
+	owner := &ExecutionOwner{db: db, conn: conn, id: id, key: ExecutionOwnerLockKey(id), done: make(chan struct{})}
 	var locked bool
 	if err := conn.QueryRowContext(ctx, `SELECT pg_catalog.pg_try_advisory_lock($1)`, owner.key).Scan(&locked); err != nil {
 		discardConn(conn) // исход захвата неизвестен
@@ -78,56 +65,14 @@ func AcquireExecutionOwner(ctx context.Context, db *sql.DB, id OwnerIdentity, no
 		conn.Close()
 		return nil, errors.Join(ErrOwner, ErrOwnerBusy)
 	}
-	if err := owner.open(ctx, now.UTC()); err != nil {
+	registration, err := RegisterExecutionOwnerSession(ctx, conn, id, now)
+	if err != nil {
 		discardConn(conn)
 		return nil, err
 	}
+	owner.reconcile = registration.RequiresReconciliation
+	owner.lastSeen = now.UTC()
 	return owner, nil
-}
-
-// open под удерживаемым lock закрывает зависшую сессию и создаёт новую.
-//
-// Порядок сессий не зависит от часов вызывающего: под lock started_at новой
-// сессии строго больше всех прежних (не раньше max+1 мкс), поэтому последняя
-// строка по started_at — всегда последний владелец. Активная сессия области
-// означает упавшего владельца и всегда требует сверки.
-func (o *ExecutionOwner) open(ctx context.Context, now time.Time) error {
-	tx, err := o.conn.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
-	if err != nil {
-		return errors.Join(ErrOwner, ctx.Err())
-	}
-	defer tx.Rollback()
-	scope := []any{o.id.Environment, o.id.AccountID, o.id.StrategyID}
-	var active int64
-	var latest sql.NullTime
-	var previous sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE ended_at IS NULL), max(started_at),
- (SELECT end_reason FROM momentum.execution_owner_sessions WHERE environment=$1 AND account_id=$2 AND strategy_id=$3
-  ORDER BY started_at DESC, session_id DESC LIMIT 1)
- FROM momentum.execution_owner_sessions WHERE environment=$1 AND account_id=$2 AND strategy_id=$3`, scope...).Scan(&active, &latest, &previous)
-	if err != nil {
-		return errors.Join(ErrOwner, ctx.Err())
-	}
-	o.reconcile = active > 0 || (latest.Valid && previous.String != "CLEAN_SHUTDOWN")
-	start := now.Truncate(time.Microsecond)
-	if latest.Valid && !start.After(latest.Time) {
-		start = latest.Time.UTC().Add(time.Microsecond)
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
- SET last_seen_at=greatest(last_seen_at,$4), ended_at=greatest(last_seen_at,$4), end_reason='STALE_TAKEOVER'
- WHERE environment=$1 AND account_id=$2 AND strategy_id=$3 AND ended_at IS NULL`, append(scope, start)...); err != nil {
-		return errors.Join(ErrOwner, ctx.Err())
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO momentum.execution_owner_sessions
- (session_id,environment,account_id,strategy_id,host,process_id,started_at,last_seen_at) VALUES ($4,$1,$2,$3,$5,$6,$7,$7)`,
-		append(scope, o.id.SessionID, o.id.Host, o.id.ProcessID, start)...); err != nil {
-		return errors.Join(ErrOwner, ErrOwnerArgument, ctx.Err())
-	}
-	if err := tx.Commit(); err != nil {
-		return errors.Join(ErrOwner, ctx.Err())
-	}
-	o.lastSeen = now
-	return nil
 }
 
 // Done закрывается при потере или завершении владения — сигнал отмены работы.
@@ -140,7 +85,7 @@ func (o *ExecutionOwner) NeedsReconciliation() bool {
 	return o.reconcile
 }
 
-// MarkReconciled снимает требование сверки по идентификатору подтверждённой сверки.
+// MarkReconciled снимает локальный latch по непустому ID; реальный proof сверки обязан проверить caller.
 func (o *ExecutionOwner) MarkReconciled(reconciliationID string) error {
 	if !nonBlankOwner(reconciliationID) {
 		return errors.Join(ErrOwner, ErrOwnerArgument)
@@ -194,6 +139,9 @@ func (o *ExecutionOwner) Permit(ctx context.Context) error {
 // остаётся активной, и следующий владелец получит STALE_TAKEOVER и требование
 // сверки. Lock снимается закрытием backend-сессии, а не возвратом в пул.
 func (o *ExecutionOwner) Release(ctx context.Context, now time.Time) error {
+	if ctx == nil {
+		return errors.Join(ErrOwner, ErrOwnerArgument)
+	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.lost {
@@ -259,26 +207,10 @@ func discardConn(conn *sql.Conn) {
 	_ = conn.Close()
 }
 
-// ownerLockKey выводит стабильный 64-битный ключ advisory lock из области.
-func ownerLockKey(id OwnerIdentity) int64 {
-	sum := sha256.Sum256([]byte("momentum-owner\x00" + id.Environment + "\x00" + id.AccountID + "\x00" + id.StrategyID))
-	return int64(binary.BigEndian.Uint64(sum[:8]))
-}
-
 // rowsAffected объединяет ошибку выполнения и число изменённых строк.
 func rowsAffected(res sql.Result, err error) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
 	return res.RowsAffected()
-}
-
-// nonBlankOwner проверяет, что значения не пусты и не содержат NUL.
-func nonBlankOwner(values ...string) bool {
-	for _, v := range values {
-		if strings.TrimSpace(v) == "" || strings.ContainsRune(v, 0) {
-			return false
-		}
-	}
-	return true
 }

@@ -162,3 +162,24 @@ func TestExecutionOwnerClockSkew(t *testing.T) {
 	migrationResult(t, c.Permit(ctx), ErrOwnerReconciliationRequired)
 	migrationValue(t, db, ownerHistory, "a:CLEAN_SHUTDOWN,b:STALE_TAKEOVER,c:active")
 }
+
+// TestExecutionOwnerNilRelease проверяет отсутствие эффектов nil-контекста и сохранение permit.
+func TestExecutionOwnerNilRelease(t *testing.T) {
+	ctx := context.Background()
+	db := ownerDatabase(t)
+	a := acquireOwner(t, db, ownerID("a", "s"), ownerT0)
+	//nolint:staticcheck // Контракт явно требует проверки nil-контекста Release.
+	migrationResult(t, a.Release(nil, ownerT0.Add(time.Minute)), ErrOwnerArgument)
+	migrationValue(t, db, ownerHistory, "a:active")
+	migrationValue(t, db, "SELECT last_seen_at=started_at FROM momentum.execution_owner_sessions WHERE session_id='a'", "true")
+	select {
+	case <-a.Done():
+		t.Fatal("nil Release must not close Done")
+	default:
+	}
+	_, err := AcquireExecutionOwner(ctx, db, ownerID("b", "s"), ownerT0)
+	migrationResult(t, err, ErrOwnerBusy)
+	migrationResult(t, a.Permit(ctx), nil)
+	migrationResult(t, a.Release(ctx, ownerT0.Add(time.Minute)), nil)
+	migrationValue(t, db, ownerHistory, "a:CLEAN_SHUTDOWN")
+}
