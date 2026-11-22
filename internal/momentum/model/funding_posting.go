@@ -28,10 +28,7 @@ type FundingPosting struct {
 
 // ProjectLongFunding рассчитывает одну проводку по фактической позиции в момент события.
 func ProjectLongFunding(position LongPosition, assessment LongFundingAssessment) (FundingPosting, error) {
-	if assessment.FundingID == "" || strings.TrimSpace(assessment.FundingID) != assessment.FundingID ||
-		assessment.Symbol == "" || strings.TrimSpace(assessment.Symbol) != assessment.Symbol ||
-		assessment.Event.FundingTime.IsZero() || !assessment.Event.Rate.valid() ||
-		!assessment.MarkPrice.valid() || assessment.MarkPrice.value.Sign() <= 0 {
+	if !validLongFundingAssessment(assessment) {
 		return FundingPosting{}, ErrInvalidFundingAssessment
 	}
 	if !position.Quantity.valid() || !position.CostBasisUSDT.valid() {
@@ -58,4 +55,12 @@ func ProjectLongFunding(position LongPosition, assessment LongFundingAssessment)
 		return FundingPosting{}, ErrFundingArithmetic
 	}
 	return FundingPosting{Assessment: assessment, Position: position, CashDeltaUSDT: cash}, nil
+}
+
+// validLongFundingAssessment проверяет идентичность, время, ставку и цену mark события funding.
+func validLongFundingAssessment(assessment LongFundingAssessment) bool {
+	return assessment.FundingID != "" && strings.TrimSpace(assessment.FundingID) == assessment.FundingID &&
+		assessment.Symbol != "" && strings.TrimSpace(assessment.Symbol) == assessment.Symbol &&
+		!assessment.Event.FundingTime.IsZero() && assessment.Event.Rate.valid() &&
+		assessment.MarkPrice.valid() && assessment.MarkPrice.value.Sign() > 0
 }
