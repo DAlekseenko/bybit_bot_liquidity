@@ -45,21 +45,27 @@ func TestNextReset(t *testing.T) {
 			OpeningStates: map[string]Lifecycle{"o1": filled}}, ResetDone, "", ""},
 	} {
 		for restart := 0; restart < 2; restart++ {
-			step, err := NextReset(tc.in)
+			in := tc.in
+			in.CloseStates, in.OpeningStates = bind(in.CloseStates), bind(in.OpeningStates)
+			step, err := NextReset(in)
 			if err != nil || step.Phase != tc.phase || links(Step{Send: step.Send}) != tc.send || step.Reason != tc.reason {
 				t.Fatalf("%s: %+v %v", tc.name, step, err)
 			}
 		}
 	}
 	dust, _ := NewRebalance(IntentBatch{Intents: []OrderIntent{leg("c1", LegReduce)}, Skipped: []SkippedDelta{{Symbol: "ETHUSDT", ReduceOnly: true}}})
-	if step, _ := NextReset(ResetInput{Close: dust, CloseStates: map[string]Lifecycle{"c1": filled}, BrokerFlat: true}); step.Phase != ResetBlocked {
+	if step, _ := NextReset(ResetInput{Close: dust, CloseStates: bind(map[string]Lifecycle{"c1": filled}), BrokerFlat: true}); step.Phase != ResetBlocked {
 		t.Fatalf("dust close must block opening: %+v", step)
 	}
 	if _, err := NextReset(ResetInput{Close: *openingRebalance(t)}); !errors.Is(err, ErrRebalance) {
 		t.Fatalf("close phase with buys must be rejected: %v", err)
 	}
+	empty, _ := NewRebalance(IntentBatch{})
+	if step, err := NextReset(ResetInput{Close: empty, BrokerFlat: true, Opening: &empty}); err != nil || step.Phase != ResetDone {
+		t.Fatalf("cash-only reset must complete: %+v %v", step, err)
+	}
 	same := closing
-	if _, err := NextReset(ResetInput{Close: closing, CloseStates: done, BrokerFlat: true, Opening: &same}); !errors.Is(err, ErrRebalance) {
+	if _, err := NextReset(ResetInput{Close: closing, CloseStates: bind(done), BrokerFlat: true, Opening: &same}); !errors.Is(err, ErrRebalance) {
 		t.Fatalf("opening must be a new revision: %v", err)
 	}
 }

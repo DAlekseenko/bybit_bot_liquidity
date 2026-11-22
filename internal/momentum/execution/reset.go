@@ -56,7 +56,8 @@ func NextReset(in ResetInput) (ResetStep, error) {
 	case in.Opening == nil:
 		return ResetStep{Phase: ResetPlanOpening}, nil
 	}
-	if in.Opening.planHash == in.Close.planHash && in.Opening.revision == in.Close.revision {
+	// Пустая (cash-only) ревизия не имеет заявок и identity; совпадение проверяется только для непустых.
+	if in.Opening.revision != 0 && in.Opening.planHash == in.Close.planHash && in.Opening.revision == in.Close.revision {
 		return ResetStep{}, ErrRebalance
 	}
 	opening, err := in.Opening.Next(in.OpeningStates, in.IncreaseGate)
