@@ -49,7 +49,7 @@ const (
 // Evidence — одно наблюдение о заявке.
 type Evidence struct {
 	Kind       EvidenceKind
-	OrderID    string
+	OrderID    string // обязателен для ACCEPTED, STATUS и FILL
 	Status     string // статус Bybit: New, PartiallyFilled, Filled, Cancelled, PartiallyFilledCanceled, Deactivated, Rejected, Untriggered
 	CumExecQty model.Decimal
 	Fill       model.ConfirmedFill
@@ -137,6 +137,9 @@ func (l Lifecycle) Apply(e Evidence) (next Lifecycle, changed bool, err error) {
 			return l, false, err
 		}
 	case EvidenceFill:
+		if err := next.bindOrder(e.OrderID); err != nil {
+			return l, false, err
+		}
 		if err := next.applyFill(e.Fill); err != nil {
 			return l, false, err
 		}

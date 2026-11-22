@@ -10,7 +10,7 @@ import (
 
 // fill строит подтверждённый fill BUY BTCUSDT.
 func fill(t *testing.T, id, qty string) Evidence {
-	return Evidence{Kind: EvidenceFill, Fill: model.ConfirmedFill{ExecutionID: id, Symbol: "BTCUSDT", Side: model.FillBuy,
+	return Evidence{Kind: EvidenceFill, OrderID: "o1", Fill: model.ConfirmedFill{ExecutionID: id, Symbol: "BTCUSDT", Side: model.FillBuy,
 		ExecutedAt: time.Unix(1700000000, 0).UTC(), Quantity: dec(t, qty), ExecutionPrice: dec(t, "90000"), FeeUSDT: dec(t, "0.1")}}
 }
 
@@ -96,6 +96,8 @@ func TestLifecycleConflicts(t *testing.T) {
 	changed.Fill.ExecutionPrice = dec(t, "1")
 	for name, e := range map[string]Evidence{
 		"other-order":     {Kind: EvidenceAccepted, OrderID: "o2"},
+		"fill-other":      {Kind: EvidenceFill, OrderID: "o2", Fill: fill(t, "e9", "0.006").Fill},
+		"fill-no-order":   {Kind: EvidenceFill, Fill: fill(t, "e9", "0.006").Fill},
 		"changed-fill":    changed,
 		"overfill":        fill(t, "e2", "0.007"),
 		"reject-filled":   status(t, "Rejected", "0.004"),
@@ -121,5 +123,16 @@ func TestLifecycleConflicts(t *testing.T) {
 	}
 	if _, err := NewLifecycle("", dec(t, "1")); err == nil {
 		t.Fatal("empty link must be rejected")
+	}
+}
+
+// TestLifecycleFillBindsOrder проверяет, что fill до подтверждения привязывает заявку.
+func TestLifecycleFillBindsOrder(t *testing.T) {
+	l := apply(t, newOrder(t), Evidence{Kind: EvidenceSent}, fill(t, "e1", "0.004"))
+	if l.OrderID() != "o1" {
+		t.Fatalf("fill must bind order id, got %q", l.OrderID())
+	}
+	if _, _, err := l.Apply(Evidence{Kind: EvidenceAccepted, OrderID: "o2"}); !errors.Is(err, ErrLifecycleConflict) {
+		t.Fatalf("ack for another order after fill: %v", err)
 	}
 }
