@@ -83,6 +83,11 @@ func TestNewRebalance(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
+	dust, err := NewRebalance(IntentBatch{Intents: []OrderIntent{leg("i1", LegIncrease)},
+		Skipped: []SkippedDelta{{Symbol: "BTCUSDT", ReduceOnly: true}}})
+	if step, nextErr := dust.Next(nil, nil); err != nil || nextErr != nil || step.Phase != PhaseBlocked || len(step.Send) != 0 {
+		t.Fatalf("skipped reduction must block increases: %+v %v %v", step, err, nextErr)
+	}
 	r, err := NewRebalance(IntentBatch{})
 	if step, nextErr := r.Next(nil, nil); err != nil || nextErr != nil || step.Phase != PhaseDone || len(step.Send) != 0 {
 		t.Fatalf("unchanged quantities must produce no orders: %+v %v %v", step, err, nextErr)

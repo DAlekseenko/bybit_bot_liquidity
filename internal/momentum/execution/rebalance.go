@@ -31,6 +31,7 @@ type Rebalance struct {
 	planHash             string
 	revision             uint64
 	reductions, increase []OrderIntent
+	skippedReduction     bool // сокращение ниже шага/минимума: позиция не доведена до цели
 }
 
 // Step — решение машины: какие заявки отправить сейчас.
@@ -41,8 +42,13 @@ type Step struct {
 }
 
 // NewRebalance связывает заявки одной ревизии плана; нулевые дельты в batch не попадают.
+// Пропущенное (dust) сокращение запрещает увеличения этой ревизии, как и
+// planner.DeltaProjection.RequiresReductionConfirmation.
 func NewRebalance(batch IntentBatch) (Rebalance, error) {
 	var r Rebalance
+	for _, skipped := range batch.Skipped {
+		r.skippedReduction = r.skippedReduction || skipped.ReduceOnly
+	}
 	for i, in := range batch.Intents {
 		if i == 0 {
 			r.planHash, r.revision = in.PlanHash, in.PlanRevision
@@ -79,7 +85,7 @@ func (r Rebalance) Next(states map[string]Lifecycle, increaseGate error) (Step, 
 	if len(pending) > 0 || !settled {
 		return Step{Phase: PhaseReducing, Send: pending}, nil
 	}
-	if !filled {
+	if !filled || (r.skippedReduction && len(r.increase) > 0) {
 		return Step{Phase: PhaseBlocked, Reason: BlockReductionIncomplete}, nil
 	}
 	pending, settled, filled = progress(r.increase, states)
