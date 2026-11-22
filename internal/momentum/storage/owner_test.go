@@ -142,3 +142,23 @@ func TestExecutionOwnerReleaseEdgeCases(t *testing.T) {
 	planRepositoryCheck(t, d.NeedsReconciliation(), "release without confirmed clean shutdown must require reconciliation")
 	migrationValue(t, db, ownerHistory, "a:STALE_TAKEOVER,b:STALE_TAKEOVER,c:LOCK_LOST,d:active")
 }
+
+// TestExecutionOwnerClockSkew проверяет, что преемник с отстающими часами не скрывает упавшего владельца.
+func TestExecutionOwnerClockSkew(t *testing.T) {
+	ctx := context.Background()
+	db := ownerDatabase(t)
+	a := acquireOwner(t, db, ownerID("a", "s"), ownerT0)
+	migrationResult(t, a.Release(ctx, ownerT0), nil)
+	b := acquireOwner(t, db, ownerID("b", "s"), ownerT0.Add(-time.Minute))
+	planRepositoryCheck(t, !b.NeedsReconciliation(), "clean predecessor must not require reconciliation")
+	migrationResult(t, b.Heartbeat(ctx, ownerT0.Add(-30*time.Second)), nil)
+	migrationValue(t, db, "SELECT (SELECT started_at FROM momentum.execution_owner_sessions WHERE session_id='b') >"+
+		" (SELECT started_at FROM momentum.execution_owner_sessions WHERE session_id='a')", "true")
+	var pid int
+	migrationResult(t, b.conn.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&pid), nil)
+	marketStatement(t, db, "SELECT pg_terminate_backend("+strconv.Itoa(pid)+")", true)
+	c := acquireOwner(t, db, ownerID("c", "s"), ownerT0.Add(-2*time.Minute))
+	planRepositoryCheck(t, c.NeedsReconciliation(), "crashed predecessor with earlier clock must require reconciliation")
+	migrationResult(t, c.Permit(ctx), ErrOwnerReconciliationRequired)
+	migrationValue(t, db, ownerHistory, "a:CLEAN_SHUTDOWN,b:STALE_TAKEOVER,c:active")
+}

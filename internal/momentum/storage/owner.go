@@ -86,6 +86,11 @@ func AcquireExecutionOwner(ctx context.Context, db *sql.DB, id OwnerIdentity, no
 }
 
 // open под удерживаемым lock закрывает зависшую сессию и создаёт новую.
+//
+// Порядок сессий не зависит от часов вызывающего: под lock started_at новой
+// сессии строго больше всех прежних (не раньше max+1 мкс), поэтому последняя
+// строка по started_at — всегда последний владелец. Активная сессия области
+// означает упавшего владельца и всегда требует сверки.
 func (o *ExecutionOwner) open(ctx context.Context, now time.Time) error {
 	tx, err := o.conn.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
@@ -93,21 +98,29 @@ func (o *ExecutionOwner) open(ctx context.Context, now time.Time) error {
 	}
 	defer tx.Rollback()
 	scope := []any{o.id.Environment, o.id.AccountID, o.id.StrategyID}
+	var active int64
+	var latest sql.NullTime
 	var previous sql.NullString
-	err = tx.QueryRowContext(ctx, `SELECT coalesce(end_reason,'ACTIVE') FROM momentum.execution_owner_sessions
- WHERE environment=$1 AND account_id=$2 AND strategy_id=$3 ORDER BY started_at DESC, session_id DESC LIMIT 1`, scope...).Scan(&previous)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE ended_at IS NULL), max(started_at),
+ (SELECT end_reason FROM momentum.execution_owner_sessions WHERE environment=$1 AND account_id=$2 AND strategy_id=$3
+  ORDER BY started_at DESC, session_id DESC LIMIT 1)
+ FROM momentum.execution_owner_sessions WHERE environment=$1 AND account_id=$2 AND strategy_id=$3`, scope...).Scan(&active, &latest, &previous)
+	if err != nil {
 		return errors.Join(ErrOwner, ctx.Err())
 	}
-	o.reconcile = previous.Valid && previous.String != "CLEAN_SHUTDOWN"
+	o.reconcile = active > 0 || (latest.Valid && previous.String != "CLEAN_SHUTDOWN")
+	start := now.Truncate(time.Microsecond)
+	if latest.Valid && !start.After(latest.Time) {
+		start = latest.Time.UTC().Add(time.Microsecond)
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
  SET last_seen_at=greatest(last_seen_at,$4), ended_at=greatest(last_seen_at,$4), end_reason='STALE_TAKEOVER'
- WHERE environment=$1 AND account_id=$2 AND strategy_id=$3 AND ended_at IS NULL`, append(scope, now)...); err != nil {
+ WHERE environment=$1 AND account_id=$2 AND strategy_id=$3 AND ended_at IS NULL`, append(scope, start)...); err != nil {
 		return errors.Join(ErrOwner, ctx.Err())
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO momentum.execution_owner_sessions
  (session_id,environment,account_id,strategy_id,host,process_id,started_at,last_seen_at) VALUES ($4,$1,$2,$3,$5,$6,$7,$7)`,
-		append(scope, o.id.SessionID, o.id.Host, o.id.ProcessID, now)...); err != nil {
+		append(scope, o.id.SessionID, o.id.Host, o.id.ProcessID, start)...); err != nil {
 		return errors.Join(ErrOwner, ErrOwnerArgument, ctx.Err())
 	}
 	if err := tx.Commit(); err != nil {
@@ -151,7 +164,7 @@ func (o *ExecutionOwner) Heartbeat(ctx context.Context, now time.Time) error {
 	if err := o.checkLocked(ctx); err != nil {
 		return err
 	}
-	res, err := o.conn.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions SET last_seen_at=$2
+	res, err := o.conn.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions SET last_seen_at=greatest(last_seen_at,$2)
  WHERE session_id=$1 AND ended_at IS NULL`, o.id.SessionID, now.UTC())
 	if n, _ := rowsAffected(res, err); n != 1 {
 		if ctx.Err() != nil {
