@@ -26,6 +26,7 @@ type CloseAllInput struct {
 	Symbols   []string // universe стратегии: закрываются только эти позиции
 	Inventory model.AccountInventory
 	MinQty    map[string]model.Decimal // минимальный объём закрытия по символу
+	Ledger    map[string]model.Decimal // позиции стратегии по ledger: закрывается только совпадающий размер
 	Closes    map[string]Lifecycle     // последнее закрытие по символу
 }
 
@@ -45,7 +46,8 @@ type CloseAllStep struct {
 
 // NextCloseAll выводит шаг close_all_and_halt. HALTED сохраняется до действий;
 // свои активные заявки отменяются до закрытий; закрываются только позиции
-// universe стратегии, чужие позиции и заявки лишь попадают в Findings. CLOSED —
+// universe стратегии и только при совпадении размера с ledger; чужие позиции,
+// ручные докупки и заявки лишь попадают в Findings. CLOSED —
 // только когда биржа подтверждает нулевые позиции, своих заявок нет, все
 // закрытия урегулированы и расхождений нет; dust и неизвестный исход не CLOSED.
 // Закрытие не повторяется, пока предыдущее по символу не урегулировано.
@@ -88,7 +90,11 @@ func NextCloseAll(in CloseAllInput) CloseAllStep {
 		if l, ok := in.Closes[p.Symbol]; ok && !l.Settled() {
 			continue
 		}
-		if min, ok := in.MinQty[p.Symbol]; !ok || p.Side != "Buy" {
+		owned, ok := in.Ledger[p.Symbol]
+		if same, err := p.Size.Cmp(owned); !ok || err != nil || same != 0 {
+			// Ручная позиция или докупка: биржевой размер не равен ledger — не закрываем.
+			step.find(FindingPositionMismatch, p.Symbol)
+		} else if min, ok := in.MinQty[p.Symbol]; !ok || p.Side != "Buy" {
 			step.find(FindingPositionMismatch, p.Symbol)
 		} else if below, err := p.Size.Cmp(min); err != nil || below < 0 {
 			step.find(FindingPositionMismatch, p.Symbol+"/dust")

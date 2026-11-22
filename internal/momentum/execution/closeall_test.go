@@ -11,7 +11,7 @@ func closeInput(t *testing.T) CloseAllInput {
 	return CloseAllInput{Halted: true, Namespace: "cm-", Symbols: []string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"},
 		Inventory: model.AccountInventory{Positions: []model.AccountPosition{{Symbol: "BTCUSDT", Side: "Buy", Size: dec(t, "0.01")}}},
 		MinQty:    map[string]model.Decimal{"BTCUSDT": dec(t, "0.001"), "ETHUSDT": dec(t, "0.01"), "HYPEUSDT": dec(t, "0.1")},
-		Closes:    map[string]Lifecycle{}}
+		Closes:    map[string]Lifecycle{}, Ledger: map[string]model.Decimal{"BTCUSDT": dec(t, "0.01")}}
 }
 
 // TestCloseAllSequence проверяет halt → cancel → close → verify → CLOSED и повтор без дубля.
@@ -40,6 +40,7 @@ func TestCloseAllSequence(t *testing.T) {
 	}
 	in.Closes["BTCUSDT"] = apply(t, newOrder(t), fill(t, "e1", "0.004"), status(t, "PartiallyFilledCanceled", "0.004"))
 	in.Inventory.Positions[0].Size = dec(t, "0.006")
+	in.Ledger["BTCUSDT"] = dec(t, "0.006")
 	if step = NextCloseAll(in); step.Phase != CloseAllClosing || len(step.Close) != 1 {
 		t.Fatalf("partial close after reconnect must close the remainder: %+v", step)
 	}
@@ -56,6 +57,7 @@ func TestCloseAllSequence(t *testing.T) {
 // TestCloseAllBlocks проверяет, что dust, чужие позиции и заявки не дают ложный CLOSED и не закрываются.
 func TestCloseAllBlocks(t *testing.T) {
 	in := closeInput(t)
+	in.Ledger["BTCUSDT"] = dec(t, "0.0005")
 	in.Inventory.Positions = []model.AccountPosition{{Symbol: "BTCUSDT", Side: "Buy", Size: dec(t, "0.0005")},
 		{Symbol: "SOLUSDT", Side: "Buy", Size: dec(t, "3")}}
 	in.Inventory.Orders = []model.AccountOrder{{OrderID: "m1", Symbol: "ETHUSDT"}}
@@ -69,5 +71,10 @@ func TestCloseAllBlocks(t *testing.T) {
 	}
 	if got != "foreign_order:ETHUSDT/m1;foreign_position:SOLUSDT;position_mismatch:BTCUSDT/dust;" {
 		t.Fatalf("findings=%s", got)
+	}
+	manual := closeInput(t)
+	manual.Inventory.Positions[0].Size = dec(t, "0.5") // ручная докупка к позиции стратегии
+	if step := NextCloseAll(manual); step.Phase != CloseAllBlocked || len(step.Close) != 0 {
+		t.Fatalf("manual exposure must not be closed: %+v", step)
 	}
 }
