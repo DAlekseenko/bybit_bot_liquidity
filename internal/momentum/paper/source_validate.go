@@ -22,7 +22,7 @@ func exactUTC(t time.Time) bool {
 // publicConfig допускает только публичный paper Testnet источник.
 func publicConfig(c config.Config) bool {
 	v := c.Values()
-	return v.Mode == "paper" && v.ModelID == "roc30" && v.DataSource.Kind == "bybit_testnet_public" && v.DataSource.Environment == "testnet" && len(v.Symbols) > 0
+	return v.Mode == "paper" && v.DataSource.Kind == "bybit_testnet_public" && v.DataSource.Environment == "testnet" && len(v.Symbols) > 0
 }
 
 // fundingSpan вычисляет первый момент и count без массива и duration overflow.
