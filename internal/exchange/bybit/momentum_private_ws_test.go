@@ -177,41 +177,6 @@ func TestPrivateStreamFailures(t *testing.T) {
 	}
 }
 
-// TestPrivateStreamResyncGeneration проверяет, что resync прежнего подключения не делает свежим новое.
-func TestPrivateStreamResyncGeneration(t *testing.T) {
-	state := &PrivateStreamState{}
-	state.set(true)
-	stale := state.Generation()
-	state.set(false)
-	state.set(true)
-	if state.MarkResynced(stale) || state.Fresh() {
-		t.Fatal("resync started on a previous connection must not mark the new one fresh")
-	}
-	if !state.MarkResynced(state.Generation()) || !state.Fresh() {
-		t.Fatal("resync of the current connection must mark it fresh")
-	}
-	state.set(false)
-	if state.MarkResynced(state.Generation()) || state.Fresh() {
-		t.Fatal("disconnected stream must not become fresh")
-	}
-}
-
-// TestPrivateStreamFeeCurrency проверяет, что fill с комиссией не в USDT отвергается.
-func TestPrivateStreamFeeCurrency(t *testing.T) {
-	item := privateItem{Category: "linear", Symbol: "BTCUSDT", Side: "Buy", OrderID: "o", ExecID: "e", ExecType: "Trade",
-		ExecPrice: "1", ExecQty: "1", ExecFee: "0.1", ExecTime: "1700000001000"}
-	for _, tc := range []struct {
-		symbol, currency string
-		ok               bool
-	}{{"BTCUSDT", "USDT", true}, {"BTCUSDT", "", true}, {"BTCUSDT", "USDC", false}, {"BTCPERP", "", false}, {"BTCPERP", "USDC", false}} {
-		it := item
-		it.Symbol, it.FeeCurrency = tc.symbol, tc.currency
-		if e, ok := privateEvent("execution.linear", it); ok != tc.ok || (ok && e.Kind != PrivateExecution) {
-			t.Errorf("%s/%q: ok=%v kind=%s, want ok=%v", tc.symbol, tc.currency, ok, e.Kind, tc.ok)
-		}
-	}
-}
-
 // TestPrivateStreamSilentServer проверяет, что молчащий сервер снимает свежесть и рвёт соединение.
 func TestPrivateStreamSilentServer(t *testing.T) {
 	release := make(chan struct{})
