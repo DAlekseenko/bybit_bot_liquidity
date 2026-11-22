@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"bybit_bot_liquidity/internal/momentum/model"
@@ -86,7 +87,8 @@ func (c *Client) MomentumExecutions(ctx context.Context, symbol string, window H
 		Cursor string          `json:"nextPageCursor"`
 	}
 	query, err := historyQuery(window, "symbol", symbol, "100")
-	if err != nil || validateSymbol(symbol) != nil {
+	// Fill хранит комиссию в USDT, поэтому принимаются только USDT-settled контракты (XXXUSDT).
+	if err != nil || validateSymbol(symbol) != nil || !strings.HasSuffix(symbol, "USDT") || len(symbol) <= 4 {
 		return page, fmt.Errorf("%w: execution window", ErrInvalidArgument)
 	}
 	server, err := c.signedGet(ctx, "/v5/execution/list", query, &result)

@@ -111,6 +111,9 @@ func TestMomentumExecutions(t *testing.T) {
 			t.Fatalf("out-of-window/foreign row %v: %v", row, err)
 		}
 	}
+	if _, err = client.MomentumExecutions(ctx, "BTCPERP", window); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("USDC-settled symbol must be refused: %v", err)
+	}
 	if _, err = client.MomentumExecutions(ctx, "BTCUSDT", HistoryWindow{Start: start, End: start.Add(8 * 24 * time.Hour)}); !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("long window=%v", err)
 	}
