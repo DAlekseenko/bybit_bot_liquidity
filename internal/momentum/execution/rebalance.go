@@ -1,6 +1,10 @@
 package execution
 
-import "errors"
+import (
+	"errors"
+
+	"bybit_bot_liquidity/internal/momentum/model"
+)
 
 // ErrRebalance означает несогласованные входы машины ребалансировки.
 var ErrRebalance = errors.New("momentum rebalance state is inconsistent")
@@ -42,8 +46,9 @@ type Step struct {
 }
 
 // NewRebalance связывает заявки одной ревизии плана; нулевые дельты в batch не попадают.
-// Пропущенное (dust) сокращение запрещает увеличения этой ревизии, как и
-// planner.DeltaProjection.RequiresReductionConfirmation.
+// Пропущенное (dust) сокращение или сокращение с неисполняемым остатком
+// (UnplannedQty > 0: округление вниз, MaxMarketQty) запрещает увеличения этой
+// ревизии, как и planner.DeltaProjection.RequiresReductionConfirmation.
 func NewRebalance(batch IntentBatch) (Rebalance, error) {
 	var r Rebalance
 	for _, skipped := range batch.Skipped {
@@ -61,6 +66,9 @@ func NewRebalance(batch IntentBatch) (Rebalance, error) {
 			if len(r.increase) > 0 {
 				return Rebalance{}, ErrRebalance
 			}
+			if c, err := in.UnplannedQty.Cmp(model.Zero()); err == nil && c > 0 {
+				r.skippedReduction = true
+			}
 			r.reductions = append(r.reductions, in)
 		case LegIncrease:
 			r.increase = append(r.increase, in)
@@ -77,7 +85,11 @@ func NewRebalance(batch IntentBatch) (Rebalance, error) {
 // соседних символов не перераспределяется.
 func (r Rebalance) Next(states map[string]Lifecycle, increaseGate error) (Step, error) {
 	for link, l := range states {
-		if !r.owns(link) || !l.valid() {
+		intent, ok := r.intent(link)
+		if !ok || !l.valid() || l.orderLinkID != link {
+			return Step{}, ErrRebalance
+		}
+		if c, err := l.quantity.Cmp(intent.Quantity); err != nil || c != 0 {
 			return Step{}, ErrRebalance
 		}
 	}
@@ -120,14 +132,14 @@ func progress(intents []OrderIntent, states map[string]Lifecycle) (pending []Ord
 	return pending, settled, filled
 }
 
-// owns проверяет, что orderLinkId принадлежит этой ревизии плана.
-func (r Rebalance) owns(link string) bool {
+// intent возвращает заявку этой ревизии плана по orderLinkId.
+func (r Rebalance) intent(link string) (OrderIntent, bool) {
 	for _, group := range [][]OrderIntent{r.reductions, r.increase} {
 		for _, in := range group {
 			if in.OrderLinkID == link {
-				return true
+				return in, true
 			}
 		}
 	}
-	return false
+	return OrderIntent{}, false
 }
