@@ -184,6 +184,11 @@ func checkFlatSettings(in PreflightInput, p PreflightParams, deny func(Preflight
 			continue
 		}
 		fresh(s.ServerTime, "settings:"+symbol)
+		// Позиция могла открыться между чтением inventory и настроек: свежий
+		// ответ с ненулевым размером означает расхождение с ledger.
+		if sign, err := s.Size.Cmp(model.Zero()); err != nil || sign != 0 {
+			deny(ReasonPositionMismatch, symbol)
+		}
 		if s.PositionIdx != oneWayPositionIdx {
 			deny(ReasonPositionMode, symbol)
 		}

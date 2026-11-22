@@ -118,6 +118,16 @@ func TestPreflightDenies(t *testing.T) {
 			s.AutoAddMargin = true
 			in.Settings["ETHUSDT"] = s
 		}, ReasonAutoAddMargin},
+		"flat settings not flat": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.Size, s.Side = preflightDec(t, "0.1"), "Buy"
+			in.Settings["ETHUSDT"] = s
+		}, ReasonPositionMismatch},
+		"flat settings no size": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.Size = model.Decimal{}
+			in.Settings["ETHUSDT"] = s
+		}, ReasonPositionMismatch},
 		"flat stale settings": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			s := in.Settings["ETHUSDT"]
 			s.ServerTime = preflightNow.Add(-time.Hour)
