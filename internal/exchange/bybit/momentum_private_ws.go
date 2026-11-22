@@ -57,11 +57,14 @@ type PrivateEvent struct {
 
 // PrivateStreamState сообщает, можно ли считать состояние из потока свежим.
 // После любого (пере)подключения состояние не свежее до MarkResynced: события
-// за время разрыва потеряны, и их нужно восстановить через REST.
+// за время разрыва потеряны, и их нужно восстановить через REST. Каждое
+// подключение и отключение меняет generation, поэтому resync, начатый при
+// прежнем подключении, не делает свежим новое.
 type PrivateStreamState struct {
-	mu       sync.Mutex
-	live     bool
-	resynced bool
+	mu         sync.Mutex
+	live       bool
+	resynced   bool
+	generation uint64
 }
 
 // Fresh — поток подключён и после подключения выполнен REST resync.
@@ -71,18 +74,32 @@ func (s *PrivateStreamState) Fresh() bool {
 	return s.live && s.resynced
 }
 
-// MarkResynced фиксирует завершённый REST resync для текущего подключения.
-func (s *PrivateStreamState) MarkResynced() {
+// Generation возвращает номер текущего состояния подключения; его снимают до
+// начала REST resync и передают в MarkResynced.
+func (s *PrivateStreamState) Generation() uint64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.resynced = s.live
+	return s.generation
 }
 
-// set меняет признак подключения; любое изменение сбрасывает resync.
+// MarkResynced фиксирует REST resync, начатый при generation. Если с тех пор
+// поток переподключался или отключился, resync не засчитывается (false).
+func (s *PrivateStreamState) MarkResynced(generation uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.live || s.generation != generation {
+		return false
+	}
+	s.resynced = true
+	return true
+}
+
+// set меняет признак подключения; любое изменение сбрасывает resync и меняет generation.
 func (s *PrivateStreamState) set(live bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.live, s.resynced = live, false
+	s.generation++
 }
 
 // PrivateStreamClient читает приватные топики execution и order Testnet.
@@ -155,9 +172,10 @@ func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEven
 		case <-stop:
 		}
 	}()
-	expires := strconv.FormatInt(c.now().Add(10*time.Second).UnixMilli(), 10)
+	// Bybit ждёт expires числом JSON; подписывается его десятичная запись.
+	expires := c.now().Add(10 * time.Second).UnixMilli()
 	mac := hmac.New(sha256.New, []byte(c.apiSecret))
-	mac.Write([]byte("GET/realtime" + expires))
+	mac.Write([]byte("GET/realtime" + strconv.FormatInt(expires, 10)))
 	if err := c.command(ctx, conn, "auth", c.apiKey, expires, hex.EncodeToString(mac.Sum(nil))); err != nil {
 		return err
 	}
@@ -196,9 +214,15 @@ func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEven
 	}
 }
 
+// privateCommand — команда с разнотипными аргументами (auth передаёт expires числом).
+type privateCommand struct {
+	Operation string `json:"op"`
+	Arguments []any  `json:"args"`
+}
+
 // command отправляет auth/subscribe и ждёт подтверждения той же операции.
-func (c *PrivateStreamClient) command(ctx context.Context, conn websocketConnection, op string, args ...string) error {
-	if err := conn.WriteJSON(websocketCommand{Operation: op, Arguments: args}); err != nil {
+func (c *PrivateStreamClient) command(ctx context.Context, conn websocketConnection, op string, args ...any) error {
+	if err := conn.WriteJSON(privateCommand{Operation: op, Arguments: args}); err != nil {
 		return fmt.Errorf("%w: %s: %w", ErrPrivateStream, op, err)
 	}
 	for {
@@ -248,6 +272,7 @@ type privateItem struct {
 	ExecPrice   string `json:"execPrice"`
 	ExecQty     string `json:"execQty"`
 	ExecFee     string `json:"execFee"`
+	FeeCurrency string `json:"feeCurrency"`
 	ExecTime    string `json:"execTime"`
 	UpdatedTime string `json:"updatedTime"`
 	OrderStatus string `json:"orderStatus"`
@@ -305,6 +330,11 @@ func privateEvent(topic string, it privateItem) (PrivateEvent, bool) {
 		return PrivateEvent{}, false
 	}
 	if c, err := qty.Cmp(model.Zero()); err != nil || c <= 0 {
+		return PrivateEvent{}, false
+	}
+	// ConfirmedFill хранит комиссию в USDT: fill с другой валютой комиссии или
+	// расчётов (например, USDC-контракт) отвергается, а не записывается как USDT.
+	if it.FeeCurrency != "USDT" && (it.FeeCurrency != "" || !strings.HasSuffix(it.Symbol, "USDT")) {
 		return PrivateEvent{}, false
 	}
 	e.Kind, e.ExecType, e.UpdatedAt = PrivateExecution, it.ExecType, time.UnixMilli(ms).UTC()

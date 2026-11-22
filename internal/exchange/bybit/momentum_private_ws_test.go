@@ -5,9 +5,11 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -40,14 +42,21 @@ func fakePrivateServer(t *testing.T, script func(n int, conn *websocket.Conn)) (
 
 // handshake проверяет подпись auth и подписку, отвечая authOK на auth.
 func handshake(t *testing.T, conn *websocket.Conn, authOK bool) bool {
-	var auth websocketCommand
-	if conn.ReadJSON(&auth) != nil || auth.Operation != "auth" || len(auth.Arguments) != 3 {
-		t.Errorf("bad auth %+v", auth)
+	var auth struct {
+		Operation string            `json:"op"`
+		Arguments []json.RawMessage `json:"args"`
+	}
+	var key, signature string
+	var expires int64
+	if conn.ReadJSON(&auth) != nil || auth.Operation != "auth" || len(auth.Arguments) != 3 ||
+		json.Unmarshal(auth.Arguments[0], &key) != nil || json.Unmarshal(auth.Arguments[1], &expires) != nil ||
+		json.Unmarshal(auth.Arguments[2], &signature) != nil {
+		t.Errorf("bad auth (expires must be a JSON number) %+v", auth)
 		return false
 	}
 	mac := hmac.New(sha256.New, []byte("secret-marker"))
-	mac.Write([]byte("GET/realtime" + auth.Arguments[1]))
-	if auth.Arguments[0] != "key" || auth.Arguments[2] != hex.EncodeToString(mac.Sum(nil)) {
+	mac.Write([]byte("GET/realtime" + strconv.FormatInt(expires, 10)))
+	if key != "key" || signature != hex.EncodeToString(mac.Sum(nil)) {
 		t.Errorf("bad signature %+v", auth)
 	}
 	_ = conn.WriteJSON(map[string]any{"op": "auth", "success": authOK})
@@ -95,8 +104,7 @@ func TestPrivateStreamEvents(t *testing.T) {
 			if client.State.Fresh() {
 				t.Fatal("stream must not be fresh before REST resync")
 			}
-			client.State.MarkResynced()
-			if !client.State.Fresh() {
+			if !client.State.MarkResynced(client.State.Generation()) || !client.State.Fresh() {
 				t.Fatal("resynced live stream must be fresh")
 			}
 			if fee, _ := e.Fill.FeeUSDT.WireDecimal(); fee != "-0.01" || !e.Fill.ExecutedAt.Equal(time.UnixMilli(1700000002000).UTC()) {
@@ -166,5 +174,40 @@ func TestPrivateStreamFailures(t *testing.T) {
 	}
 	if strings.Contains(bad.String(), "secret") || TestnetPrivateWebSocketURL != "wss://stream-testnet.bybit.com/v5/private" {
 		t.Fatal("client must not expose secrets and must target Testnet only")
+	}
+}
+
+// TestPrivateStreamResyncGeneration проверяет, что resync прежнего подключения не делает свежим новое.
+func TestPrivateStreamResyncGeneration(t *testing.T) {
+	state := &PrivateStreamState{}
+	state.set(true)
+	stale := state.Generation()
+	state.set(false)
+	state.set(true)
+	if state.MarkResynced(stale) || state.Fresh() {
+		t.Fatal("resync started on a previous connection must not mark the new one fresh")
+	}
+	if !state.MarkResynced(state.Generation()) || !state.Fresh() {
+		t.Fatal("resync of the current connection must mark it fresh")
+	}
+	state.set(false)
+	if state.MarkResynced(state.Generation()) || state.Fresh() {
+		t.Fatal("disconnected stream must not become fresh")
+	}
+}
+
+// TestPrivateStreamFeeCurrency проверяет, что fill с комиссией не в USDT отвергается.
+func TestPrivateStreamFeeCurrency(t *testing.T) {
+	item := privateItem{Category: "linear", Symbol: "BTCUSDT", Side: "Buy", OrderID: "o", ExecID: "e", ExecType: "Trade",
+		ExecPrice: "1", ExecQty: "1", ExecFee: "0.1", ExecTime: "1700000001000"}
+	for _, tc := range []struct {
+		symbol, currency string
+		ok               bool
+	}{{"BTCUSDT", "USDT", true}, {"BTCUSDT", "", true}, {"BTCUSDT", "USDC", false}, {"BTCPERP", "", false}, {"BTCPERP", "USDC", false}} {
+		it := item
+		it.Symbol, it.FeeCurrency = tc.symbol, tc.currency
+		if e, ok := privateEvent("execution.linear", it); ok != tc.ok || (ok && e.Kind != PrivateExecution) {
+			t.Errorf("%s/%q: ok=%v kind=%s, want ok=%v", tc.symbol, tc.currency, ok, e.Kind, tc.ok)
+		}
 	}
 }
