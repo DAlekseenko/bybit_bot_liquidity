@@ -47,7 +47,8 @@ type Monitor struct {
 	Control    Control
 	Scope      storage.ControlScope
 	ConfigHash string
-	Poll       time.Duration // интервал резервного REST-опроса, даже при живом WS
+	Poll       time.Duration    // интервал резервного REST-опроса, даже при живом WS
+	Clock      func() time.Time // nil — time.Now
 
 	mu       sync.Mutex
 	snapshot *risk.EquitySnapshot
@@ -63,15 +64,17 @@ func (m *Monitor) ObserveEquity(equity model.Decimal, at time.Time) {
 	}
 }
 
-// Tick оценивает риск на момент now. Режим всегда читается из БД, поэтому
-// рестарт не снимает HALT; ошибка БД — запрет входов. Предложенный переход
+// Tick оценивает риск по часам Clock. Режим всегда читается из БД, поэтому
+// рестарт не снимает HALT; ошибка БД — запрет входов. Время оценки берётся после
+// REST-запроса: ответ сервера не считается «из будущего». Предложенный переход
 // сохраняется один раз: повторный Tick в новом режиме даёт ActionNone.
-func (m *Monitor) Tick(ctx context.Context, now time.Time, flags Flags) (risk.Decision, error) {
+func (m *Monitor) Tick(ctx context.Context, flags Flags) (risk.Decision, error) {
 	state, err := m.Control.LatestControlState(ctx)
 	if err != nil {
 		return blocked(), errors.Join(ErrMonitor, err)
 	}
-	snapshot := m.refresh(ctx, now)
+	snapshot := m.refresh(ctx, m.now())
+	now := m.now()
 	for attempt := 0; attempt < 2; attempt++ {
 		decision, err := risk.Evaluate(m.Params, risk.Input{Mode: risk.Mode(state.Mode), Now: now, Equity: snapshot,
 			UnknownPosition: flags.UnknownPosition, UnknownOrder: flags.UnknownOrder, LockLost: flags.LockLost,
@@ -136,6 +139,14 @@ func (m *Monitor) transition(state storage.ControlState, d risk.Decision, now ti
 		tr.Events = append(tr.Events, event)
 	}
 	return tr
+}
+
+// now возвращает время по инжектированным часам.
+func (m *Monitor) now() time.Time {
+	if m.Clock == nil {
+		return time.Now().UTC()
+	}
+	return m.Clock().UTC()
 }
 
 // blocked — решение, запрещающее входы при сбое монитора.
