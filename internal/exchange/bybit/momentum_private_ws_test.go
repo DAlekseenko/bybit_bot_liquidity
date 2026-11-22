@@ -255,3 +255,26 @@ func TestPrivateStreamHandshakeTimeout(t *testing.T) {
 		t.Fatalf("run must keep reconnecting: %v, connections=%d", err, atomic.LoadInt32(count))
 	}
 }
+
+// TestPrivateStreamBackpressureHeartbeat проверяет, что сбой heartbeat завершает Stream при заблокированном out.
+func TestPrivateStreamBackpressureHeartbeat(t *testing.T) {
+	release := make(chan struct{})
+	client, _ := fakePrivateServer(t, func(_ int, conn *websocket.Conn) {
+		if handshake(t, conn, true) {
+			_ = conn.WriteJSON(execution("e1", "Trade", "1700000001000"))
+			<-release
+		}
+	})
+	defer close(release)
+	client.heartbeat = 20 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- client.Stream(context.Background(), make(chan PrivateEvent)) }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrPrivateStream) || client.State.Fresh() {
+			t.Fatalf("blocked consumer: err=%v fresh=%v", err, client.State.Fresh())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("heartbeat failure must end Stream even when out is blocked")
+	}
+}

@@ -230,11 +230,15 @@ func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEven
 		if err != nil {
 			return err
 		}
+		// Отправка учитывает и сбой heartbeat: при полном out и паузе потребителя
+		// закрытие сокета не разблокирует send, а Run должен переподключиться.
 		for _, event := range events {
 			select {
 			case out <- event:
 			case <-ctx.Done():
 				return ctx.Err()
+			case err := <-beatErr:
+				return fmt.Errorf("%w: heartbeat: %w", ErrPrivateStream, err)
 			}
 		}
 	}
