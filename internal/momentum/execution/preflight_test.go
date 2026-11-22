@@ -178,3 +178,13 @@ func TestPreflightReduceOnlyNeedsNoMargin(t *testing.T) {
 		t.Fatalf("reduce-only preflight denied: %+v", got)
 	}
 }
+
+// TestPreflightZeroCandidateNeedsNoMargin проверяет, что нулевой кандидат на увеличение не требует маржи.
+func TestPreflightZeroCandidateNeedsNoMargin(t *testing.T) {
+	in, p := preflightFixture(t)
+	in.Deltas[1].CandidateQty = preflightDec(t, "0")
+	in.Balance.Available = preflightDec(t, "0")
+	if got := Preflight(in, p); !got.Allowed {
+		t.Fatalf("zero increase candidate must not require margin: %+v", got)
+	}
+}

@@ -1,4 +1,3 @@
-// Package execution содержит чистые контракты исполнения TradePlan без I/O.
 package execution
 
 import (
@@ -44,16 +43,11 @@ type PreflightDenial struct {
 
 // PreflightParams задаёт явные параметры владельца; умолчаний нет (D-04/D-06).
 type PreflightParams struct {
-	// Now — время проверки в UTC.
-	Now time.Time
-	// MaxDataAge — максимальный возраст любого чтения биржи (D-04).
-	MaxDataAge time.Duration
-	// TargetLeverage — требуемое плечо каждой позиции стратегии.
-	TargetLeverage model.Decimal
-	// MarginBufferRate — неотрицательный запас к требуемой марже (fee/slippage, D-04).
-	MarginBufferRate model.Decimal
-	// OrderLinkNamespace — префикс LinkID заявок стратегии.
-	OrderLinkNamespace string
+	Now                time.Time     // время проверки в UTC
+	MaxDataAge         time.Duration // максимальный возраст любого чтения биржи (D-04)
+	TargetLeverage     model.Decimal // требуемое плечо каждой позиции стратегии
+	MarginBufferRate   model.Decimal // неотрицательный запас к марже (fee/slippage, D-04)
+	OrderLinkNamespace string        // префикс LinkID заявок стратегии
 }
 
 // MarkObservation хранит mark price символа и время его чтения.
@@ -64,21 +58,16 @@ type MarkObservation struct {
 
 // PreflightInput содержит проверенные read models и проекцию плана.
 type PreflightInput struct {
-	Mode      model.AccountMode
-	Balance   model.IsolatedBalance
-	Inventory model.AccountInventory
-	// Symbols — символы, которыми управляет стратегия; прочие позиции неизвестны.
-	Symbols []string
-	// Expected — ожидаемые ledger количества по символам стратегии (отсутствие = 0).
-	Expected map[string]model.Decimal
-	// InstrumentStatus — статус инструмента биржи по символу.
-	InstrumentStatus map[string]string
+	Mode             model.AccountMode
+	Balance          model.IsolatedBalance
+	Inventory        model.AccountInventory
+	Symbols          []string                 // символы стратегии; прочие позиции неизвестны
+	Expected         map[string]model.Decimal // ledger количества по символам (отсутствие = 0)
+	InstrumentStatus map[string]string        // статус инструмента биржи по символу
 	Marks            map[string]MarkObservation
 	Deltas           []planner.PositionDelta
-	// Settings — настройки позиции по символу из чтения с явным symbol: Bybit
-	// возвращает их и для нулевой позиции, тогда как общий список по settleCoin
-	// содержит только ненулевые. Для символа без открытой позиции, который план
-	// увеличивает, настройки обязательны.
+	// Settings — настройки позиции из чтения с явным symbol (Bybit отдаёт их и для
+	// нулевой позиции); обязательны для символа без позиции, который план увеличивает.
 	Settings map[string]model.AccountPosition
 }
 
@@ -142,8 +131,7 @@ func checkPositions(in PreflightInput, p PreflightParams, deny func(PreflightRea
 			continue
 		}
 		seen[pos.Symbol] = true
-		expected := expectedQty(in, pos.Symbol)
-		if eq, err := pos.Size.Cmp(expected); err != nil || eq != 0 || (pos.Side != "Buy" && pos.Side != "") {
+		if eq, err := pos.Size.Cmp(expectedQty(in, pos.Symbol)); err != nil || eq != 0 || (pos.Side != "Buy" && pos.Side != "") {
 			deny(ReasonPositionMismatch, pos.Symbol)
 		}
 		if eq, err := pos.Leverage.Cmp(p.TargetLeverage); err != nil || eq != 0 {
@@ -163,9 +151,8 @@ func checkPositions(in PreflightInput, p PreflightParams, deny func(PreflightRea
 	}
 }
 
-// checkFlatSettings требует проверенных настроек для каждого увеличиваемого
-// символа без открытой позиции: иначе первый вход прошёл бы с непроверенным
-// плечом, режимом позиции или auto-add-margin.
+// checkFlatSettings требует проверенных настроек для каждого увеличиваемого символа
+// без открытой позиции, иначе первый вход прошёл бы с непроверенным плечом и режимом.
 func checkFlatSettings(in PreflightInput, p PreflightParams, deny func(PreflightReason, string), fresh func(time.Time, string)) {
 	open := map[string]bool{}
 	for _, pos := range in.Inventory.Positions {
@@ -184,8 +171,7 @@ func checkFlatSettings(in PreflightInput, p PreflightParams, deny func(Preflight
 			continue
 		}
 		fresh(s.ServerTime, "settings:"+symbol)
-		// Позиция могла открыться между чтением inventory и настроек: свежий
-		// ответ с ненулевым размером означает расхождение с ledger.
+		// Ненулевой размер: позиция открылась между чтением inventory и настроек.
 		if sign, err := s.Size.Cmp(model.Zero()); err != nil || sign != 0 {
 			deny(ReasonPositionMismatch, symbol)
 		}
@@ -252,10 +238,11 @@ func requiredMargin(in PreflightInput, p PreflightParams, deny func(PreflightRea
 	return total
 }
 
-// hasIncrease сообщает, содержит ли проекция хотя бы одно увеличение позиции.
+// hasIncrease сообщает, есть ли исполнимое увеличение: нулевой кандидат (округление,
+// минимум) — не увеличение и не требует маржи.
 func hasIncrease(deltas []planner.PositionDelta) bool {
 	for _, delta := range deltas {
-		if !delta.ReduceOnly {
+		if positive, err := delta.CandidateQty.Cmp(model.Zero()); !delta.ReduceOnly && err == nil && positive > 0 {
 			return true
 		}
 	}
