@@ -131,9 +131,11 @@ func TestMomentumTransactions(t *testing.T) {
 	ctx := context.Background()
 	window := HistoryWindow{Start: time.UnixMilli(1700000000000), End: time.UnixMilli(1700000005000)}
 	client, seen := historyServer(t, map[string]any{"/v5/account/transaction-log": list(map[string]string{"id": "t1",
-		"symbol": "BTCUSDT", "type": "SETTLEMENT", "transactionTime": "1700000002000", "funding": "-0.123456789", "cashFlow": ""})})
+		"symbol": "BTCUSDT", "type": "SETTLEMENT", "transactionTime": "1700000002000", "funding": "-0.123456789", "cashFlow": "",
+		"currency": "USDT"})})
 	page, err := client.MomentumTransactions(ctx, window)
-	if err != nil || len(page.Items) != 1 || !strings.Contains((*seen)[0], "accountType=UNIFIED") || !strings.Contains((*seen)[0], "limit=50") {
+	if err != nil || len(page.Items) != 1 || !strings.Contains((*seen)[0], "accountType=UNIFIED") || !strings.Contains((*seen)[0], "limit=50") ||
+		!strings.Contains((*seen)[0], "currency=USDT") {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	funding, _ := page.Items[0].Funding.WireDecimal()
@@ -142,8 +144,13 @@ func TestMomentumTransactions(t *testing.T) {
 		t.Fatalf("funding=%s cash=%s", funding, cash)
 	}
 	client, _ = historyServer(t, map[string]any{"/v5/account/transaction-log": list(map[string]string{"id": "t1",
-		"type": "TRADE", "transactionTime": "1700000002000", "fee": "abc"})})
+		"type": "TRADE", "transactionTime": "1700000002000", "fee": "abc", "currency": "USDT"})})
 	if _, err = client.MomentumTransactions(ctx, window); !errors.Is(err, ErrHistoryData) {
 		t.Fatalf("malformed=%v", err)
+	}
+	client, _ = historyServer(t, map[string]any{"/v5/account/transaction-log": list(map[string]string{"id": "t2",
+		"type": "TRADE", "transactionTime": "1700000002000", "fee": "1", "currency": "USDC"})})
+	if _, err = client.MomentumTransactions(ctx, window); !errors.Is(err, ErrHistoryData) {
+		t.Fatalf("non-USDT transaction=%v", err)
 	}
 }
