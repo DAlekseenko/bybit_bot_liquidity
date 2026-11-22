@@ -51,15 +51,23 @@ type HistoryPage[T any] struct {
 	ServerTime time.Time
 }
 
-// LookupMomentumOrder ищет заявку по orderLinkId сначала среди активных, затем
-// в истории. found=false означает, что биржа заявку не знает; вывод о fill из
-// этого делать нельзя.
-func (c *Client) LookupMomentumOrder(ctx context.Context, symbol, orderLinkID string) (OrderRecord, bool, error) {
-	if err := validateSymbol(symbol); err != nil || orderLinkID == "" {
-		return OrderRecord{}, false, fmt.Errorf("%w: symbol and orderLinkId are required", ErrInvalidArgument)
+// LookupMomentumOrder ищет заявку по orderLinkId сначала среди активных, затем в
+// истории за явное окно [sentAt-1м, sentAt-1м+7д] (без окна Bybit смотрит только
+// последние 7 дней). found=false означает, что заявки, отправленной в sentAt, биржа
+// не знает; вывод о fill из этого делать нельзя.
+func (c *Client) LookupMomentumOrder(ctx context.Context, symbol, orderLinkID string, sentAt time.Time) (OrderRecord, bool, error) {
+	if err := validateSymbol(symbol); err != nil || orderLinkID == "" || sentAt.IsZero() {
+		return OrderRecord{}, false, fmt.Errorf("%w: symbol, orderLinkId and send time are required", ErrInvalidArgument)
 	}
-	query := url.Values{"category": {"linear"}, "symbol": {symbol}, "orderLinkId": {orderLinkID}}
+	start := sentAt.Add(-time.Minute)
+	queries := map[string]url.Values{
+		"/v5/order/realtime": {"category": {"linear"}, "symbol": {symbol}, "orderLinkId": {orderLinkID}},
+		"/v5/order/history": {"category": {"linear"}, "symbol": {symbol}, "orderLinkId": {orderLinkID},
+			"startTime": {strconv.FormatInt(start.UnixMilli(), 10)},
+			"endTime":   {strconv.FormatInt(start.Add(7*24*time.Hour).UnixMilli(), 10)}},
+	}
 	for _, path := range []string{"/v5/order/realtime", "/v5/order/history"} {
+		query := queries[path]
 		var result struct {
 			List []orderItem `json:"list"`
 		}
