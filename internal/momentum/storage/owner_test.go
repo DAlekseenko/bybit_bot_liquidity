@@ -156,7 +156,10 @@ func TestExecutionOwnerClockSkew(t *testing.T) {
 		" (SELECT started_at FROM momentum.execution_owner_sessions WHERE session_id='a')", "true")
 	var pid int
 	migrationResult(t, b.conn.QueryRowContext(ctx, "SELECT pg_backend_pid()").Scan(&pid), nil)
-	marketStatement(t, db, "SELECT pg_terminate_backend("+strconv.Itoa(pid)+")", true)
+	// Успешный SIGTERM ещё не означает завершение backend и освобождение lock.
+	migrationValue(t, db, "SELECT pg_terminate_backend("+strconv.Itoa(pid)+",5000)", "true")
+	migrationValue(t, db, "SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_locks WHERE locktype='advisory' AND pid="+strconv.Itoa(pid)+")"+
+		" AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity WHERE pid="+strconv.Itoa(pid)+")", "true")
 	c := acquireOwner(t, db, ownerID("c", "s"), ownerT0.Add(-2*time.Minute))
 	planRepositoryCheck(t, c.NeedsReconciliation(), "crashed predecessor with earlier clock must require reconciliation")
 	migrationResult(t, c.Permit(ctx), ErrOwnerReconciliationRequired)
