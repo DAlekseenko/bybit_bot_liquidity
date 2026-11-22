@@ -5,21 +5,28 @@ system-designer, developer и reviewer при работе над Issue; ссы�
 на handoff, роли и публикацию относятся к этому файлу. Общие ограничения проекта
 остаются в AGENTS.md и действуют для всех классов без исключений.
 
-Строгость процесса зависит от класса риска Issue (решение владельца 2026-11-21).
+Строгость процесса зависит от класса риска Issue (решение владельца 2026-11-21;
+Testnet-исполнение отнесено к B решением владельца 2026-11-22).
 
 ## Классы риска
 
 | Класс | Что входит | Процесс |
 | --- | --- | --- |
 | **A — офлайн** | `model`, `planner`, `backtest`, отчёты, импорт публичных данных, команды без торговых вызовов, документация | [Лёгкий](#лёгкий-процесс-классы-a-и-b) |
-| **B — состояние** | Схемы и аддитивные миграции PostgreSQL, repository, paper runtime, scheduler, восстановление paper-состояния | [Лёгкий](#лёгкий-процесс-классы-a-и-b) с ограничениями B |
-| **C — деньги** | Private/signed API, заявки, исполнение, reconciliation с биржей, risk limits, kill switch, Testnet/Mainnet runtime, destructive migrations | [Полный](#полный-процесс-класс-c) + явное одобрение владельца |
+| **B — состояние и Testnet** | Схемы и аддитивные миграции PostgreSQL, repository, paper runtime, scheduler, восстановление состояния; всё исполнение на Testnet: private/signed API, заявки, reconciliation, risk controller, kill switch, Testnet runtime и его запуск | [Лёгкий](#лёгкий-процесс-классы-a-и-b) с ограничениями B |
+| **C — live** | Всё, что может затронуть реальные деньги: включение Mainnet/live (endpoint, ключи, `environment: mainnet`, снятие Mainnet guard), Mainnet runtime и deploy, risk limits для Mainnet, destructive migrations | [Полный](#полный-процесс-класс-c) + явное одобрение владельца |
 
 - Класс указывается в теле Issue строкой `Класс риска: A|B|C`. Если его нет,
   orchestrator определяет класс по таблице и записывает в body до начала работы.
 - При сомнении выбирается более высокий класс. Если работа A/B по ходу затрагивает
   область C, developer останавливается, и Issue переклассифицируется.
 - Issue, уже начатая по полному процессу, доводится до merge по нему же.
+- **Ограничения B для Testnet-исполнения.** Код fail-closed допускает только
+  Testnet endpoints (`api-testnet.bybit.com`, `stream-testnet.bybit.com`);
+  путь к Mainnet в B отсутствует или заблокирован guard, который не снимается
+  сменой конфигурации. Ключи — только Testnet, только из env. Автотесты — только
+  fake HTTP/WS. Reviewer проверяет guard как блокирующий пункт; любое изменение,
+  открывающее Mainnet, — класс C.
 
 ## Лёгкий процесс (классы A и B)
 
@@ -42,14 +49,23 @@ system-designer, developer и reviewer при работе над Issue; ссы�
 5. **Review.** Один независимый reviewer из свежего контекста, read-only, без
    self-review; сверяет diff с контрактом. Для B дополнительно проверяет
    транзакционность, идемпотентность и поведение после рестарта. Исправления после
-   review повторно проверяются только по изменённому diff.
-6. **Gate.** Approve reviewer и все CI checks зелёные на head PR. Заморозка
-   хэшей, очередь интеграции, `ACTIVE_SINGLE_SLOT` и reservations не применяются.
-   Исключение: PR, меняющие список миграций `internal/momentum/storage`,
-   мерджатся по одному после rebase на свежий default branch.
-7. **Merge.** Выполняет владелец или orchestrator по полномочию владельца;
-   Issue закрывается через `Closes #<n>`. Checkpoint-комментарии, readback и
-   архивация чатов не требуются.
+   review повторно проверяются только по изменённому diff. Штатный reviewer —
+   Codex GitHub review (`chatgpt-codex-connector`): он запускается при открытии
+   PR, повтор — комментарием `@codex review` после исправлений. Автор кода не
+   засчитывает себе review.
+6. **Gate.** Review без открытых замечаний и все CI checks зелёные на head PR.
+   Для Codex review это последний комментарий `codex-review-state:v1`, где
+   `code_review.status` = `completed`, `code_review.commit_sha` равен head SHA PR
+   и `has_unresolved_findings` = `false`. Заморозка хэшей, очередь интеграции,
+   `ACTIVE_SINGLE_SLOT` и reservations не применяются. Исключение: PR, меняющие
+   список миграций `internal/momentum/storage`, мерджатся по одному после rebase
+   на свежий default branch.
+7. **Merge.** Владелец 2026-11-21 дал постоянное полномочие: PR классов A и B
+   вливает Codex (orchestrator), когда gate шага 6 выполнен на текущем head SHA;
+   иначе merge не выполняется. Developer, открывший PR, его не вливает. Класс C
+   вливает только владелец. Issue закрывается через `Closes #<n>`.
+   Checkpoint-комментарии, readback и архивация чатов не требуются. После merge
+   Codex коротко сообщает владельцу PR, merge SHA и итог проверок.
 8. **Прерывание.** Если работа останавливается до PR, оставьте
    `.ai/handoffs/issue-<n>.md` (5–10 строк: ветка, сделано, проверки, blocker,
    следующий шаг). Файл можно перезаписывать; архивы и версии не нужны.

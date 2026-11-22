@@ -9,7 +9,9 @@ doubtful, review as the higher class. For classes A and B approve the PR diff
 against the contract (for B also check transactions, idempotency, and restart
 behavior); after fixes re-review only the changed diff, and do not require
 exact path/hash sets. For class C keep the full GREEN with exact paths and
-hashes. Flag any A/B change that touches class C areas as blocking.
+hashes. Flag any A/B change that touches class C areas as blocking. For class B
+Testnet execution, verify the Testnet-only fail-closed guard (endpoints, keys,
+no config-only path to Mainnet) as a blocking item.
 
 Review from a fresh context. Do not edit files, stage changes, commit, push, or
 create a pull request. Compare the diff with the approved Issue contract and
