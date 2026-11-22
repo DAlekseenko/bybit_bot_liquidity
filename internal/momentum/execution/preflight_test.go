@@ -11,8 +11,8 @@ import (
 
 var preflightNow = time.Date(2026, 11, 22, 0, 0, 0, 0, time.UTC)
 
-// dec разбирает точное значение для теста.
-func dec(t *testing.T, s string) model.Decimal {
+// preflightDec разбирает точное значение для теста.
+func preflightDec(t *testing.T, s string) model.Decimal {
 	t.Helper()
 	d, err := model.ParseAmount(s)
 	if err != nil {
@@ -25,24 +25,24 @@ func dec(t *testing.T, s string) model.Decimal {
 func preflightFixture(t *testing.T) (PreflightInput, PreflightParams) {
 	t.Helper()
 	at := preflightNow.Add(-time.Second)
-	btc := model.AccountPosition{Symbol: "BTCUSDT", Side: "Buy", Size: dec(t, "0.01"), Leverage: dec(t, "1"), Status: "Normal", ServerTime: at}
+	btc := model.AccountPosition{Symbol: "BTCUSDT", Side: "Buy", Size: preflightDec(t, "0.01"), Leverage: preflightDec(t, "1"), Status: "Normal", ServerTime: at}
 	in := PreflightInput{
 		Mode:             model.AccountMode{UnifiedMarginStatus: 5, MarginMode: "ISOLATED_MARGIN", ServerTime: at},
-		Balance:          model.IsolatedBalance{Coin: "USDT", Available: dec(t, "1515"), ServerTime: at},
+		Balance:          model.IsolatedBalance{Coin: "USDT", Available: preflightDec(t, "1515"), ServerTime: at},
 		Inventory:        model.AccountInventory{Positions: []model.AccountPosition{btc}, Orders: []model.AccountOrder{}, ServerTime: at},
 		Symbols:          []string{"BTCUSDT", "ETHUSDT"},
-		Expected:         map[string]model.Decimal{"BTCUSDT": dec(t, "0.01")},
+		Expected:         map[string]model.Decimal{"BTCUSDT": preflightDec(t, "0.01")},
 		InstrumentStatus: map[string]string{"BTCUSDT": "Trading", "ETHUSDT": "Trading"},
-		Marks:            map[string]MarkObservation{"ETHUSDT": {Price: dec(t, "3000"), Time: at}},
-		Settings: map[string]model.AccountPosition{"ETHUSDT": {Symbol: "ETHUSDT", Size: dec(t, "0"), Leverage: dec(t, "1"),
+		Marks:            map[string]MarkObservation{"ETHUSDT": {Price: preflightDec(t, "3000"), Time: at}},
+		Settings: map[string]model.AccountPosition{"ETHUSDT": {Symbol: "ETHUSDT", Size: preflightDec(t, "0"), Leverage: preflightDec(t, "1"),
 			Status: "Normal", ServerTime: at}},
 		Deltas: []planner.PositionDelta{
-			{Symbol: "BTCUSDT", ReduceOnly: true, CandidateQty: dec(t, "0.005")},
-			{Symbol: "ETHUSDT", CandidateQty: dec(t, "0.5")},
+			{Symbol: "BTCUSDT", ReduceOnly: true, CandidateQty: preflightDec(t, "0.005")},
+			{Symbol: "ETHUSDT", CandidateQty: preflightDec(t, "0.5")},
 		},
 	}
-	p := PreflightParams{Now: preflightNow, MaxDataAge: 5 * time.Second, TargetLeverage: dec(t, "1"),
-		MarginBufferRate: dec(t, "0.01"), OrderLinkNamespace: "cm-"}
+	p := PreflightParams{Now: preflightNow, MaxDataAge: 5 * time.Second, TargetLeverage: preflightDec(t, "1"),
+		MarginBufferRate: preflightDec(t, "0.01"), OrderLinkNamespace: "cm-"}
 	return in, p
 }
 
@@ -62,13 +62,15 @@ func TestPreflightDenies(t *testing.T) {
 		mutate func(*testing.T, *PreflightInput, *PreflightParams)
 		want   PreflightReason
 	}{
-		"no now":          {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.Now = time.Time{} }, ReasonInvalidParameters},
-		"no max age":      {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.MaxDataAge = 0 }, ReasonInvalidParameters},
-		"no leverage":     {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.TargetLeverage = model.Decimal{} }, ReasonInvalidParameters},
-		"no buffer":       {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.MarginBufferRate = model.Decimal{} }, ReasonInvalidParameters},
-		"negative buffer": {func(t *testing.T, _ *PreflightInput, p *PreflightParams) { p.MarginBufferRate = dec(t, "-0.1") }, ReasonInvalidParameters},
-		"no namespace":    {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.OrderLinkNamespace = "" }, ReasonInvalidParameters},
-		"no symbols":      {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Symbols = nil }, ReasonInvalidParameters},
+		"no now":      {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.Now = time.Time{} }, ReasonInvalidParameters},
+		"no max age":  {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.MaxDataAge = 0 }, ReasonInvalidParameters},
+		"no leverage": {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.TargetLeverage = model.Decimal{} }, ReasonInvalidParameters},
+		"no buffer":   {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.MarginBufferRate = model.Decimal{} }, ReasonInvalidParameters},
+		"negative buffer": {func(t *testing.T, _ *PreflightInput, p *PreflightParams) {
+			p.MarginBufferRate = preflightDec(t, "-0.1")
+		}, ReasonInvalidParameters},
+		"no namespace": {func(_ *testing.T, _ *PreflightInput, p *PreflightParams) { p.OrderLinkNamespace = "" }, ReasonInvalidParameters},
+		"no symbols":   {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Symbols = nil }, ReasonInvalidParameters},
 		"stale balance": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			in.Balance.ServerTime = preflightNow.Add(-6 * time.Second)
 		}, ReasonStaleData},
@@ -85,12 +87,12 @@ func TestPreflightDenies(t *testing.T) {
 			in.Inventory.Positions[0].Symbol = "XRPUSDT"
 		}, ReasonUnknownPosition},
 		"qty mismatch": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
-			in.Inventory.Positions[0].Size = dec(t, "0.02")
+			in.Inventory.Positions[0].Size = preflightDec(t, "0.02")
 		}, ReasonPositionMismatch},
 		"short position":   {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Inventory.Positions[0].Side = "Sell" }, ReasonPositionMismatch},
 		"missing position": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Inventory.Positions = nil }, ReasonPositionMismatch},
 		"leverage": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
-			in.Inventory.Positions[0].Leverage = dec(t, "2")
+			in.Inventory.Positions[0].Leverage = preflightDec(t, "2")
 		}, ReasonLeverageMismatch},
 		"auto add": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			in.Inventory.Positions[0].AutoAddMargin = true
@@ -103,7 +105,7 @@ func TestPreflightDenies(t *testing.T) {
 		}, ReasonUnverifiedSettings},
 		"flat leverage": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
 			s := in.Settings["ETHUSDT"]
-			s.Leverage = dec(t, "2")
+			s.Leverage = preflightDec(t, "2")
 			in.Settings["ETHUSDT"] = s
 		}, ReasonLeverageMismatch},
 		"flat hedge": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
@@ -129,7 +131,7 @@ func TestPreflightDenies(t *testing.T) {
 			in.Inventory.Orders = []model.AccountOrder{{OrderID: "2", OrderLinkID: "cm-x"}}
 		}, ReasonOwnedOrderOpen},
 		"unsupported delta": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
-			in.Deltas = append(in.Deltas, planner.PositionDelta{Symbol: "XRPUSDT", CandidateQty: dec(t, "1")})
+			in.Deltas = append(in.Deltas, planner.PositionDelta{Symbol: "XRPUSDT", CandidateQty: preflightDec(t, "1")})
 		}, ReasonUnsupportedSymbol},
 		"instrument": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			in.InstrumentStatus["ETHUSDT"] = "Settling"
@@ -140,9 +142,11 @@ func TestPreflightDenies(t *testing.T) {
 		}, ReasonInvalidParameters},
 		"no balance": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Balance.Available = model.Decimal{} }, ReasonUnavailableBalance},
 		"one below": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
-			in.Balance.Available = dec(t, "1514.999999")
+			in.Balance.Available = preflightDec(t, "1514.999999")
 		}, ReasonInsufficientMargin},
-		"zero available": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) { in.Balance.Available = dec(t, "0") }, ReasonInsufficientMargin},
+		"zero available": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
+			in.Balance.Available = preflightDec(t, "0")
+		}, ReasonInsufficientMargin},
 	}
 	for name, tc := range cases {
 		in, p := preflightFixture(t)
@@ -159,7 +163,7 @@ func TestPreflightReduceOnlyNeedsNoMargin(t *testing.T) {
 	in, p := preflightFixture(t)
 	in.Deltas = in.Deltas[:1]
 	in.Marks = nil
-	in.Balance.Available = dec(t, "0")
+	in.Balance.Available = preflightDec(t, "0")
 	if got := Preflight(in, p); !got.Allowed {
 		t.Fatalf("reduce-only preflight denied: %+v", got)
 	}
