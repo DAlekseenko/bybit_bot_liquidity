@@ -37,20 +37,23 @@ type HistoryPage[T any] struct {
 func (c *Client) MomentumExecutions(ctx context.Context, symbol string, window HistoryWindow) (HistoryPage[ExecutionRecord], error) {
 	var page HistoryPage[ExecutionRecord]
 	var result struct {
-		List   []executionItem `json:"list"`
-		Cursor string          `json:"nextPageCursor"`
+		List   *[]executionItem `json:"list"`
+		Cursor string           `json:"nextPageCursor"`
 	}
 	query, err := historyQuery(window, "symbol", symbol, "100")
 	// Fill хранит комиссию в USDT, поэтому принимаются только USDT-settled контракты (XXXUSDT).
 	if err != nil || validateSymbol(symbol) != nil || !strings.HasSuffix(symbol, "USDT") || len(symbol) <= 4 {
 		return page, fmt.Errorf("%w: execution window", ErrInvalidArgument)
 	}
-	server, err := c.signedGet(ctx, "/v5/execution/list", query, &result)
+	server, err := c.momentumSignedGet(ctx, "/v5/execution/list", query, &result)
 	if err != nil {
 		return page, err
 	}
-	page.Items, page.NextCursor, page.ServerTime = make([]ExecutionRecord, 0, len(result.List)), result.Cursor, time.UnixMilli(server).UTC()
-	for _, it := range result.List {
+	if result.List == nil {
+		return page, fmt.Errorf("%w: /v5/execution/list list is missing", ErrHistoryData)
+	}
+	page.Items, page.NextCursor, page.ServerTime = make([]ExecutionRecord, 0, len(*result.List)), result.Cursor, server
+	for _, it := range *result.List {
 		record, err := it.record(symbol, window)
 		if err != nil {
 			return HistoryPage[ExecutionRecord]{}, err
@@ -64,20 +67,23 @@ func (c *Client) MomentumExecutions(ctx context.Context, symbol string, window H
 func (c *Client) MomentumTransactions(ctx context.Context, window HistoryWindow) (HistoryPage[TransactionRecord], error) {
 	var page HistoryPage[TransactionRecord]
 	var result struct {
-		List   []transactionItem `json:"list"`
-		Cursor string            `json:"nextPageCursor"`
+		List   *[]transactionItem `json:"list"`
+		Cursor string             `json:"nextPageCursor"`
 	}
 	query, err := historyQuery(window, "accountType", "UNIFIED", "50")
 	if err != nil {
 		return page, err
 	}
 	query.Set("currency", "USDT") // суммы ниже — только USDT; иные валюты отвергаются
-	server, err := c.signedGet(ctx, "/v5/account/transaction-log", query, &result)
+	server, err := c.momentumSignedGet(ctx, "/v5/account/transaction-log", query, &result)
 	if err != nil {
 		return page, err
 	}
-	page.Items, page.NextCursor, page.ServerTime = make([]TransactionRecord, 0, len(result.List)), result.Cursor, time.UnixMilli(server).UTC()
-	for _, it := range result.List {
+	if result.List == nil {
+		return page, fmt.Errorf("%w: /v5/account/transaction-log list is missing", ErrHistoryData)
+	}
+	page.Items, page.NextCursor, page.ServerTime = make([]TransactionRecord, 0, len(*result.List)), result.Cursor, server
+	for _, it := range *result.List {
 		at, err := historyTime(it.TransactionTime, window)
 		values, vErr := decimals(it.CashFlow, it.Funding, it.Fee, it.Change)
 		if err != nil || vErr != nil || it.ID == "" || it.Type == "" || it.Currency != "USDT" {
