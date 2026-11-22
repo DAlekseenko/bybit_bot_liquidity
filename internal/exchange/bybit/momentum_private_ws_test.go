@@ -236,3 +236,22 @@ func TestPrivateStreamSilentServer(t *testing.T) {
 		t.Fatal("stream must give up on a server that stops answering")
 	}
 }
+
+// TestPrivateStreamHandshakeTimeout проверяет, что молчащий при auth сервер закрывается и Run переподключается.
+func TestPrivateStreamHandshakeTimeout(t *testing.T) {
+	client, count := fakePrivateServer(t, func(_ int, conn *websocket.Conn) {
+		var auth json.RawMessage
+		_ = conn.ReadJSON(&auth)
+		time.Sleep(500 * time.Millisecond)
+	})
+	client.handshake = 30 * time.Millisecond
+	err := client.Stream(context.Background(), make(chan PrivateEvent, 1))
+	if !errors.Is(err, ErrPrivateStream) || errors.Is(err, ErrPrivateStreamAuth) {
+		t.Fatalf("stalled handshake=%v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := client.Run(ctx, 10*time.Millisecond, make(chan PrivateEvent, 1)); !errors.Is(err, context.DeadlineExceeded) || atomic.LoadInt32(count) < 3 {
+		t.Fatalf("run must keep reconnecting: %v, connections=%d", err, atomic.LoadInt32(count))
+	}
+}

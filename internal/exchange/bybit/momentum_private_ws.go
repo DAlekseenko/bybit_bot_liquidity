@@ -109,6 +109,7 @@ type PrivateStreamClient struct {
 	apiKey, apiSecret string
 	dial              websocketDial
 	heartbeat         time.Duration
+	handshake         time.Duration
 	now               func() time.Time
 	State             *PrivateStreamState
 }
@@ -125,7 +126,7 @@ func NewTestnetPrivateStream(apiKey, apiSecret string, dialer *websocket.Dialer)
 	return &PrivateStreamClient{url: TestnetPrivateWebSocketURL, apiKey: apiKey, apiSecret: apiSecret,
 		dial: func(ctx context.Context, u string, h http.Header) (websocketConnection, *http.Response, error) {
 			return dialer.DialContext(ctx, u, h)
-		}, heartbeat: defaultHeartbeatPeriod, now: time.Now, State: &PrivateStreamState{}}, nil
+		}, heartbeat: defaultHeartbeatPeriod, handshake: 10 * time.Second, now: time.Now, State: &PrivateStreamState{}}, nil
 }
 
 // String скрывает секреты при логировании.
@@ -150,6 +151,8 @@ func (c *PrivateStreamClient) Run(ctx context.Context, backoff time.Duration, ou
 }
 
 // Stream выполняет одно подключение: auth, подписку и чтение до ошибки или отмены.
+// Stream выполняет одно подключение: auth, подписку и чтение до ошибки или отмены.
+// Auth и подписка ограничены таймаутом: молчащий сервер закрывается, и Run переподключается.
 func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEvent) error {
 	if out == nil {
 		return fmt.Errorf("%w: %w: output channel is required", ErrPrivateStream, ErrInvalidArgument)
@@ -173,14 +176,30 @@ func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEven
 		case <-stop:
 		}
 	}()
+	handshakeDone := make(chan struct{})
+	var timedOut atomic.Bool
+	go func() {
+		select {
+		case <-handshakeDone:
+		case <-stop:
+		case <-time.After(c.handshake):
+			timedOut.Store(true)
+			conn.Close()
+		}
+	}()
 	// Bybit ждёт expires числом JSON; подписывается его десятичная запись.
 	expires := c.now().Add(10 * time.Second).UnixMilli()
 	mac := hmac.New(sha256.New, []byte(c.apiSecret))
 	mac.Write([]byte("GET/realtime" + strconv.FormatInt(expires, 10)))
-	if err := c.command(ctx, conn, "auth", c.apiKey, expires, hex.EncodeToString(mac.Sum(nil))); err != nil {
-		return err
+	err = c.command(ctx, conn, "auth", c.apiKey, expires, hex.EncodeToString(mac.Sum(nil)))
+	if err == nil {
+		err = c.command(ctx, conn, "subscribe", "execution.linear", "order.linear")
 	}
-	if err := c.command(ctx, conn, "subscribe", "execution.linear", "order.linear"); err != nil {
+	close(handshakeDone)
+	if err != nil {
+		if timedOut.Load() {
+			return fmt.Errorf("%w: %w", ErrPrivateStream, errPrivateHandshakeTimeout)
+		}
 		return err
 	}
 	c.State.set(true)
@@ -248,6 +267,9 @@ func (c *PrivateStreamClient) command(ctx context.Context, conn websocketConnect
 		}
 	}
 }
+
+// errPrivateHandshakeTimeout означает, что сервер не подтвердил auth или подписку вовремя.
+var errPrivateHandshakeTimeout = errors.New("private stream handshake timed out")
 
 // errPrivateStreamSilent означает, что сервер не отвечает дольше двух периодов heartbeat.
 var errPrivateStreamSilent = errors.New("no messages or pong within heartbeat timeout")
