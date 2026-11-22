@@ -51,13 +51,23 @@ func TestReconcileStartupRestarts(t *testing.T) {
 	in.Fills = append(in.Fills, BrokerFill{OrderLinkID: "cm-ack", Fill: fill(t, "e1", "0.004").Fill})
 	in.Inventory.Positions[0].Size = dec(t, "0.014")
 	r := ReconcileStartup(in)
-	if !r.EntriesAllowed || len(r.Repairs) != 2 || r.Repairs[0].Kind != RepairRecordFill || r.Repairs[0].Fill.ExecutionID != "e1" ||
-		r.Repairs[1].Kind != RepairMarkState || r.Repairs[1].State != StateAcknowledged {
+	if !r.EntriesAllowed || len(r.Repairs) != 2 || r.Repairs[0].Kind != RepairMarkState || r.Repairs[0].State != StateAcknowledged ||
+		r.Repairs[1].Kind != RepairRecordFill || r.Repairs[1].Fill.ExecutionID != "e1" {
 		t.Fatalf("repairs=%+v findings=%s", r.Repairs, findings(r))
 	}
 	again := ReconcileStartup(in)
 	if len(again.Repairs) != len(r.Repairs) {
 		t.Fatal("reconcile must be deterministic")
+	}
+	in = startupBase(t)
+	active(t, &in, "cm-part", "p2", StatePartiallyFilled)
+	in.Lookups["cm-part"] = BrokerLookup{Found: true, Status: "PartiallyFilledCanceled", CumExecQty: dec(t, "0.002")}
+	if r = ReconcileStartup(in); len(r.Repairs) != 1 || r.Repairs[0].State != StateCancelled {
+		t.Fatalf("partial then cancelled must be repaired to CANCELLED: %+v", r.Repairs)
+	}
+	in.Lookups["cm-part"] = BrokerLookup{Found: true, Status: "PartiallyFilled", CumExecQty: dec(t, "0.002")}
+	if r = ReconcileStartup(in); len(r.Repairs) != 0 {
+		t.Fatalf("PARTIALLY_FILLED must not be downgraded: %+v", r.Repairs)
 	}
 	in = startupBase(t)
 	active(t, &in, "cm-lost", "p2", StateUnknown)

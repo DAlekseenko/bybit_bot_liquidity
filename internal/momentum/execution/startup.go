@@ -85,7 +85,8 @@ type StartupReport struct {
 }
 
 // ReconcileStartup сверяет хранилище с биржей без I/O. Пропущенные fills и
-// найденные на бирже заявки чинятся идемпотентно; всё остальное попадает в
+// найденные на бирже заявки чинятся идемпотентно (сначала MARK_STATE, затем
+// RECORD_FILL — в этом порядке их применять); всё остальное попадает в
 // Findings, и новые входы запрещены, пока Findings не пусты. Fill не выводится
 // из отсутствия заявки.
 func ReconcileStartup(in StartupInput) StartupReport {
@@ -95,13 +96,14 @@ func ReconcileStartup(in StartupInput) StartupReport {
 		intents[it.OrderLinkID] = it
 	}
 	delta := map[string]model.Decimal{}
+	var fills []Repair
 	for _, bf := range in.Fills {
 		it, ok := intents[bf.OrderLinkID]
 		switch {
 		case !ok:
 			r.find(FindingOrphanOrder, bf.OrderLinkID)
 		case !it.FillIDs[bf.Fill.ExecutionID]:
-			r.Repairs = append(r.Repairs, Repair{Kind: RepairRecordFill, OrderLinkID: bf.OrderLinkID, Fill: bf.Fill})
+			fills = append(fills, Repair{Kind: RepairRecordFill, OrderLinkID: bf.OrderLinkID, Fill: bf.Fill})
 			if !addSigned(delta, bf.Fill) {
 				r.find(FindingInvalidInput, bf.OrderLinkID)
 			}
@@ -110,6 +112,9 @@ func ReconcileStartup(in StartupInput) StartupReport {
 	for _, it := range in.Intents {
 		r.intent(in, it)
 	}
+	// Состояния применяются до fills: RecordFill сам выводит PARTIALLY_FILLED/FILLED
+	// и сохраняет CANCELLED, а SetOrderIntentState после FILLED невозможен.
+	r.Repairs = append(r.Repairs, fills...)
 	for _, o := range in.Inventory.Orders {
 		_, known := intents[o.OrderLinkID]
 		switch {
@@ -155,7 +160,8 @@ func (r *StartupReport) intent(in StartupInput, it StoredIntent) {
 			r.find(FindingStalePlan, it.OrderLinkID)
 		}
 	}
-	if state != it.State && it.State != StatePartiallyFilled {
+	// PARTIALLY_FILLED не понижается до ACKNOWLEDGED, но подтверждённая отмена допустима.
+	if state != it.State && !(it.State == StatePartiallyFilled && state == StateAcknowledged) {
 		r.Repairs = append(r.Repairs, Repair{Kind: RepairMarkState, OrderLinkID: it.OrderLinkID, State: state})
 	}
 }
