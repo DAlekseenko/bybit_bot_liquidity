@@ -46,16 +46,20 @@ func (c *Client) LookupMomentumOrder(ctx context.Context, symbol, orderLinkID st
 	for _, path := range []string{"/v5/order/realtime", "/v5/order/history"} {
 		query := queries[path]
 		var result struct {
-			List []orderItem `json:"list"`
+			List *[]orderItem `json:"list"`
 		}
-		if _, err := c.signedGet(ctx, path, query, &result); err != nil {
+		// Только Testnet-путь без redirect; отсутствующий list — сбой, а не «заявки нет».
+		if _, err := c.momentumSignedGet(ctx, path, query, &result); err != nil {
 			return OrderRecord{}, false, err
 		}
-		if len(result.List) == 0 {
+		if result.List == nil {
+			return OrderRecord{}, false, fmt.Errorf("%w: %s list is missing", ErrHistoryData, path)
+		}
+		if len(*result.List) == 0 {
 			continue
 		}
-		it := result.List[0]
-		if len(result.List) > 1 || it.OrderLinkID != orderLinkID || it.Symbol != symbol {
+		it := (*result.List)[0]
+		if len(*result.List) > 1 || it.OrderLinkID != orderLinkID || it.Symbol != symbol {
 			return OrderRecord{}, false, fmt.Errorf("%w: order %s", ErrHistoryData, path)
 		}
 		record, err := it.record(path == "/v5/order/history")
