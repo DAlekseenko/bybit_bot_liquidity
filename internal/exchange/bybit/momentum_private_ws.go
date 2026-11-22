@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"bybit_bot_liquidity/internal/momentum/model"
@@ -183,11 +184,17 @@ func (c *PrivateStreamClient) Stream(ctx context.Context, out chan<- PrivateEven
 		return err
 	}
 	c.State.set(true)
+	var lastRead atomic.Int64
+	lastRead.Store(time.Now().UnixNano())
 	beatErr := make(chan error, 1)
-	go c.beat(conn, stop, beatErr)
+	go c.beat(conn, stop, &lastRead, beatErr)
 	for {
 		var msg websocketMessage
-		if err := conn.ReadJSON(&msg); err != nil {
+		err := conn.ReadJSON(&msg)
+		if err == nil {
+			lastRead.Store(time.Now().UnixNano())
+		}
+		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -242,8 +249,14 @@ func (c *PrivateStreamClient) command(ctx context.Context, conn websocketConnect
 	}
 }
 
-// beat отправляет ping; ошибка записи закрывает соединение.
-func (c *PrivateStreamClient) beat(conn websocketConnection, stop <-chan struct{}, failed chan<- error) {
+// errPrivateStreamSilent означает, что сервер не отвечает дольше двух периодов heartbeat.
+var errPrivateStreamSilent = errors.New("no messages or pong within heartbeat timeout")
+
+// beat отправляет ping и следит за ответами. Если входящих сообщений (включая
+// pong) нет дольше двух периодов heartbeat, соединение считается полуоткрытым:
+// свежесть сразу снимается, соединение закрывается, и Run переподключается.
+// Ошибка записи ping обрабатывается так же.
+func (c *PrivateStreamClient) beat(conn websocketConnection, stop <-chan struct{}, lastRead *atomic.Int64, failed chan<- error) {
 	ticker := time.NewTicker(c.heartbeat)
 	defer ticker.Stop()
 	for {
@@ -251,11 +264,16 @@ func (c *PrivateStreamClient) beat(conn websocketConnection, stop <-chan struct{
 		case <-stop:
 			return
 		case <-ticker.C:
-			if err := conn.WriteJSON(websocketCommand{Operation: "ping"}); err != nil {
-				failed <- err
-				conn.Close()
-				return
+			err := errPrivateStreamSilent
+			if time.Since(time.Unix(0, lastRead.Load())) <= 2*c.heartbeat {
+				if err = conn.WriteJSON(websocketCommand{Operation: "ping"}); err == nil {
+					continue
+				}
 			}
+			c.State.set(false)
+			failed <- err
+			conn.Close()
+			return
 		}
 	}
 }

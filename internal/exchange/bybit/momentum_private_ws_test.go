@@ -211,3 +211,28 @@ func TestPrivateStreamFeeCurrency(t *testing.T) {
 		}
 	}
 }
+
+// TestPrivateStreamSilentServer проверяет, что молчащий сервер снимает свежесть и рвёт соединение.
+func TestPrivateStreamSilentServer(t *testing.T) {
+	release := make(chan struct{})
+	client, _ := fakePrivateServer(t, func(_ int, conn *websocket.Conn) {
+		if handshake(t, conn, true) {
+			<-release
+		}
+	})
+	defer close(release)
+	client.heartbeat = 20 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- client.Stream(context.Background(), make(chan PrivateEvent, 1)) }()
+	for !client.State.MarkResynced(client.State.Generation()) {
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrPrivateStream) || client.State.Fresh() {
+			t.Fatalf("silent server: err=%v fresh=%v", err, client.State.Fresh())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream must give up on a server that stops answering")
+	}
+}
