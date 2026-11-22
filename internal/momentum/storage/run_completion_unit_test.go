@@ -34,6 +34,8 @@ func TestValidRunCompletion(t *testing.T) {
 		{"unknown outcome", RunCompletion{RunID: "run", Outcome: "GUESS", Reason: "x"}, false},
 		{"revision without hash", RunCompletion{RunID: "run", Outcome: RunFailed, PlanRevision: 1, Reason: "x"}, false},
 		{"hash without revision", RunCompletion{RunID: "run", Outcome: RunSkipped, PlanHash: hash, Reason: "x"}, false},
+		{"large reason", RunCompletion{RunID: "run", Outcome: RunSkipped, Reason: strings.Repeat("r", 10241)}, true},
+		{"invalid UTF-8 reason", RunCompletion{RunID: "run", Outcome: RunSkipped, Reason: "\xff"}, false},
 		{"blank reason", RunCompletion{RunID: "run", Outcome: RunSkipped, Reason: " "}, false},
 		{"NUL reason", RunCompletion{RunID: "run", Outcome: RunSkipped, Reason: "a\x00"}, false},
 		{"blank run", RunCompletion{RunID: " ", Outcome: RunSkipped, Reason: "x"}, false},
