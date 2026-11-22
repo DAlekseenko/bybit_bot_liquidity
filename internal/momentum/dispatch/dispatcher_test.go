@@ -47,6 +47,15 @@ func (s *fakeStore) Acknowledge(_ context.Context, _ string) error {
 	return nil
 }
 
+// MarkUnknown фиксирует условный переход в UNKNOWN или отказывает на failState.
+func (s *fakeStore) MarkUnknown(_ context.Context, _ string) error {
+	s.calls = append(s.calls, "UNKNOWN")
+	if s.failState == execution.StateUnknown {
+		return errors.New("db unavailable")
+	}
+	return nil
+}
+
 // fakeOwner возвращает заданную ошибку права отправки.
 type fakeOwner struct{ err error }
 

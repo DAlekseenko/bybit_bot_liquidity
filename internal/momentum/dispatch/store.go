@@ -31,3 +31,9 @@ func (s DBStore) Acknowledge(ctx context.Context, orderLinkID string) error {
 	_, err := storage.AcknowledgeOrderIntent(ctx, s.DB, s.Environment, s.AccountID, orderLinkID)
 	return err
 }
+
+// MarkUnknown делегирует storage.MarkOrderIntentUnknown.
+func (s DBStore) MarkUnknown(ctx context.Context, orderLinkID string) error {
+	_, err := storage.MarkOrderIntentUnknown(ctx, s.DB, s.Environment, s.AccountID, orderLinkID)
+	return err
+}

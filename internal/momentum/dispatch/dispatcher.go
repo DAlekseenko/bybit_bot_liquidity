@@ -29,6 +29,9 @@ type Store interface {
 	// Acknowledge ставит ACKNOWLEDGED только из PENDING/SENT/UNKNOWN; продвинутое
 	// состояние (fills, отмена) не понижается.
 	Acknowledge(ctx context.Context, orderLinkID string) error
+	// MarkUnknown ставит UNKNOWN только из PENDING/SENT: fill или отмена, сохранённые
+	// во время ожидания ответа, не затираются.
+	MarkUnknown(ctx context.Context, orderLinkID string) error
 }
 
 // Permit разрешает одну отправку; реализует storage.ExecutionOwner.
@@ -88,8 +91,8 @@ func (d Dispatcher) Send(ctx context.Context, intent execution.OrderIntent) (Out
 		}
 		return Outcome{State: execution.StateRejected}, errors.Join(ErrDispatch, err)
 	}
-	if markErr := d.mark(ctx, intent.OrderLinkID, execution.StateUnknown); markErr != nil {
-		return Outcome{State: execution.StateUnknown}, markErr
+	if markErr := d.Store.MarkUnknown(ctx, intent.OrderLinkID); markErr != nil {
+		return Outcome{State: execution.StateUnknown}, errors.Join(ErrDispatch, markErr)
 	}
 	return d.Reconcile(ctx, intent, sentAt)
 }
