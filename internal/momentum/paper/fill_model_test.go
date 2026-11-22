@@ -62,7 +62,7 @@ func fixture(t *testing.T, equity string, noop bool) FillInput {
 	for _, symbol := range []string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"} {
 		rules[symbol] = planner.MarketDeltaRules{QtyStep: amount(t, "0.1"), MinQty: amount(t, "0.1"), MaxMarketQty: amount(t, "10"), MinIncreaseNotional: model.Zero()}
 	}
-	return FillInput{Symbols: []string{"ETHUSDT", "BTCUSDT", "HYPEUSDT"}, Plan: plan, Rules: rules, WalletUSDT: amount(t, "1000"), Positions: positions, ReferencePrices: map[string]model.Decimal{"BTCUSDT": amount(t, "100"), "ETHUSDT": amount(t, "100"), "HYPEUSDT": amount(t, "50")}, FeeRate: amount(t, "0.01"), SlippageRate: amount(t, "0.1")}
+	return FillInput{Symbols: []string{"ETHUSDT", "BTCUSDT", "HYPEUSDT"}, Plan: plan, Rules: rules, WalletUSDT: amount(t, "1000"), Positions: positions, ReferencePrices: map[string]model.Decimal{"BTCUSDT": amount(t, "100"), "ETHUSDT": amount(t, "100"), "HYPEUSDT": amount(t, "50")}, FeeRate: amount(t, "0.01"), SlippageRate: amount(t, "0.1"), Admission: planner.AdmitBaselineExecution}
 }
 
 // TestSimulateBaselineFills проверяет точные цены, fees, порядок и повторяемость.
@@ -121,8 +121,10 @@ func TestSimulateBaselineFills(t *testing.T) {
 		t.Fatalf("trade HTTP calls: %d", counter.calls)
 	}
 	boundary := fixture(t, "300", false)
+	boundary.SlippageRate = model.Zero()
+	boundary.ReferencePrices["BTCUSDT"], boundary.ReferencePrices["HYPEUSDT"] = amount(t, "90"), amount(t, "50")
 	boundaryPlan, err := model.NewTradePlan(model.PlanInput{
-		Snapshot: boundary.Plan.Snapshot(), Targets: []model.Target{{Symbol: "BTCUSDT", Quantity: amount(t, "1")}, {Symbol: "ETHUSDT", Quantity: model.Zero()}, {Symbol: "HYPEUSDT", Quantity: model.Zero()}}, Metadata: boundary.Plan.Metadata(),
+		Snapshot: boundary.Plan.Snapshot(), Targets: []model.Target{{Symbol: "BTCUSDT", Quantity: amount(t, "1")}, {Symbol: "ETHUSDT", Quantity: model.Zero()}, {Symbol: "HYPEUSDT", Quantity: amount(t, "1")}}, Metadata: boundary.Plan.Metadata(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -176,5 +178,78 @@ func TestSimulateBaselineFillsNoop(t *testing.T) {
 	got, err := SimulateBaselineFills(in)
 	if err != nil || len(got.Postings) != 0 || !reflect.DeepEqual(got.Positions, in.Positions) {
 		t.Fatalf("noop result: %v", err)
+	}
+}
+
+// TestFillAdmission проверяет явную политику, текущие входы и изоляцию её карт.
+func TestFillAdmission(t *testing.T) {
+	policyErr := errors.New("policy rejected")
+	for _, tc := range []struct {
+		name   string
+		policy FillAdmission
+		noop   bool
+		want   error
+	}{
+		{"nil", nil, false, ErrFillModel}, {"nil noop", nil, true, ErrFillModel}, {"reject", func(model.TradePlan, map[string]planner.MarketDeltaRules, model.Decimal, map[string]model.Decimal, map[string]model.Decimal) error {
+			return policyErr
+		}, false, policyErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := fixture(t, "3", tc.noop)
+			in.Admission = tc.policy
+			got, err := SimulateBaselineFills(in)
+			if !errors.Is(err, tc.want) || !reflect.DeepEqual(got, backtest.BaselineFillBatchResult{}) {
+				t.Fatalf("result=%+v err=%v", got, err)
+			}
+		})
+	}
+	in := fixture(t, "3", false)
+	before := in.Rules["BTCUSDT"]
+	var observed bool
+	in.Admission = func(plan model.TradePlan, rules map[string]planner.MarketDeltaRules, fee model.Decimal, buys, sells map[string]model.Decimal) error {
+		observed = plan.Hash() == in.Plan.Hash() && decimalEqual(fee, in.FeeRate) && rules["BTCUSDT"] == before && decimalEqual(buys["ETHUSDT"], amount(t, "110")) && decimalEqual(sells["BTCUSDT"], amount(t, "90")) && errors.Is(planner.AdmitBaselineExecution(plan, rules, fee, buys, sells), planner.ReasonInfeasibleReserve)
+		rules["BTCUSDT"] = planner.MarketDeltaRules{}
+		buys["ETHUSDT"], sells["BTCUSDT"] = model.Zero(), model.Zero()
+		return nil
+	}
+	got, err := SimulateBaselineFills(in)
+	if err != nil || !observed || !decimalEqual(got.Postings[1].Fill.ExecutionPrice, amount(t, "110")) || in.Rules["BTCUSDT"] != before {
+		t.Fatalf("callback copies or alternative policy: %v", err)
+	}
+}
+
+// TestExecutionMinimumNotional применяет минимум к фактической цене BUY и освобождает SELL.
+func TestExecutionMinimumNotional(t *testing.T) {
+	for _, tc := range []struct {
+		name, ref, slip, minimum string
+		sell                     bool
+		reject                   bool
+	}{
+		{"below", "80", "0", "95", false, true}, {"equal", "95", "0", "95", false, false}, {"slippage", "80", "0.2", "95", false, false}, {"sell exemption", "100", "0.1", "95", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := fixture(t, "3000", false)
+			in.Admission = func(model.TradePlan, map[string]planner.MarketDeltaRules, model.Decimal, map[string]model.Decimal, map[string]model.Decimal) error {
+				return nil
+			}
+			in.ReferencePrices["ETHUSDT"], in.SlippageRate = amount(t, tc.ref), amount(t, tc.slip)
+			rule := in.Rules["ETHUSDT"]
+			if tc.sell {
+				rule = in.Rules["BTCUSDT"]
+			}
+			rule.MinIncreaseNotional = amount(t, tc.minimum)
+			if tc.sell {
+				in.Rules["BTCUSDT"] = rule
+			} else {
+				in.Rules["ETHUSDT"] = rule
+			}
+			got, err := SimulateBaselineFills(in)
+			if tc.reject && (!errors.Is(err, ErrFillMinimumNotional) || !reflect.DeepEqual(got, backtest.BaselineFillBatchResult{})) {
+				t.Fatalf("expected atomic minimum rejection: %v", err)
+			}
+			if !tc.reject && err != nil {
+				t.Fatalf("unexpected minimum rejection: %v", err)
+			}
+		})
 	}
 }

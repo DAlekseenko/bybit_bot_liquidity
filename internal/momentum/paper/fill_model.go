@@ -5,17 +5,30 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
 	"bybit_bot_liquidity/internal/momentum/backtest"
-	"bybit_bot_liquidity/internal/momentum/config"
 	"bybit_bot_liquidity/internal/momentum/model"
 	"bybit_bot_liquidity/internal/momentum/planner"
 )
 
-// ErrFillModel обозначает ошибку входа или расчёта модели fill.
-var ErrFillModel = errors.New("invalid baseline fill model input")
+var (
+	// ErrFillModel обозначает ошибку входа или расчёта модели fill.
+	ErrFillModel = errors.New("invalid baseline fill model input")
+	// ErrFillMinimumNotional обозначает недостаточный notional по execution price.
+	ErrFillMinimumNotional = errors.New("fill execution price is below minimum notional")
+)
+
+// FillAdmission проверяет план политикой владельца стратегии перед симуляцией.
+type FillAdmission func(
+	plan model.TradePlan,
+	rules map[string]planner.MarketDeltaRules,
+	feeRate model.Decimal,
+	buyPrices, sellPrices map[string]model.Decimal,
+) error
 
 // FillInput задаёт явные параметры локальной симуляции полного baseline-пакета.
 type FillInput struct {
@@ -26,11 +39,12 @@ type FillInput struct {
 	Positions             map[string]model.LongPosition
 	ReferencePrices       map[string]model.Decimal
 	FeeRate, SlippageRate model.Decimal
+	Admission             FillAdmission
 }
 
 // SimulateBaselineFills строит атомарный пакет fill без сетевого исполнения.
 func SimulateBaselineFills(in FillInput) (backtest.BaselineFillBatchResult, error) {
-	symbols, err := config.CanonicalSymbols(in.Symbols)
+	symbols, err := normalizeSymbols(in.Symbols)
 	if err != nil || !exactKeys(symbols, in.Rules) || !exactKeys(symbols, in.Positions) || !exactKeys(symbols, in.ReferencePrices) {
 		return fillFailure(ErrFillModel)
 	}
@@ -51,6 +65,9 @@ func SimulateBaselineFills(in FillInput) (backtest.BaselineFillBatchResult, erro
 			return fillFailure(err)
 		}
 	}
+	if in.Admission == nil {
+		return fillFailure(ErrFillModel)
+	}
 	projection, err := planner.ProjectBaselineDeltas(symbols, in.Plan, in.Rules)
 	if err != nil {
 		return fillFailure(err)
@@ -62,54 +79,50 @@ func SimulateBaselineFills(in FillInput) (backtest.BaselineFillBatchResult, erro
 		}
 	}
 
-	quantities, targets := in.Plan.Snapshot().Positions(), in.Plan.Targets()
-	targetBySymbol := make(map[string]model.Decimal, len(targets))
-	for _, target := range targets {
-		targetBySymbol[target.Symbol] = target.Quantity
-	}
-	equity := in.Plan.Snapshot().Equity()
-	three, err := model.ParseAmount("3")
-	if err != nil {
-		return fillFailure(err)
-	}
-	third, err := equity.Quo(three)
-	if err != nil {
-		return fillFailure(err)
-	}
-	fills := make([]model.ConfirmedFill, 0, len(deltas))
+	snapshotPositions := in.Plan.Snapshot().Positions()
 	for _, symbol := range symbols {
 		position, found := in.Positions[symbol]
-		if !found || !decimalEqual(position.Quantity, quantities[symbol]) || !validPosition(position) {
+		if !found || !decimalEqual(position.Quantity, snapshotPositions[symbol]) || !validPosition(position) {
 			return fillFailure(backtest.ErrBaselineFillBatch)
 		}
-		reserveSide := model.FillBuy
-		for _, delta := range deltas {
-			if delta.Symbol == symbol && delta.ReduceOnly {
-				reserveSide = model.FillSell
-				break
-			}
-		}
-		// Для zero-delta сохраняется прежняя BUY-оценка резерва.
-		price, err := executionPrice(in.ReferencePrices[symbol], reserveSide, in.SlippageRate)
+	}
+
+	buyPrices, sellPrices := make(map[string]model.Decimal, len(symbols)), make(map[string]model.Decimal, len(symbols))
+	for _, symbol := range symbols {
+		buyPrices[symbol], err = executionPrice(in.ReferencePrices[symbol], model.FillBuy, in.SlippageRate)
 		if err != nil {
 			return fillFailure(err)
 		}
-		maxQty, err := planner.BaselineQuantity(third, price, position.Quantity, in.FeeRate, in.Rules[symbol].QtyStep)
+		sellPrices[symbol], err = executionPrice(in.ReferencePrices[symbol], model.FillSell, in.SlippageRate)
 		if err != nil {
 			return fillFailure(err)
-		}
-		if cmp, err := targetBySymbol[symbol].Cmp(maxQty); err != nil || cmp > 0 {
-			return fillFailure(planner.ReasonInfeasibleReserve)
 		}
 	}
+	for _, delta := range deltas {
+		if delta.ReduceOnly {
+			continue
+		}
+		meetsMinimum, err := model.MeetsMinNotional(delta.CandidateQty, buyPrices[delta.Symbol], in.Rules[delta.Symbol].MinIncreaseNotional)
+		if err != nil {
+			return fillFailure(err)
+		}
+		if !meetsMinimum {
+			return fillFailure(ErrFillMinimumNotional)
+		}
+	}
+	if err := in.Admission(in.Plan, maps.Clone(in.Rules), in.FeeRate, maps.Clone(buyPrices), maps.Clone(sellPrices)); err != nil {
+		return fillFailure(err)
+	}
+
+	fills := make([]model.ConfirmedFill, 0, len(deltas))
 	for _, delta := range deltas {
 		side := model.FillBuy
 		if delta.ReduceOnly {
 			side = model.FillSell
 		}
-		price, err := executionPrice(in.ReferencePrices[delta.Symbol], side, in.SlippageRate)
-		if err != nil {
-			return fillFailure(err)
+		price := buyPrices[delta.Symbol]
+		if side == model.FillSell {
+			price = sellPrices[delta.Symbol]
 		}
 		notional, err := delta.CandidateQty.Mul(price)
 		if err != nil {
@@ -132,6 +145,21 @@ func SimulateBaselineFills(in FillInput) (backtest.BaselineFillBatchResult, erro
 		return fillFailure(err)
 	}
 	return result, nil
+}
+
+// normalizeSymbols сортирует копию universe и отклоняет пустые или дублирующиеся ключи.
+func normalizeSymbols(values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, ErrFillModel
+	}
+	symbols := slices.Clone(values)
+	slices.Sort(symbols)
+	for i, symbol := range symbols {
+		if strings.TrimSpace(symbol) != symbol || symbol == "" || i > 0 && symbols[i-1] == symbol {
+			return nil, ErrFillModel
+		}
+	}
+	return symbols, nil
 }
 
 // exactKeys проверяет равенство набора ключей каноническому universe.
