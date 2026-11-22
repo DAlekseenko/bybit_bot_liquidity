@@ -102,6 +102,9 @@ func TestPostMomentumTestnetSignedClassifiesOutcome(t *testing.T) {
 		{status: 403, body: "forbidden"},
 		{status: 200, body: `{"retCode":10001,"retMsg":"params error","result":{},"time":1}`},
 		{status: 200, body: `{"retCode":10006,"retMsg":"rate limit","result":{},"time":1}`},
+		{status: 200, body: `{"retCode":10004,"retMsg":"invalid sign fake-key ` + fixtureSignature + ` fake-secret","result":{},"time":1}`},
+		{status: 401, body: "bad key fake-key fake-secret " + fixtureSignature},
+		{status: 502, body: "echo fake-key fake-secret", unknown: true},
 	} {
 		calls := 0
 		client := testPostClient(t, "https://api-testnet.bybit.com", roundTripperFunc(func(r *http.Request) (*http.Response, error) {
@@ -153,4 +156,17 @@ func assertNoSecrets(t *testing.T, text string) {
 	if strings.Contains(text, "fake-secret") || strings.Contains(text, fixtureSignature) || strings.Contains(text, "fake-key") {
 		t.Fatalf("secret material leaked: %s", text)
 	}
+}
+
+// TestPostMomentumTestnetSignedRedactsEcho проверяет, что эхо секретов вырезано, а код ошибки сохранён.
+func TestPostMomentumTestnetSignedRedactsEcho(t *testing.T) {
+	client := testPostClient(t, "https://api-testnet.bybit.com", roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		return timeResponse(r, 200, `{"retCode":10004,"retMsg":"invalid signature: fake-key","result":{},"time":1}`), nil
+	}))
+	_, err := client.PostMomentumTestnetSigned(context.Background(), "/v5/x", testPostBody{"linear", "BTCUSDT"})
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != 10004 || apiErr.Message != "invalid signature: [REDACTED]" {
+		t.Fatalf("err=%v", err)
+	}
+	assertNoSecrets(t, err.Error())
 }

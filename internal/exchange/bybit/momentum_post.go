@@ -63,14 +63,15 @@ func (c *Client) PostMomentumTestnetSigned(ctx context.Context, path string, bod
 	request.Header.Set("X-BAPI-API-KEY", c.apiKey)
 	request.Header.Set("X-BAPI-TIMESTAMP", timestamp)
 	request.Header.Set("X-BAPI-RECV-WINDOW", c.recvWindow)
-	request.Header.Set("X-BAPI-SIGN", signMomentumPost(c.apiSecret, timestamp, c.apiKey, c.recvWindow, payload))
+	signature := signMomentumPost(c.apiSecret, timestamp, c.apiKey, c.recvWindow, payload)
+	request.Header.Set("X-BAPI-SIGN", signature)
 	sender := &http.Client{Transport: c.httpClient.Transport, Timeout: c.httpClient.Timeout, CheckRedirect: rejectMomentumRedirect}
 	response, err := sender.Do(request)
 	if err != nil {
 		return MomentumPostResult{}, fmt.Errorf("post %s: %w: %w", path, ErrPostOutcomeUnknown, err)
 	}
 	defer response.Body.Close()
-	result, err := decodeMomentumPostResponse(response)
+	result, err := decodeMomentumPostResponse(response, c.apiKey, c.apiSecret, signature)
 	if err != nil {
 		return MomentumPostResult{}, fmt.Errorf("post %s: %w", path, err)
 	}
@@ -106,11 +107,24 @@ func validateMomentumPostPath(path string) error {
 	return nil
 }
 
+// redactMomentumSecrets заменяет ключ, секрет и подпись в тексте биржи: ответ
+// на ошибку аутентификации может их повторять, а текст попадает в ошибки и логи.
+func redactMomentumSecrets(text string, secrets ...string) string {
+	for _, secret := range secrets {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, "[REDACTED]")
+		}
+	}
+	return text
+}
+
 // decodeMomentumPostResponse строго разбирает ответ и классифицирует неоднозначные исходы.
-func decodeMomentumPostResponse(response *http.Response) (MomentumPostResult, error) {
+// Текст биржи (retMsg, тело HTTP-ошибки) очищается от secrets; код и статус сохраняются.
+func decodeMomentumPostResponse(response *http.Response, secrets ...string) (MomentumPostResult, error) {
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		body, _ := io.ReadAll(io.LimitReader(response.Body, maxErrorBodyBytes))
-		httpErr := &HTTPError{StatusCode: response.StatusCode, Status: response.Status, Body: strings.TrimSpace(string(body))}
+		httpErr := &HTTPError{StatusCode: response.StatusCode, Status: response.Status,
+			Body: redactMomentumSecrets(strings.TrimSpace(string(body)), secrets...)}
 		if response.StatusCode == http.StatusRequestTimeout || response.StatusCode >= http.StatusInternalServerError {
 			return MomentumPostResult{}, fmt.Errorf("%w: %w", ErrPostOutcomeUnknown, httpErr)
 		}
@@ -128,7 +142,7 @@ func decodeMomentumPostResponse(response *http.Response) (MomentumPostResult, er
 		return MomentumPostResult{}, fmt.Errorf("%w: malformed response envelope", ErrPostOutcomeUnknown)
 	}
 	if *envelope.RetCode != 0 {
-		apiErr := &APIError{Code: *envelope.RetCode, Message: envelope.RetMsg}
+		apiErr := &APIError{Code: *envelope.RetCode, Message: redactMomentumSecrets(envelope.RetMsg, secrets...)}
 		if apiErr.Code == 10000 || apiErr.Code == 10016 {
 			return MomentumPostResult{}, fmt.Errorf("%w: %w", ErrPostOutcomeUnknown, apiErr)
 		}
