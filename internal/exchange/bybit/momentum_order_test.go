@@ -97,3 +97,14 @@ func TestCreateMomentumOrderTimeout(t *testing.T) {
 		t.Fatalf("timeout err=%v calls=%d", err, calls)
 	}
 }
+
+// TestCancelMomentumOrderInactiveCodes проверяет, что исполненная или отменённая заявка не считается отказом.
+func TestCancelMomentumOrderInactiveCodes(t *testing.T) {
+	for _, code := range []string{"110001", "110008", "110010"} {
+		client, _ := orderClient(t, 200, `{"retCode":`+code+`,"retMsg":"inactive","result":{},"time":1}`, nil)
+		_, err := client.CancelMomentumOrder(context.Background(), "BTCUSDT", "cm-1")
+		if !errors.Is(err, ErrOrderNotCancellable) || errors.Is(err, ErrOrderRejected) {
+			t.Errorf("retCode %s: %v", code, err)
+		}
+	}
+}
