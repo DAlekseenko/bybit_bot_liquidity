@@ -2,6 +2,7 @@ package paper
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"strings"
@@ -205,5 +206,40 @@ func TestSchedulerResumeUnfinished(t *testing.T) {
 	data.err = nil
 	if got := tick(t, s, nextMonday.Add(time.Hour), ActionRun); got.Resume || !got.Run.ScheduledAt.Equal(nextMonday) {
 		t.Fatalf("after completion the current week starts, got %+v", got)
+	}
+}
+
+// TestSchedulerDataError проверяет, что ошибка чтения данных до дедлайна даёт WAIT и ошибку без записи run.
+func TestSchedulerDataError(t *testing.T) {
+	s, store, data := testScheduler(t, "next_monday", "")
+	data.err = errors.New("daily data unavailable")
+	d, err := s.Tick(context.Background(), monday)
+	if !errors.Is(err, ErrScheduler) || d.Action != ActionWait || store.creates != 0 {
+		t.Fatalf("decision=%+v err=%v creates=%d", d, err, store.creates)
+	}
+}
+
+// TestDBRunStoreOffline проверяет, что адаптер передаёт вызовы в storage и возвращает его ошибки.
+func TestDBRunStoreOffline(t *testing.T) {
+	db, err := sql.Open("postgres", "host=127.0.0.1 port=1 sslmode=disable connect_timeout=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	store, ctx := DBRunStore{DB: db}, context.Background()
+	if _, err := store.CreateOrReadRebalanceRun(ctx, storage.RebalanceRunInput{}); !errors.Is(err, storage.ErrRebalanceRunArgument) {
+		t.Fatalf("create: %v", err)
+	}
+	if _, _, err := store.ReadRunCompletion(ctx, " "); !errors.Is(err, storage.ErrRunCompletionArgument) {
+		t.Fatalf("completion: %v", err)
+	}
+	if _, _, err := store.ReadLatestPlanRevision(ctx, " "); !errors.Is(err, storage.ErrPlanRevision) {
+		t.Fatalf("latest plan: %v", err)
+	}
+	if _, _, err := store.ReadUnfinishedPlannedRun(ctx, " ", "s"); !errors.Is(err, storage.ErrRebalanceRunArgument) {
+		t.Fatalf("unfinished: %v", err)
+	}
+	if _, err := store.CompleteRebalanceRun(ctx, storage.RunCompletion{}); !errors.Is(err, storage.ErrRunCompletionArgument) {
+		t.Fatalf("complete: %v", err)
 	}
 }
