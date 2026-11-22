@@ -121,6 +121,14 @@ func TestLifecycleConflicts(t *testing.T) {
 	if _, _, err := rejected.Apply(fill(t, "late", "0.001")); !errors.Is(err, ErrLifecycleConflict) {
 		t.Fatal("fill after reject must conflict")
 	}
+	if _, _, err := rejected.Apply(status(t, "Filled", "0.01")); !errors.Is(err, ErrLifecycleConflict) {
+		t.Fatal("execution-bearing status after reject must conflict")
+	}
+	partial := fill(t, "e9", "0.01")
+	partial.Fill = model.ConfirmedFill{ExecutionID: "e9", Quantity: dec(t, "0.01")}
+	if _, _, err := base.Apply(partial); !errors.Is(err, ErrLifecycleConflict) {
+		t.Fatal("fill without symbol, side, time, price and fee must conflict")
+	}
 	if _, err := NewLifecycle("", dec(t, "1")); err == nil {
 		t.Fatal("empty link must be rejected")
 	}

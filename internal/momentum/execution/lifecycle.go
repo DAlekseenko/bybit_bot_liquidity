@@ -165,7 +165,9 @@ func (l *Lifecycle) applyStatus(e Evidence) error {
 		return err
 	}
 	cum, err := e.CumExecQty.Cmp(l.quantity)
-	if err != nil || cum > 0 {
+	executed, zeroErr := e.CumExecQty.Cmp(model.Zero())
+	// После отказа биржа не может сообщать исполненный объём.
+	if err != nil || zeroErr != nil || cum > 0 || executed < 0 || (l.rejected && executed > 0) {
 		return errors.Join(ErrLifecycle, ErrLifecycleConflict)
 	}
 	if c, _ := e.CumExecQty.Cmp(l.exchangeCum); c > 0 {
@@ -201,7 +203,7 @@ func (l *Lifecycle) applyFill(f model.ConfirmedFill) error {
 		}
 		return nil
 	}
-	if c, err := f.Quantity.Cmp(model.Zero()); f.ExecutionID == "" || err != nil || c <= 0 || l.rejected {
+	if !completeFill(f) || l.rejected {
 		return errors.Join(ErrLifecycle, ErrLifecycleConflict)
 	}
 	sum, err := l.filled.Add(f.Quantity)
@@ -218,6 +220,15 @@ func (l *Lifecycle) applyFill(f model.ConfirmedFill) error {
 		l.phase = StateAcknowledged
 	}
 	return nil
+}
+
+// completeFill проверяет обязательные поля fill: без них ledger его не примет.
+func completeFill(f model.ConfirmedFill) bool {
+	qty, qErr := f.Quantity.Cmp(model.Zero())
+	price, pErr := f.ExecutionPrice.Cmp(model.Zero())
+	_, fErr := f.FeeUSDT.Cmp(model.Zero())
+	return f.ExecutionID != "" && f.Symbol != "" && (f.Side == model.FillBuy || f.Side == model.FillSell) &&
+		!f.ExecutedAt.IsZero() && qErr == nil && qty > 0 && pErr == nil && price > 0 && fErr == nil
 }
 
 // differs сообщает, изменилось ли наблюдаемое состояние.
