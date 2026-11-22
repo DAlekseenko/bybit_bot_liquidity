@@ -34,6 +34,8 @@ func preflightFixture(t *testing.T) (PreflightInput, PreflightParams) {
 		Expected:         map[string]model.Decimal{"BTCUSDT": dec(t, "0.01")},
 		InstrumentStatus: map[string]string{"BTCUSDT": "Trading", "ETHUSDT": "Trading"},
 		Marks:            map[string]MarkObservation{"ETHUSDT": {Price: dec(t, "3000"), Time: at}},
+		Settings: map[string]model.AccountPosition{"ETHUSDT": {Symbol: "ETHUSDT", Size: dec(t, "0"), Leverage: dec(t, "1"),
+			Status: "Normal", ServerTime: at}},
 		Deltas: []planner.PositionDelta{
 			{Symbol: "BTCUSDT", ReduceOnly: true, CandidateQty: dec(t, "0.005")},
 			{Symbol: "ETHUSDT", CandidateQty: dec(t, "0.5")},
@@ -93,6 +95,32 @@ func TestPreflightDenies(t *testing.T) {
 		"auto add": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			in.Inventory.Positions[0].AutoAddMargin = true
 		}, ReasonAutoAddMargin},
+		"flat no settings": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { delete(in.Settings, "ETHUSDT") }, ReasonUnverifiedSettings},
+		"flat foreign settings": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.Symbol = "BTCUSDT"
+			in.Settings["ETHUSDT"] = s
+		}, ReasonUnverifiedSettings},
+		"flat leverage": {func(t *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.Leverage = dec(t, "2")
+			in.Settings["ETHUSDT"] = s
+		}, ReasonLeverageMismatch},
+		"flat hedge": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.PositionIdx = 1
+			in.Settings["ETHUSDT"] = s
+		}, ReasonPositionMode},
+		"flat auto add": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.AutoAddMargin = true
+			in.Settings["ETHUSDT"] = s
+		}, ReasonAutoAddMargin},
+		"flat stale settings": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
+			s := in.Settings["ETHUSDT"]
+			s.ServerTime = preflightNow.Add(-time.Hour)
+			in.Settings["ETHUSDT"] = s
+		}, ReasonStaleData},
 		"liq status": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) { in.Inventory.Positions[0].Status = "Liq" }, ReasonPositionStatus},
 		"manual order": {func(_ *testing.T, in *PreflightInput, _ *PreflightParams) {
 			in.Inventory.Orders = []model.AccountOrder{{OrderID: "1", OrderLinkID: ""}}

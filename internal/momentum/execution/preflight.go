@@ -23,6 +23,7 @@ const (
 	ReasonLeverageMismatch   PreflightReason = "leverage_mismatch"
 	ReasonAutoAddMargin      PreflightReason = "auto_add_margin"
 	ReasonPositionStatus     PreflightReason = "position_status"
+	ReasonUnverifiedSettings PreflightReason = "unverified_position_settings"
 	ReasonUnknownOrder       PreflightReason = "unknown_order"
 	ReasonOwnedOrderOpen     PreflightReason = "owned_order_open"
 	ReasonUnsupportedSymbol  PreflightReason = "unsupported_symbol"
@@ -74,6 +75,11 @@ type PreflightInput struct {
 	InstrumentStatus map[string]string
 	Marks            map[string]MarkObservation
 	Deltas           []planner.PositionDelta
+	// Settings — настройки позиции по символу из чтения с явным symbol: Bybit
+	// возвращает их и для нулевой позиции, тогда как общий список по settleCoin
+	// содержит только ненулевые. Для символа без открытой позиции, который план
+	// увеличивает, настройки обязательны.
+	Settings map[string]model.AccountPosition
 }
 
 // PreflightResult описывает решение allow/deny и рассчитанную требуемую маржу.
@@ -106,6 +112,7 @@ func Preflight(in PreflightInput, p PreflightParams) PreflightResult {
 		deny(ReasonMarginMode, in.Mode.MarginMode)
 	}
 	checkPositions(in, p, deny)
+	checkFlatSettings(in, p, deny, fresh)
 	for _, order := range in.Inventory.Orders {
 		if model.OrderOwnedBy(order, p.OrderLinkNamespace) {
 			deny(ReasonOwnedOrderOpen, order.OrderID)
@@ -152,6 +159,39 @@ func checkPositions(in PreflightInput, p PreflightParams, deny func(PreflightRea
 	for _, symbol := range in.Symbols {
 		if sign, err := expectedQty(in, symbol).Cmp(model.Zero()); !seen[symbol] && (err != nil || sign != 0) {
 			deny(ReasonPositionMismatch, symbol)
+		}
+	}
+}
+
+// checkFlatSettings требует проверенных настроек для каждого увеличиваемого
+// символа без открытой позиции: иначе первый вход прошёл бы с непроверенным
+// плечом, режимом позиции или auto-add-margin.
+func checkFlatSettings(in PreflightInput, p PreflightParams, deny func(PreflightReason, string), fresh func(time.Time, string)) {
+	open := map[string]bool{}
+	for _, pos := range in.Inventory.Positions {
+		open[pos.Symbol] = true
+	}
+	checked := map[string]bool{}
+	for _, delta := range in.Deltas {
+		symbol := delta.Symbol
+		if delta.ReduceOnly || open[symbol] || checked[symbol] || !slices.Contains(in.Symbols, symbol) {
+			continue
+		}
+		checked[symbol] = true
+		s, ok := in.Settings[symbol]
+		if !ok || s.Symbol != symbol {
+			deny(ReasonUnverifiedSettings, symbol)
+			continue
+		}
+		fresh(s.ServerTime, "settings:"+symbol)
+		if s.PositionIdx != oneWayPositionIdx {
+			deny(ReasonPositionMode, symbol)
+		}
+		if eq, err := s.Leverage.Cmp(p.TargetLeverage); err != nil || eq != 0 {
+			deny(ReasonLeverageMismatch, symbol)
+		}
+		if s.AutoAddMargin {
+			deny(ReasonAutoAddMargin, symbol)
 		}
 	}
 }
