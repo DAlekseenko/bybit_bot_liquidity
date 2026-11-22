@@ -32,6 +32,7 @@ type momentumOrderItem struct {
 	LeavesQty   string `json:"leavesQty"`
 	Price       string `json:"price"`
 	ReduceOnly  *bool  `json:"reduceOnly"`
+	CloseOnTrig *bool  `json:"closeOnTrigger"`
 	CreatedTime string `json:"createdTime"`
 	UpdatedTime string `json:"updatedTime"`
 }
@@ -160,19 +161,24 @@ func parseMomentumOrder(item momentumOrderItem) (model.AccountOrder, error) {
 	default:
 		return bad("orderStatus")
 	}
-	if item.ReduceOnly == nil {
-		return bad("reduceOnly")
+	if item.ReduceOnly == nil || item.CloseOnTrig == nil {
+		return bad("reduceOnly/closeOnTrigger")
 	}
 	o := model.AccountOrder{OrderID: item.OrderID, OrderLinkID: item.OrderLinkID, Symbol: item.Symbol, Side: item.Side,
-		Status: item.OrderStatus, PositionIdx: *item.PositionIdx, ReduceOnly: *item.ReduceOnly}
+		Status: item.OrderStatus, PositionIdx: *item.PositionIdx, ReduceOnly: *item.ReduceOnly, CloseOnTrigger: *item.CloseOnTrig}
 	var err error
-	if o.Qty, err = model.ParsePrice(item.Qty); err != nil {
+	if o.Qty, err = model.ParseQty(item.Qty); err != nil {
+		return bad("qty")
+	}
+	// qty="0" допустим только у close-all условной заявки (reduceOnly и closeOnTrigger).
+	closeAll := o.ReduceOnly && o.CloseOnTrigger
+	if sign, _ := o.Qty.Cmp(model.Zero()); sign == 0 && !closeAll {
 		return bad("qty")
 	}
 	if o.LeavesQty, err = model.ParseQty(item.LeavesQty); err != nil {
 		return bad("leavesQty")
 	}
-	if over, _ := o.LeavesQty.Cmp(o.Qty); over > 0 {
+	if over, _ := o.LeavesQty.Cmp(o.Qty); over > 0 && !closeAll {
 		return bad("leavesQty")
 	}
 	if o.Price, err = model.ParseQty(item.Price); err != nil {

@@ -15,7 +15,7 @@ import (
 const (
 	invPosBTC = `{"positionIdx":0,"symbol":"BTCUSDT","side":"Buy","size":"0.01","avgPrice":"60000","markPrice":"61000","leverage":"1","positionIM":"610","autoAddMargin":0,"positionStatus":"Normal","updatedTime":"1700000000000"}`
 	invPosXRP = `{"positionIdx":1,"symbol":"XRPUSDT","side":"Sell","size":"5","avgPrice":"0.5","markPrice":"0.51","leverage":"3","positionIM":"0.85","autoAddMargin":1,"positionStatus":"Normal","updatedTime":"1700000000000"}`
-	invOrder  = `{"orderId":"%s","orderLinkId":"%s","symbol":"ETHUSDT","side":"Buy","positionIdx":0,"orderStatus":"New","qty":"0.1","leavesQty":"0.1","price":"3000.5","reduceOnly":false,"createdTime":"1700000000000","updatedTime":"1700000000001"}`
+	invOrder  = `{"orderId":"%s","orderLinkId":"%s","symbol":"ETHUSDT","side":"Buy","positionIdx":0,"orderStatus":"New","qty":"0.1","leavesQty":"0.1","price":"3000.5","reduceOnly":false,"closeOnTrigger":false,"createdTime":"1700000000000","updatedTime":"1700000000001"}`
 )
 
 // inventoryPage формирует страницу ответа с курсором и временем сервера.
@@ -99,15 +99,20 @@ func TestGetMomentumInventoryFailsClosed(t *testing.T) {
 			"/v5/order/realtime?": inventoryPage(1, "", order(same)+","+order(same))},
 	}
 	for field, mutate := range map[string]func(string) string{
-		"no id":       func(s string) string { return strings.Replace(s, `"orderId":"1"`, `"orderId":""`, 1) },
-		"symbol":      func(s string) string { return strings.Replace(s, "ETHUSDT", "eth", 1) },
-		"side":        func(s string) string { return strings.Replace(s, `"Buy"`, `"Long"`, 1) },
-		"idx":         func(s string) string { return strings.Replace(s, `"positionIdx":0`, `"positionIdx":7`, 1) },
-		"status":      func(s string) string { return strings.Replace(s, `"New"`, `"Filled"`, 1) },
-		"reduce only": func(s string) string { return strings.Replace(s, `"reduceOnly":false,`, ``, 1) },
-		"qty":         func(s string) string { return strings.Replace(s, `"qty":"0.1"`, `"qty":"0"`, 1) },
-		"leaves":      func(s string) string { return strings.Replace(s, `"leavesQty":"0.1"`, `"leavesQty":"0.2"`, 1) },
-		"price":       func(s string) string { return strings.Replace(s, `"price":"3000.5"`, `"price":""`, 1) },
+		"no id":         func(s string) string { return strings.Replace(s, `"orderId":"1"`, `"orderId":""`, 1) },
+		"symbol":        func(s string) string { return strings.Replace(s, "ETHUSDT", "eth", 1) },
+		"side":          func(s string) string { return strings.Replace(s, `"Buy"`, `"Long"`, 1) },
+		"idx":           func(s string) string { return strings.Replace(s, `"positionIdx":0`, `"positionIdx":7`, 1) },
+		"status":        func(s string) string { return strings.Replace(s, `"New"`, `"Filled"`, 1) },
+		"reduce only":   func(s string) string { return strings.Replace(s, `"reduceOnly":false,`, ``, 1) },
+		"qty":           func(s string) string { return strings.Replace(s, `"qty":"0.1"`, `"qty":"0"`, 1) },
+		"negative qty":  func(s string) string { return strings.Replace(s, `"qty":"0.1"`, `"qty":"-0.1"`, 1) },
+		"no close trig": func(s string) string { return strings.Replace(s, `"closeOnTrigger":false,`, ``, 1) },
+		"zero qty reduce only": func(s string) string {
+			return strings.NewReplacer(`"qty":"0.1"`, `"qty":"0"`, `"reduceOnly":false`, `"reduceOnly":true`).Replace(s)
+		},
+		"leaves": func(s string) string { return strings.Replace(s, `"leavesQty":"0.1"`, `"leavesQty":"0.2"`, 1) },
+		"price":  func(s string) string { return strings.Replace(s, `"price":"3000.5"`, `"price":""`, 1) },
 		"time": func(s string) string {
 			return strings.Replace(s, `"createdTime":"1700000000000"`, `"createdTime":"x"`, 1)
 		},
@@ -127,5 +132,16 @@ func TestGetMomentumInventoryFailsClosed(t *testing.T) {
 	}
 	if _, _, err := inventoryClient(t, endless, &calls).GetMomentumPositions(context.Background()); !errors.Is(err, ErrMalformedAccountData) || calls != momentumInventoryMaxPages {
 		t.Fatalf("page limit: %v calls=%d", err, calls)
+	}
+}
+
+// TestGetMomentumOpenOrdersAcceptsCloseAll проверяет close-all условную заявку с qty=0.
+func TestGetMomentumOpenOrdersAcceptsCloseAll(t *testing.T) {
+	closeAll := strings.NewReplacer(`"qty":"0.1"`, `"qty":"0"`, `"leavesQty":"0.1"`, `"leavesQty":"0"`, `"orderStatus":"New"`, `"orderStatus":"Untriggered"`,
+		`"reduceOnly":false`, `"reduceOnly":true`, `"closeOnTrigger":false`, `"closeOnTrigger":true`).Replace(fmt.Sprintf(invOrder, "9", ""))
+	calls := 0
+	orders, _, err := inventoryClient(t, map[string]string{"/v5/order/realtime?": inventoryPage(1, "", closeAll)}, &calls).GetMomentumOpenOrders(context.Background())
+	if err != nil || len(orders) != 1 || !orders[0].ReduceOnly || !orders[0].CloseOnTrigger || wireOf(t, orders[0].Qty) != "0" {
+		t.Fatalf("close-all order = %+v, %v", orders, err)
 	}
 }
