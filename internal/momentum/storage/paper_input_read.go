@@ -88,7 +88,7 @@ func readPaperInput(ctx context.Context, q paperInputReader, scope paperwire.Sco
 	var run, account, strategy, seq string
 	var onboarding, prevOnboarding, prevRun, prevAccount, prevStrategy, outcome, reason, revision, planHash sql.NullString
 	var at, prevAt, created sql.NullTime
-	var linksValid bool
+	var linksValid, oversized bool
 	err := q.QueryRowContext(ctx, `SELECT i.payload,i.input_hash,
  CASE WHEN i.sequence=trunc(i.sequence) AND i.sequence BETWEEN 1 AND 18446744073709551615
       THEN trunc(i.sequence)::text ELSE '' END,i.previous_input_hash,i.previous_resolution_hash,
@@ -100,7 +100,8 @@ func readPaperInput(ctx context.Context, q paperInputReader, scope paperwire.Sco
  CASE WHEN isfinite(pr.scheduled_at) THEN pr.scheduled_at END,
  CASE WHEN pr.config_hash=pg_catalog.sha256(pc.payload) THEN pc.payload END,
  (i.sequence<>1 OR (i.previous_input_hash IS NULL AND i.previous_resolution_hash IS NULL)),
- CASE WHEN isfinite(x.completed_at) THEN x.outcome END,x.reason,
+ CASE WHEN isfinite(x.completed_at) THEN x.outcome END,COALESCE(octet_length(x.reason)>$5,false),
+ CASE WHEN octet_length(x.reason)<=$5 THEN x.reason END,
  CASE WHEN x.plan_revision=trunc(x.plan_revision) AND x.plan_revision BETWEEN 1 AND 18446744073709551615
       THEN trunc(x.plan_revision)::text END,encode(x.plan_hash,'hex')
  FROM momentum.paper_run_inputs i
@@ -112,14 +113,17 @@ func readPaperInput(ctx context.Context, q paperInputReader, scope paperwire.Sco
  LEFT JOIN momentum.config_snapshots pc ON pc.config_hash=pr.config_hash
  LEFT JOIN momentum.run_completions x ON x.run_id=p.run_id
  WHERE i.environment=$1 AND i.account_id=$2 AND i.strategy_id=$3 AND ($4='0' OR i.sequence=$4::numeric)
- ORDER BY i.sequence DESC LIMIT 1`, scope.Environment, scope.AccountID, scope.StrategyID, strconv.FormatUint(sequence, 10)).Scan(
+ ORDER BY i.sequence DESC LIMIT 1`, scope.Environment, scope.AccountID, scope.StrategyID, strconv.FormatUint(sequence, 10), paperwire.MaxCanonicalBytes).Scan(
 		&raw, &hash, &seq, &link, &receiptHash, &run, &account, &strategy, &onboarding, &at, &cfg, &created,
-		&previous, &previousHash, &prevRun, &prevAccount, &prevStrategy, &prevOnboarding, &prevAt, &previousCfg, &linksValid, &outcome, &reason, &revision, &planHash)
+		&previous, &previousHash, &prevRun, &prevAccount, &prevStrategy, &prevOnboarding, &prevAt, &previousCfg, &linksValid, &outcome, &oversized, &reason, &revision, &planHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return StoredPaperInput{}, false, nil
 	}
 	if err != nil {
 		return StoredPaperInput{}, false, paperInputFailure(ctx, ErrPaperInputUnavailable)
+	}
+	if oversized {
+		return StoredPaperInput{}, false, errors.Join(ErrPaperInputCorrupt, paperwire.ErrPaperResourceLimit)
 	}
 	r, valid := paperInputIdentity(raw, hash, cfg, run, account, strategy, onboarding, at)
 	h := r.Header()
