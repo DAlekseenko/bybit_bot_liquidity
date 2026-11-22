@@ -70,8 +70,8 @@ func NewRebalance(batch IntentBatch) (Rebalance, error) {
 // preflight перед увеличениями; при отказе увеличения не сокращаются и бюджет
 // соседних символов не перераспределяется.
 func (r Rebalance) Next(states map[string]Lifecycle, increaseGate error) (Step, error) {
-	for link := range states {
-		if !r.owns(link) {
+	for link, l := range states {
+		if !r.owns(link) || !l.valid() {
 			return Step{}, ErrRebalance
 		}
 	}

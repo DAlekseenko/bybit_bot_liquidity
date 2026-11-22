@@ -58,6 +58,12 @@ func TestRebalanceOrdering(t *testing.T) {
 			}
 		}
 	}
+	if _, err := r.Next(map[string]Lifecycle{"r1": {}, "r2": filled}, nil); !errors.Is(err, ErrRebalance) {
+		t.Fatalf("zero lifecycle must not release increases: %v", err)
+	}
+	if (Lifecycle{}).State() != StateUnknown || (Lifecycle{}).Settled() {
+		t.Fatal("zero lifecycle must be unknown and unsettled")
+	}
 	if _, err := r.Next(map[string]Lifecycle{"foreign": filled}, nil); !errors.Is(err, ErrRebalance) {
 		t.Fatalf("foreign order must be rejected: %v", err)
 	}
