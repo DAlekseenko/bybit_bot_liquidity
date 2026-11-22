@@ -85,7 +85,7 @@ func (c *Client) MomentumExecutions(ctx context.Context, symbol string, window H
 		List   []executionItem `json:"list"`
 		Cursor string          `json:"nextPageCursor"`
 	}
-	query, err := historyQuery(window, "symbol", symbol)
+	query, err := historyQuery(window, "symbol", symbol, "100")
 	if err != nil || validateSymbol(symbol) != nil {
 		return page, fmt.Errorf("%w: execution window", ErrInvalidArgument)
 	}
@@ -111,7 +111,7 @@ func (c *Client) MomentumTransactions(ctx context.Context, window HistoryWindow)
 		List   []transactionItem `json:"list"`
 		Cursor string            `json:"nextPageCursor"`
 	}
-	query, err := historyQuery(window, "accountType", "UNIFIED")
+	query, err := historyQuery(window, "accountType", "UNIFIED", "50")
 	if err != nil {
 		return page, err
 	}
@@ -132,12 +132,13 @@ func (c *Client) MomentumTransactions(ctx context.Context, window HistoryWindow)
 	return page, nil
 }
 
-// historyQuery проверяет окно (Bybit допускает не более 7 дней) и строит запрос.
-func historyQuery(w HistoryWindow, key, value string) (url.Values, error) {
+// historyQuery проверяет окно (Bybit допускает не более 7 дней) и строит запрос;
+// limit — максимум страницы конкретного endpoint (execution 100, transaction-log 50).
+func historyQuery(w HistoryWindow, key, value, limit string) (url.Values, error) {
 	if w.Start.IsZero() || w.End.Before(w.Start) || w.End.Sub(w.Start) > 7*24*time.Hour {
 		return nil, fmt.Errorf("%w: history window must be 0..7 days", ErrInvalidArgument)
 	}
-	q := url.Values{"category": {"linear"}, key: {value}, "limit": {"100"},
+	q := url.Values{"category": {"linear"}, key: {value}, "limit": {limit},
 		"startTime": {strconv.FormatInt(w.Start.UnixMilli(), 10)}, "endTime": {strconv.FormatInt(w.End.UnixMilli(), 10)}}
 	if w.Cursor != "" {
 		q.Set("cursor", w.Cursor)

@@ -97,7 +97,7 @@ func TestMomentumExecutions(t *testing.T) {
 		ids = append(ids, r.Fill.ExecutionID+map[bool]string{true: "+", false: "-"}[r.IsTrade])
 	}
 	if strings.Join(ids, ",") != "e2+,e2+,e1+,-" || !strings.Contains((*seen)[0], "cursor=c1") ||
-		!strings.Contains((*seen)[0], "startTime=1700000000000") || !strings.Contains((*seen)[0], "endTime=1700000005000") {
+		!strings.Contains((*seen)[0], "limit=100") || !strings.Contains((*seen)[0], "startTime=1700000000000") || !strings.Contains((*seen)[0], "endTime=1700000005000") {
 		t.Fatalf("ids=%v query=%v", ids, *seen)
 	}
 	client, _ = historyServer(t, map[string]any{"/v5/execution/list": map[string]any{"list": []any{}, "nextPageCursor": ""}})
@@ -123,7 +123,7 @@ func TestMomentumTransactions(t *testing.T) {
 	client, seen := historyServer(t, map[string]any{"/v5/account/transaction-log": list(map[string]string{"id": "t1",
 		"symbol": "BTCUSDT", "type": "SETTLEMENT", "transactionTime": "1700000002000", "funding": "-0.123456789", "cashFlow": ""})})
 	page, err := client.MomentumTransactions(ctx, window)
-	if err != nil || len(page.Items) != 1 || !strings.Contains((*seen)[0], "accountType=UNIFIED") {
+	if err != nil || len(page.Items) != 1 || !strings.Contains((*seen)[0], "accountType=UNIFIED") || !strings.Contains((*seen)[0], "limit=50") {
 		t.Fatalf("page=%+v err=%v", page, err)
 	}
 	funding, _ := page.Items[0].Funding.WireDecimal()
