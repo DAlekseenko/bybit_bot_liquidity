@@ -33,14 +33,16 @@ Momentum — первая стратегия; пакеты пока в `internal
 
 ## Ограничения
 
-- Только Testnet и read-only. Не подключайте отправку и закрытие ордеров, live
-  broker calls и order/close transport без отдельной Issue с явным одобрением
+- Реальные деньги не затрагиваются. Исполнение на Testnet (заявки на тестовом
+  счёте) — класс B; код допускает только Testnet endpoints и Testnet-ключи из env.
+  Mainnet и live-торговля — только отдельной Issue класса C с явным одобрением
   владельца. Смена полей конфигурации (`mode`, `environment`) сама по себе не
-  должна включать торговлю.
+  должна включать Mainnet.
 - Paper-trade — виртуальная аналитика, не исполнение. Fill не выводится из
   отсутствующей заявки: доказательство — только исполненная операция биржи.
-- Live trading, deploy, изменение risk limits и destructive migrations требуют
-  явного одобрения владельца; workflow сам таких полномочий не выдаёт.
+- Live trading, Mainnet deploy, изменение Mainnet risk limits и destructive
+  migrations требуют явного одобрения владельца; workflow сам таких полномочий не
+  выдаёт.
 - Не меняйте настроенные accounts и `primary_execution` вне отдельно одобренного
   scope.
 - Целевая архитектура Momentum ([CONTEXT](.ai/CONTEXT.md), SPEC) не даёт
@@ -103,12 +105,13 @@ Momentum без `MOMENTUM_TEST_POSTGRES_DSN` пропускаются (`t.Skip`)
 процесса задаёт класс риска Issue:
 
 - **A — офлайн** (model, planner, backtest, отчёты, импорт публичных данных) и
-  **B — состояние** (PostgreSQL, paper runtime): лёгкий процесс — один developer,
+  **B — состояние и Testnet** (PostgreSQL, paper runtime, всё исполнение на
+  Testnet): лёгкий процесс — один developer,
   независимый reviewer (Codex GitHub review), handoff в описании PR; после
   review без замечаний и зелёного CI PR вливает Codex.
-- **C — деньги** (private API, заявки, исполнение, reconciliation, risk limits):
-  полный процесс с designer, GREEN по хэшам, очередью интеграции и одобрением
-  владельца.
+- **C — live** (всё, что может затронуть реальные деньги: включение Mainnet,
+  Mainnet runtime и deploy, Mainnet risk limits, destructive migrations): полный
+  процесс с designer, GREEN по хэшам, очередью интеграции и одобрением владельца.
 
 При сомнении выбирается более высокий класс. Классы, лимиты и обе процедуры — в
 [.ai/WORKFLOW.md](.ai/WORKFLOW.md); он обязателен для orchestrator и всех ролей
