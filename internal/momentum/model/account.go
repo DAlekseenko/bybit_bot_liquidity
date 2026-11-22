@@ -54,8 +54,10 @@ type AccountOrder struct {
 	PositionIdx           int
 	Qty, LeavesQty, Price Decimal
 	ReduceOnly            bool
-	CreatedTime           time.Time
-	UpdatedTime           time.Time
+	// CloseOnTrigger с ReduceOnly и Qty=0 обозначает close-all условную заявку.
+	CloseOnTrigger bool
+	CreatedTime    time.Time
+	UpdatedTime    time.Time
 }
 
 // AccountInventory хранит все позиции и активные заявки счёта, а не только символы стратегии.
