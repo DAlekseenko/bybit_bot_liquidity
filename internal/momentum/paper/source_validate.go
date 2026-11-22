@@ -152,15 +152,18 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 	if o.DailyBars != r.DailyBars || o.SourceClock.Nanosecond()%int(time.Millisecond) != 0 || o.SourceClock.Before(r.Run.ScheduledAt) || !fresh(o.SourceClock, o.CapturedAt, r.Profile.SourceMaxAge) || !fresh(o.CapturedAt, r.Now(), r.Profile.SourceMaxAge) || o.CapturedAt.Before(r.Run.ScheduledAt) || !o.CapturedAt.Before(r.Run.ScheduledAt.Add(r.Profile.DataDeadline)) {
 		return empty, ErrPaperObservation
 	}
+	pages, err := indexSourcePages(o)
+	if err != nil {
+		return empty, err
+	}
 	out := MarketSlice{DailySeries: make(map[string][]data.DailyClose), Marks: make(map[string]model.LongMarkObservation), ReferencePrices: make(map[string]model.Decimal)}
-	tradeIndex, fundingIndex := 0, 0
-	usedMarks := make(map[int]bool)
+	usedMarks := make(map[model.MarkPricePageRequest]bool)
 	for _, symbol := range r.Run.Config.Values().Symbols {
 		if r.DailyBars > 0 {
-			if tradeIndex >= len(o.TradeWindows) {
-				return empty, ErrPaperObservation
-			}
-			w := o.TradeWindows[tradeIndex]
+			start, end := dailyBounds(r.Run.ScheduledAt, r.DailyBars)
+			key := tradeRequestKey{symbol, "D", start, end}
+			w := pages.trade[key]
+			delete(pages.trade, key)
 			if validateTrade(w, symbol, "D", r.Run.ScheduledAt, r.DailyBars) != nil || !fresh(w.Page.ServerTime, o.CapturedAt, r.Profile.SourceMaxAge) {
 				return empty, ErrPaperObservation
 			}
@@ -169,18 +172,16 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 				daily[len(daily)-1-i] = data.DailyClose{Symbol: symbol, OpenTime: c.OpenTime, Close: c.Close, Confirmed: c.Confirmed}
 			}
 			out.DailySeries[symbol] = daily
-			tradeIndex++
 		}
-		if tradeIndex >= len(o.TradeWindows) {
-			return empty, ErrPaperObservation
-		}
-		w := o.TradeWindows[tradeIndex]
+		open := previousHour(r.Run.ScheduledAt)
+		key := tradeRequestKey{symbol, "60", open.UnixMilli(), open.Add(time.Hour - time.Millisecond).UnixMilli()}
+		w := pages.trade[key]
+		delete(pages.trade, key)
 		if validateTrade(w, symbol, "60", r.Run.ScheduledAt, 1) != nil || !fresh(w.Page.ServerTime, o.CapturedAt, r.Profile.SourceMaxAge) {
 			return empty, ErrPaperObservation
 		}
 		out.ReferencePrices[symbol] = w.Page.Candles[0].Close
-		tradeIndex++
-		mark, err := savedMark(r, o, symbol, r.Run.ScheduledAt, usedMarks)
+		mark, err := pages.savedMark(r, o.CapturedAt, symbol, r.Run.ScheduledAt, usedMarks)
 		if err != nil {
 			return empty, err
 		}
@@ -189,11 +190,10 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 		var events []model.FundingEvent
 		start, end := r.FundingAfter.UnixMilli()+1, r.Run.ScheduledAt.UnixMilli()
 		for start <= end {
-			if fundingIndex >= len(o.FundingPages) {
-				return empty, ErrPaperObservation
-			}
-			p := o.FundingPages[fundingIndex]
-			decision, e := model.NextFundingPage(model.FundingPageRequest{Environment: "testnet", Symbol: symbol, Start: time.UnixMilli(start).UTC(), End: time.UnixMilli(end).UTC()}, p)
+			request := model.FundingPageRequest{Environment: "testnet", Symbol: symbol, Start: time.UnixMilli(start).UTC(), End: time.UnixMilli(end).UTC()}
+			p := pages.funding[request]
+			delete(pages.funding, request)
+			decision, e := model.NextFundingPage(request, p)
 			if e != nil || !fresh(p.ServerTime, o.CapturedAt, r.Profile.SourceMaxAge) {
 				return empty, ErrPaperObservation
 			}
@@ -201,7 +201,6 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 				return empty, paperwire.ErrPaperResourceLimit
 			}
 			events = append(events, p.Events...)
-			fundingIndex++
 			if decision.Action != model.FundingPageContinue {
 				break
 			}
@@ -219,7 +218,7 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 			}
 		}
 		for _, event := range events {
-			m, e := savedMark(r, o, symbol, event.FundingTime, usedMarks)
+			m, e := pages.savedMark(r, o.CapturedAt, symbol, event.FundingTime, usedMarks)
 			if e != nil {
 				return empty, e
 			}
@@ -228,7 +227,7 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 			out.Funding = append(out.Funding, model.LongFundingAssessment{FundingID: hex.EncodeToString(hash[:]), Symbol: symbol, Event: event, MarkPrice: m.Price})
 		}
 	}
-	if tradeIndex != len(o.TradeWindows) || fundingIndex != len(o.FundingPages) || len(usedMarks) != len(o.MarkPages) {
+	if len(pages.trade) != 0 || len(pages.funding) != 0 || len(usedMarks) != len(o.MarkPages) {
 		return empty, ErrPaperObservation
 	}
 	sort.Slice(out.Funding, func(i, j int) bool {
@@ -239,30 +238,4 @@ func ValidateCycleObservation(r SourceRequest, o paperwire.Observation) (MarketS
 		return a.Event.FundingTime.Before(b.Event.FundingTime)
 	})
 	return out, nil
-}
-
-// savedMark требует отдельную полную страницу mark с точной request identity.
-func savedMark(r SourceRequest, o paperwire.Observation, symbol string, at time.Time, used map[int]bool) (model.LongMarkObservation, error) {
-	var result model.LongMarkObservation
-	open := previousHour(at)
-	found := false
-	for i, p := range o.MarkPages {
-		if p.Symbol != symbol || !p.StartTime.Equal(open) {
-			continue
-		}
-		if found || !used[i] && i != len(used) {
-			return result, ErrPaperObservation
-		}
-		found = true
-		decision, err := model.NextMarkPricePage(model.MarkPricePageRequest{Environment: "testnet", Symbol: symbol, IntervalCode: "60", Start: open, End: open.Add(time.Hour - time.Millisecond)}, p)
-		if err != nil || decision.Action != model.MarkPricePageLowerReached || len(p.Candles) != 1 || !fresh(p.ServerTime, o.CapturedAt, r.Profile.SourceMaxAge) || at.Sub(open.Add(time.Hour)) > r.Profile.Parameters.MarkMaxAge {
-			return result, ErrPaperObservation
-		}
-		result = model.LongMarkObservation{Symbol: symbol, ObservedAt: open.Add(time.Hour), Price: p.Candles[0].Close}
-		used[i] = true
-	}
-	if !found {
-		return result, ErrPaperObservation
-	}
-	return result, nil
 }
