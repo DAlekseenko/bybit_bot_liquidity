@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -97,25 +98,34 @@ func readPaperCommand(ctx context.Context, q interface {
 	return out, nil
 }
 
-// ApplyPaperCommandState атомарно создаёт paper scope или возвращает исходный INIT audit.
+// ApplyPaperCommandState атомарно применяет CAS или возвращает exact исходный replay.
 func ApplyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequest) (PaperCommandState, error) {
 	return applyPaperCommandState(ctx, db, in, nil)
 }
 
 // applyPaperCommandState позволяет проверить rollback до commit без внешних эффектов.
 func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequest, beforeCommit func(*sql.Tx) error) (PaperCommandState, error) {
+	mode := paperCommandMode(in.Action, in.Kind, in.Actor)
 	key, keyErr := hex.DecodeString(in.ConfigHash)
-	if ctx == nil || db == nil || !paperControlScope(in.Scope) || in.Action != "INITIALIZE" ||
-		in.Actor != "SYSTEM" || in.Kind != "initialize" || in.ExpectedRevision != 0 || in.Config == nil ||
+	init := in.Action == "INITIALIZE"
+	if ctx == nil || db == nil || !paperControlScope(in.Scope) || mode == "" ||
 		!paperControlText(in.ActorID, in.CommandID, in.Reason) || keyErr != nil || len(key) != 32 ||
-		hex.EncodeToString(key) != in.ConfigHash || in.RecoveryID != "" {
+		hex.EncodeToString(key) != in.ConfigHash || in.ExpectedRevision >= math.MaxInt64 ||
+		init != (in.ExpectedRevision == 0) || init != (in.Config != nil) ||
+		!init && !in.Confirmed || in.Action == "RESUME" && !paperControlText(in.RecoveryID) ||
+		in.Action != "RESUME" && in.RecoveryID != "" {
 		return PaperCommandState{}, controlFailure(ctx, ErrControlArgument)
 	}
-	payload, hash, err := in.Config.Snapshot()
-	v := in.Config.Values()
-	if err != nil || hash != in.ConfigHash || v.Mode != "paper" || v.StrategyID != in.Scope.StrategyID ||
-		v.DataSource.Kind != "bybit_testnet_public" || v.DataSource.Environment != "testnet" {
-		return PaperCommandState{}, controlFailure(ctx, ErrControlArgument)
+	var payload []byte
+	if init {
+		var hash string
+		var err error
+		payload, hash, err = in.Config.Snapshot()
+		v := in.Config.Values()
+		if err != nil || hash != in.ConfigHash || v.Mode != "paper" || v.StrategyID != in.Scope.StrategyID ||
+			v.DataSource.Kind != "bybit_testnet_public" || v.DataSource.Environment != "testnet" {
+			return PaperCommandState{}, controlFailure(ctx, ErrControlArgument)
+		}
 	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
@@ -130,10 +140,10 @@ func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequ
 	if err != nil && !absent {
 		return PaperCommandState{}, err
 	}
-	if !absent && latest.ConfigHash != in.ConfigHash {
+	if !absent && latest.ConfigHash != in.ConfigHash || absent && !init {
 		return PaperCommandState{}, controlFailure(ctx, ErrControlConflict)
 	}
-	want := PaperCommandState{State: ControlState{Revision: 1, Mode: "ACTIVE"},
+	want := PaperCommandState{State: ControlState{Revision: in.ExpectedRevision + 1, Mode: mode},
 		Action: in.Action, Actor: in.Actor, ActorID: in.ActorID, CommandID: in.CommandID,
 		Kind: in.Kind, Reason: in.Reason, ConfigHash: in.ConfigHash, RecoveryID: in.RecoveryID}
 	if !absent {
@@ -149,18 +159,20 @@ func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequ
 			return PaperCommandState{}, readErr
 		}
 	}
-	if !absent {
+	if latest.State.Revision != in.ExpectedRevision || !absent && init || latest.State.Mode == "HALTED" && in.Action == "PAUSE_ENTRIES" {
 		return PaperCommandState{}, controlFailure(ctx, ErrControlConflict)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES($1,$2) ON CONFLICT DO NOTHING`, key, payload)
-	if err != nil {
-		return PaperCommandState{}, controlFailure(ctx, nil)
+	if init {
+		_, err = tx.ExecContext(ctx, `INSERT INTO momentum.config_snapshots(config_hash,payload) VALUES($1,$2) ON CONFLICT DO NOTHING`, key, payload)
+		if err != nil {
+			return PaperCommandState{}, controlFailure(ctx, nil)
+		}
 	}
 	audit, _ := json.Marshal(paperCommandAudit{"momentum/paper-control-audit/v1", in.CommandID, in.ActorID, in.Kind, in.Reason})
 	_, err = tx.ExecContext(ctx, `INSERT INTO momentum.control_revisions
  (environment,account_id,strategy_id,revision,mode,action,actor,reason,config_hash,confirmation_id,reconciliation_id)
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULLIF($11,''))`, in.Scope.Environment, in.Scope.AccountID,
-		in.Scope.StrategyID, int64(want.State.Revision), want.State.Mode, in.Action, in.Actor, string(audit), key, in.CommandID, in.RecoveryID)
+		in.Scope.StrategyID, int64(want.State.Revision), mode, in.Action, in.Actor, string(audit), key, in.CommandID, in.RecoveryID)
 	if err != nil {
 		return PaperCommandState{}, controlFailure(ctx, nil)
 	}
