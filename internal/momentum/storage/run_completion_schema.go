@@ -21,6 +21,9 @@ CREATE FUNCTION momentum.guard_run_completion() RETURNS trigger
    IF TG_OP <> 'INSERT' THEN
      RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'momentum run completion is immutable';
    END IF;
+   IF current_setting('transaction_isolation') <> 'read committed' THEN
+     RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'momentum run writer requires read committed';
+   END IF;
    PERFORM 1 FROM momentum.rebalance_runs r WHERE r.run_id = NEW.run_id FOR UPDATE;
    IF TG_TABLE_NAME = 'plan_revisions' THEN
      -- Повтор существующей revision разрешает ON CONFLICT вызывающего кода.

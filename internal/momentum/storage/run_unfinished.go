@@ -20,7 +20,7 @@ func ReadUnfinishedPlannedRun(ctx context.Context, db *sql.DB, accountID, strate
 	var in RebalanceRunInput
 	var payload []byte
 	err := db.QueryRowContext(ctx, `SELECT r.run_id,r.scheduled_at,coalesce(r.onboarding_id,''),c.payload
- FROM momentum.rebalance_runs r JOIN momentum.config_snapshots c ON c.config_hash=r.config_hash
+ FROM momentum.rebalance_runs r LEFT JOIN momentum.config_snapshots c ON c.config_hash=r.config_hash
  WHERE r.account_id=$1 AND r.strategy_id=$2
  AND EXISTS (SELECT 1 FROM momentum.plan_revisions p WHERE p.run_id=r.run_id)
  AND NOT EXISTS (SELECT 1 FROM momentum.run_completions d WHERE d.run_id=r.run_id)
