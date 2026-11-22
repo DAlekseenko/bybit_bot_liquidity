@@ -25,3 +25,9 @@ func (s DBStore) RecordIntent(ctx context.Context, in execution.OrderIntent) err
 func (s DBStore) MarkState(ctx context.Context, orderLinkID string, state execution.OrderState) error {
 	return storage.SetOrderIntentState(ctx, s.DB, s.Environment, s.AccountID, orderLinkID, string(state))
 }
+
+// Acknowledge делегирует storage.AcknowledgeOrderIntent.
+func (s DBStore) Acknowledge(ctx context.Context, orderLinkID string) error {
+	_, err := storage.AcknowledgeOrderIntent(ctx, s.DB, s.Environment, s.AccountID, orderLinkID)
+	return err
+}

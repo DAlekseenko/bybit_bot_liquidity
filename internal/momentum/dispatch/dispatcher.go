@@ -26,6 +26,9 @@ var (
 type Store interface {
 	RecordIntent(ctx context.Context, intent execution.OrderIntent) error
 	MarkState(ctx context.Context, orderLinkID string, state execution.OrderState) error
+	// Acknowledge ставит ACKNOWLEDGED только из PENDING/SENT/UNKNOWN; продвинутое
+	// состояние (fills, отмена) не понижается.
+	Acknowledge(ctx context.Context, orderLinkID string) error
 }
 
 // Permit разрешает одну отправку; реализует storage.ExecutionOwner.
@@ -76,8 +79,7 @@ func (d Dispatcher) Send(ctx context.Context, intent execution.OrderIntent) (Out
 	ack, err := d.Exchange.CreateMomentumOrder(ctx, body)
 	switch {
 	case err == nil:
-		return Outcome{State: execution.StateAcknowledged, Ack: &ack},
-			d.mark(ctx, intent.OrderLinkID, execution.StateAcknowledged)
+		return Outcome{State: execution.StateAcknowledged, Ack: &ack}, d.ack(ctx, intent.OrderLinkID)
 	case errors.Is(err, bybit.ErrOrderLinkDuplicate):
 		return d.Reconcile(ctx, intent, sentAt)
 	case errors.Is(err, bybit.ErrOrderRejected):
@@ -103,7 +105,7 @@ func (d Dispatcher) Reconcile(ctx context.Context, intent execution.OrderIntent,
 		}
 		return Outcome{State: execution.StateUnknown}, err
 	}
-	return Outcome{State: execution.StateAcknowledged, Record: &record}, d.mark(ctx, intent.OrderLinkID, execution.StateAcknowledged)
+	return Outcome{State: execution.StateAcknowledged, Record: &record}, d.ack(ctx, intent.OrderLinkID)
 }
 
 // Retry повторяет отправку UNKNOWN-заявки с тем же orderLinkId, только если сверка
@@ -123,6 +125,14 @@ func (d Dispatcher) now() time.Time {
 		return time.Now().UTC()
 	}
 	return d.Now().UTC()
+}
+
+// ack сохраняет подтверждение биржи, не понижая продвинутое состояние.
+func (d Dispatcher) ack(ctx context.Context, orderLinkID string) error {
+	if err := d.Store.Acknowledge(ctx, orderLinkID); err != nil {
+		return errors.Join(ErrDispatch, err)
+	}
+	return nil
 }
 
 // mark сохраняет состояние после ответа биржи; сбой не отменяет факт отправки.

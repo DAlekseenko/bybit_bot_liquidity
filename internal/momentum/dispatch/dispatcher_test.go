@@ -38,6 +38,15 @@ func (s *fakeStore) MarkState(_ context.Context, _ string, state execution.Order
 	return nil
 }
 
+// Acknowledge фиксирует подтверждение как отдельный вызов.
+func (s *fakeStore) Acknowledge(_ context.Context, _ string) error {
+	s.calls = append(s.calls, "ACKNOWLEDGED")
+	if s.failState == execution.StateAcknowledged {
+		return errors.New("db unavailable")
+	}
+	return nil
+}
+
 // fakeOwner возвращает заданную ошибку права отправки.
 type fakeOwner struct{ err error }
 
