@@ -44,8 +44,12 @@ func TestCashLedgerEntries(t *testing.T) {
 		_, err := RecordCashLedgerEntry(ctx, db, bad)
 		requireExecutionErr(t, err, ErrExecutionArgument)
 	}
-	for cutoff, want := range map[time.Time]string{at: "-0.12", at.Add(time.Hour): "499.88", at.Add(-time.Hour): "0"} {
-		got, err := LedgerWalletDelta(ctx, db, "testnet", "acc", cutoff)
+	if _, err := RecordFill(ctx, db, "testnet", "acc", "link-1", model.ConfirmedFill{ExecutionID: "e1", Symbol: "BTCUSDT",
+		Side: model.FillBuy, ExecutedAt: at, Quantity: amount("0.01"), ExecutionPrice: amount("90000"), FeeUSDT: amount("0.54")}); err != nil {
+		t.Fatal(err)
+	}
+	for cutoff, want := range map[time.Time]string{at: "-0.66", at.Add(time.Hour): "499.34", at.Add(-time.Hour): "0"} {
+		got, err := LedgerCashDelta(ctx, db, "testnet", "acc", cutoff)
 		if s, _ := got.WireDecimal(); err != nil || s != want {
 			t.Fatalf("delta at %s = %s %v, want %s", cutoff, s, err, want)
 		}

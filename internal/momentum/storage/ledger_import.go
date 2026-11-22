@@ -50,15 +50,17 @@ func RecordCashLedgerEntry(ctx context.Context, db *sql.DB, e CashLedgerEntry) (
 	return false, nil
 }
 
-// LedgerWalletDelta возвращает сумму всех проводок счёта (FILL, FEE, FUNDING, TRANSFER)
-// не позже cutoff — изменение wallet по ledger для сверки equity с биржей.
-func LedgerWalletDelta(ctx context.Context, db *sql.DB, environment, accountID string, cutoff time.Time) (model.Decimal, error) {
+// LedgerCashDelta возвращает сумму проводок FEE, FUNDING и TRANSFER счёта не позже
+// cutoff. FILL-проводки хранят полный notional сделки, а не изменение wallet,
+// поэтому не входят: realized P&L вычисляется replay fills (model.ReplayCashflowLedger),
+// и wallet = начальный капитал + realized + LedgerCashDelta.
+func LedgerCashDelta(ctx context.Context, db *sql.DB, environment, accountID string, cutoff time.Time) (model.Decimal, error) {
 	if ctx == nil || db == nil || cutoff.IsZero() || !nonBlank(environment, accountID) {
 		return model.Decimal{}, executionFailure(ctx, ErrExecutionArgument)
 	}
 	var sum string
 	err := db.QueryRowContext(ctx, `SELECT coalesce(sum(amount_usdt),0)::text FROM momentum.ledger_entries
- WHERE environment=$1 AND account_id=$2 AND occurred_at<=$3::timestamptz`,
+ WHERE environment=$1 AND account_id=$2 AND kind<>'FILL' AND occurred_at<=$3::timestamptz`,
 		environment, accountID, cutoff.UTC().Format(time.RFC3339Nano)).Scan(&sum)
 	if err != nil {
 		return model.Decimal{}, executionFailure(ctx, nil)
