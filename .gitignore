@@ -8,4 +8,5 @@
 
 # Local configuration
 /.env
+/ops/momentum.env
 /.serena/
