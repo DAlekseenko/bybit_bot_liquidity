@@ -120,3 +120,25 @@ func TestExecutionOwnerParallel(t *testing.T) {
 	planRepositoryCheck(t, won == 1, "exactly one candidate must own the scope, got "+strconv.Itoa(won))
 	migrationValue(t, db, "SELECT count(*) FROM momentum.execution_owner_sessions WHERE ended_at IS NULL", "1")
 }
+
+// TestExecutionOwnerReleaseEdgeCases проверяет перенос требования сверки через выход и снятие lock при отменённом контексте.
+func TestExecutionOwnerReleaseEdgeCases(t *testing.T) {
+	ctx := context.Background()
+	db := ownerDatabase(t)
+	marketStatement(t, db, `INSERT INTO momentum.execution_owner_sessions(session_id,environment,account_id,strategy_id,
+ host,process_id,started_at,last_seen_at) VALUES ('a','testnet','acc','s','old',1,'2026-01-04+00','2026-01-04+00')`, true)
+	b, err := AcquireExecutionOwner(ctx, db, ownerID("b", "s"), ownerT0)
+	migrationResult(t, err, nil)
+	migrationResult(t, b.Release(ctx, ownerT0.Add(time.Minute)), nil)
+	c := acquireOwner(t, db, ownerID("c", "s"), ownerT0.Add(2*time.Minute))
+	planRepositoryCheck(t, c.NeedsReconciliation(), "unreconciled takeover must not become clean on release")
+	migrationResult(t, c.MarkReconciled("rec"), nil)
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	migrationResult(t, c.Release(canceled, ownerT0.Add(3*time.Minute)), ErrOwnerLost)
+	d, err := AcquireExecutionOwner(ctx, db, ownerID("d", "s"), ownerT0.Add(4*time.Minute))
+	migrationResult(t, err, nil)
+	defer d.Release(ctx, ownerT0.Add(5*time.Minute))
+	planRepositoryCheck(t, d.NeedsReconciliation(), "release without confirmed clean shutdown must require reconciliation")
+	migrationValue(t, db, ownerHistory, "a:STALE_TAKEOVER,b:STALE_TAKEOVER,c:LOCK_LOST,d:active")
+}

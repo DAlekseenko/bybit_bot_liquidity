@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/binary"
 	"errors"
 	"strings"
@@ -70,16 +71,15 @@ func AcquireExecutionOwner(ctx context.Context, db *sql.DB, id OwnerIdentity, no
 	}
 	owner := &ExecutionOwner{db: db, conn: conn, id: id, key: ownerLockKey(id), done: make(chan struct{})}
 	var locked bool
-	if err := conn.QueryRowContext(ctx, `SELECT pg_catalog.pg_try_advisory_lock($1)`, owner.key).Scan(&locked); err != nil || !locked {
+	if err := conn.QueryRowContext(ctx, `SELECT pg_catalog.pg_try_advisory_lock($1)`, owner.key).Scan(&locked); err != nil {
+		discardConn(conn) // исход захвата неизвестен
+		return nil, errors.Join(ErrOwner, ctx.Err())
+	} else if !locked {
 		conn.Close()
-		if err != nil {
-			return nil, errors.Join(ErrOwner, ctx.Err())
-		}
 		return nil, errors.Join(ErrOwner, ErrOwnerBusy)
 	}
 	if err := owner.open(ctx, now.UTC()); err != nil {
-		_, _ = conn.ExecContext(context.Background(), `SELECT pg_catalog.pg_advisory_unlock($1)`, owner.key)
-		conn.Close()
+		discardConn(conn)
 		return nil, err
 	}
 	return owner, nil
@@ -157,7 +157,7 @@ func (o *ExecutionOwner) Heartbeat(ctx context.Context, now time.Time) error {
 		if ctx.Err() != nil {
 			return errors.Join(ErrOwner, ctx.Err())
 		}
-		return o.markLost()
+		return o.markLost(true)
 	}
 	o.lastSeen = now.UTC()
 	return nil
@@ -176,20 +176,27 @@ func (o *ExecutionOwner) Permit(ctx context.Context) error {
 	return nil
 }
 
-// Release чисто завершает сессию и освобождает lock; после потери lock — no-op.
+// Release завершает сессию и освобождает lock; после потери lock — no-op.
+// CLEAN_SHUTDOWN пишется только без невыполненной сверки: иначе сессия
+// остаётся активной, и следующий владелец получит STALE_TAKEOVER и требование
+// сверки. Lock снимается закрытием backend-сессии, а не возвратом в пул.
 func (o *ExecutionOwner) Release(ctx context.Context, now time.Time) error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.lost {
 		return nil
 	}
-	defer o.markLost()
-	if _, err := o.conn.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
+	if o.reconcile {
+		o.markLost(false)
+		return nil
+	}
+	_, err := o.conn.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
  SET last_seen_at=greatest(last_seen_at,$2), ended_at=greatest(last_seen_at,$2), end_reason='CLEAN_SHUTDOWN'
- WHERE session_id=$1 AND ended_at IS NULL`, o.id.SessionID, now.UTC()); err != nil {
+ WHERE session_id=$1 AND ended_at IS NULL`, o.id.SessionID, now.UTC())
+	o.markLost(true)
+	if err != nil {
 		return errors.Join(ErrOwner, ErrOwnerLost, ctx.Err())
 	}
-	_, _ = o.conn.ExecContext(ctx, `SELECT pg_catalog.pg_advisory_unlock($1)`, o.key)
 	return nil
 }
 
@@ -209,23 +216,34 @@ func (o *ExecutionOwner) checkLocked(ctx context.Context) error {
 		return errors.Join(ErrOwner, ctx.Err())
 	}
 	if err != nil || !held {
-		return o.markLost()
+		return o.markLost(true)
 	}
 	return nil
 }
 
-// markLost навсегда запрещает отправку, закрывает Done и фиксирует LOCK_LOST через пул.
-func (o *ExecutionOwner) markLost() error {
+// markLost навсегда запрещает отправку, закрывает Done и уничтожает соединение
+// (lock не возвращается в пул). record=true фиксирует LOCK_LOST для ещё
+// активной сессии через пул.
+func (o *ExecutionOwner) markLost(record bool) error {
 	if !o.lost {
 		o.lost = true
 		close(o.done)
-		o.conn.Close()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_, _ = o.db.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
+		discardConn(o.conn)
+		if record {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_, _ = o.db.ExecContext(ctx, `UPDATE momentum.execution_owner_sessions
  SET ended_at=last_seen_at, end_reason='LOCK_LOST' WHERE session_id=$1 AND ended_at IS NULL`, o.id.SessionID)
+		}
 	}
 	return errors.Join(ErrOwner, ErrOwnerLost)
+}
+
+// discardConn закрывает соединение вместе с backend-сессией PostgreSQL, чтобы
+// session-level lock гарантированно снялся: driver.ErrBadConn убирает его из пула.
+func discardConn(conn *sql.Conn) {
+	_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+	_ = conn.Close()
 }
 
 // ownerLockKey выводит стабильный 64-битный ключ advisory lock из области.
