@@ -93,8 +93,8 @@ formula, config hash, `ScheduledAt`, `EquityCutoffAt`, ревизия) и цел
 3. Перенос пакетов — отдельный механический PR без изменения поведения: движок
    в `internal/engine/...`, стратегия в `internal/strategies/momentum/...`.
    Выполняется после M1 или при старте второй стратегии.
-4. Исполнение (этап M4, класс C) проектируется для любого `TradePlan`, а не для
-   Momentum.
+4. Исполнение (этап M4: Testnet — класс B, Mainnet — класс C) проектируется
+   для любого `TradePlan`, а не для Momentum.
 
 ## Последствия
 

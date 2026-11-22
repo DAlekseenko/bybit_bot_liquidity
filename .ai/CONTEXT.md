@@ -36,7 +36,8 @@ policy → execution → подтверждённые fills → ledger. Это �
 adapter. Testnet и Mainnet имеют разные явные guards; Mainnet нельзя включить
 сменой одного поля конфигурации.
 
-Перед подключением торговли (этап M4, класс C) остаются TODO: private
+Перед исполнением на Testnet (этап M4, класс B с ограничениями Testnet; Mainnet —
+класс C) остаются TODO: private
 place/cancel transport и wire format, isolated balance/position read models,
 preflight с маржой, order lifecycle и reconciliation, восстановление после
 перезапуска, безопасная интеграционная проверка Testnet. Новые Issue должны явно
