@@ -161,7 +161,7 @@ func (r *StartupReport) intent(in StartupInput, it StoredIntent) {
 		}
 	}
 	// PARTIALLY_FILLED не понижается до ACKNOWLEDGED, но подтверждённая отмена допустима.
-	if state != it.State && !(it.State == StatePartiallyFilled && state == StateAcknowledged) {
+	if state != it.State && (it.State != StatePartiallyFilled || state != StateAcknowledged) {
 		r.Repairs = append(r.Repairs, Repair{Kind: RepairMarkState, OrderLinkID: it.OrderLinkID, State: state})
 	}
 }
