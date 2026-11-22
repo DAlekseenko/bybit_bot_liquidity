@@ -30,7 +30,7 @@ type ExecutionRecord struct {
 	IsTrade                        bool
 }
 
-// TransactionRecord — строка transaction log в точных decimal.
+// TransactionRecord — строка transaction log в точных decimal; все суммы в USDT.
 type TransactionRecord struct {
 	ID, Type, Symbol, OrderLinkID, TradeID string
 	CashFlow, Funding, Fee, Change         model.Decimal
@@ -125,6 +125,7 @@ func (c *Client) MomentumTransactions(ctx context.Context, window HistoryWindow)
 	if err != nil {
 		return page, err
 	}
+	query.Set("currency", "USDT") // суммы ниже — только USDT; иные валюты отвергаются
 	server, err := c.signedGet(ctx, "/v5/account/transaction-log", query, &result)
 	if err != nil {
 		return page, err
@@ -133,7 +134,7 @@ func (c *Client) MomentumTransactions(ctx context.Context, window HistoryWindow)
 	for _, it := range result.List {
 		at, err := historyTime(it.TransactionTime, window)
 		values, vErr := decimals(it.CashFlow, it.Funding, it.Fee, it.Change)
-		if err != nil || vErr != nil || it.ID == "" || it.Type == "" {
+		if err != nil || vErr != nil || it.ID == "" || it.Type == "" || it.Currency != "USDT" {
 			return HistoryPage[TransactionRecord]{}, fmt.Errorf("%w: transaction", ErrHistoryData)
 		}
 		page.Items = append(page.Items, TransactionRecord{ID: it.ID, Type: it.Type, Symbol: it.Symbol, OrderLinkID: it.OrderLinkID,
@@ -265,4 +266,5 @@ type transactionItem struct {
 	Change          string `json:"change"`
 	OrderLinkID     string `json:"orderLinkId"`
 	TradeID         string `json:"tradeId"`
+	Currency        string `json:"currency"`
 }

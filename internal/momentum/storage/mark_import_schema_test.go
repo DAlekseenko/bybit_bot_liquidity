@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,7 @@ func TestMarkImportProgressMigration(t *testing.T) {
 	}
 	fresh := openTestPostgres(t)
 	migrationResult(t, MigrateMomentumPostgres(ctx, fresh), nil)
-	migrationValue(t, fresh, "SELECT count(*) FROM momentum.schema_migrations", "13")
+	migrationValue(t, fresh, "SELECT count(*) FROM momentum.schema_migrations", strconv.Itoa(len(momentumMigrations())))
 }
 
 // markProgressDatabase создаёт отдельную схему и оба допустимых dataset namespace.

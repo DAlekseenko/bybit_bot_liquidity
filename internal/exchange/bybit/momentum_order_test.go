@@ -51,6 +51,7 @@ func TestMomentumOrderErrors(t *testing.T) {
 		{"reject", `{"retCode":10001,"retMsg":"params error","result":{},"time":1}`, 200, ErrOrderRejected},
 		{"duplicate", `{"retCode":110072,"retMsg":"OrderLinkedID is duplicate","result":{},"time":1}`, 200, ErrOrderLinkDuplicate},
 		{"server-error", `oops`, 502, ErrPostOutcomeUnknown},
+		{"duplicate-request", `{"retCode":10014,"retMsg":"invalid duplicate request","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
 		{"busy", `{"retCode":10016,"retMsg":"busy","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
 		{"foreign-ack", `{"retCode":0,"retMsg":"OK","result":{"orderId":"o9","orderLinkId":"other"},"time":1}`, 200, ErrOrderAckMalformed},
 		{"empty-ack", `{"retCode":0,"retMsg":"OK","result":{},"time":1}`, 200, ErrPostOutcomeUnknown},
@@ -95,5 +96,16 @@ func TestCreateMomentumOrderTimeout(t *testing.T) {
 	}))
 	if _, err := client.CreateMomentumOrder(context.Background(), json.RawMessage(createBody)); !errors.Is(err, ErrPostOutcomeUnknown) || calls != 1 {
 		t.Fatalf("timeout err=%v calls=%d", err, calls)
+	}
+}
+
+// TestCancelMomentumOrderInactiveCodes проверяет, что исполненная или отменённая заявка не считается отказом.
+func TestCancelMomentumOrderInactiveCodes(t *testing.T) {
+	for _, code := range []string{"110001", "110008", "110010"} {
+		client, _ := orderClient(t, 200, `{"retCode":`+code+`,"retMsg":"inactive","result":{},"time":1}`, nil)
+		_, err := client.CancelMomentumOrder(context.Background(), "BTCUSDT", "cm-1")
+		if !errors.Is(err, ErrOrderNotCancellable) || errors.Is(err, ErrOrderRejected) {
+			t.Errorf("retCode %s: %v", code, err)
+		}
 	}
 }
