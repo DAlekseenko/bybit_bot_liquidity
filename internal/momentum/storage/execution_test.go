@@ -104,6 +104,40 @@ func TestRecordFillPartialAndDuplicate(t *testing.T) {
 	migrationValue(t, db, "SELECT state FROM momentum.order_intents WHERE order_link_id='link-1'", "FILLED")
 }
 
+// TestRecordFillPreservesCancellation проверяет, что повтор и поздний частичный fill не снимают CANCELLED.
+func TestRecordFillPreservesCancellation(t *testing.T) {
+	db := executionLedgerDatabase(t)
+	ctx := context.Background()
+	sum := sha256.Sum256([]byte("one"))
+	in := OrderIntent{IntentID: "i3", Environment: "testnet", AccountID: "acc", OrderLinkID: "link-3", RunID: "run",
+		PlanRevision: 1, PlanHash: hex.EncodeToString(sum[:]), Symbol: "BTCUSDT", Side: model.FillBuy,
+		Quantity: testQty(t, "0.01")}
+	if err := RecordOrderIntent(ctx, db, in); err != nil {
+		t.Fatal(err)
+	}
+	const state = "SELECT state FROM momentum.order_intents WHERE order_link_id='link-3'"
+	if _, err := RecordFill(ctx, db, "testnet", "acc", "link-3", testFill(t, "c1", "0.004")); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetOrderIntentState(ctx, db, "testnet", "acc", "link-3", "CANCELLED"); err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range []struct {
+		id, qty, state string
+		inserted       bool
+	}{
+		{"c1", "0.004", "CANCELLED", false},
+		{"c2", "0.002", "CANCELLED", true},
+		{"c3", "0.004", "FILLED", true},
+	} {
+		got, err := RecordFill(ctx, db, "testnet", "acc", "link-3", testFill(t, s.id, s.qty))
+		if err != nil || got.Inserted != s.inserted || got.State != s.state {
+			t.Fatalf("step %d: %+v %v", i, got, err)
+		}
+		migrationValue(t, db, state, s.state)
+	}
+}
+
 // TestRecordFillInjectedFailure проверяет откат fill, проводок и состояния при сбое перед COMMIT.
 func TestRecordFillInjectedFailure(t *testing.T) {
 	db := executionLedgerDatabase(t)

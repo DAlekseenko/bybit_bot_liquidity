@@ -95,8 +95,9 @@ func SetOrderIntentState(ctx context.Context, db *sql.DB, environment, accountID
 }
 
 // RecordFill одной транзакцией сохраняет fill, его проводки FILL/FEE и новое
-// состояние намерения. Повтор того же execution ID — no-op; конкурентные записи
-// одного намерения сериализуются блокировкой строки намерения.
+// состояние намерения. Повтор того же execution ID — no-op и не меняет
+// сохранённое состояние; новый частичный fill не снимает CANCELLED. Конкурентные
+// записи одного намерения сериализуются блокировкой строки намерения.
 func RecordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLinkID string, fill model.ConfirmedFill) (FillResult, error) {
 	return recordFill(ctx, db, environment, accountID, orderLinkID, fill, nil)
 }
@@ -118,9 +119,9 @@ func recordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLi
 		return FillResult{}, executionFailure(ctx, nil)
 	}
 	defer tx.Rollback()
-	var symbol, side, intentQty string
-	err = tx.QueryRowContext(ctx, `SELECT symbol, side, quantity::text FROM momentum.order_intents
- WHERE environment=$1 AND account_id=$2 AND order_link_id=$3 FOR UPDATE`, environment, accountID, orderLinkID).Scan(&symbol, &side, &intentQty)
+	var symbol, side, intentQty, storedState string
+	err = tx.QueryRowContext(ctx, `SELECT symbol, side, quantity::text, state FROM momentum.order_intents
+ WHERE environment=$1 AND account_id=$2 AND order_link_id=$3 FOR UPDATE`, environment, accountID, orderLinkID).Scan(&symbol, &side, &intentQty, &storedState)
 	if errors.Is(err, sql.ErrNoRows) {
 		return FillResult{}, executionFailure(ctx, ErrExecutionAbsent)
 	} else if err != nil {
@@ -156,7 +157,9 @@ func recordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLi
 	if state == "OVERFILLED" {
 		return FillResult{}, executionFailure(ctx, ErrExecutionConflict)
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE momentum.order_intents SET state=$4, updated_at=CURRENT_TIMESTAMP
+	if !inserted || (storedState == "CANCELLED" && state == "PARTIALLY_FILLED") {
+		state = storedState
+	} else if _, err = tx.ExecContext(ctx, `UPDATE momentum.order_intents SET state=$4, updated_at=CURRENT_TIMESTAMP
  WHERE environment=$1 AND account_id=$2 AND order_link_id=$3`, environment, accountID, orderLinkID, state); err != nil {
 		return FillResult{}, executionFailure(ctx, nil)
 	}
