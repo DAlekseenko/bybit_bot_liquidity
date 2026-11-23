@@ -78,20 +78,20 @@ func readPaperCommand(ctx context.Context, q interface {
 	if err != nil || out.State.Revision == 0 || !created.Valid || parseErr != nil || snapshotErr != nil ||
 		!bytes.Equal(canonical, payload) || hash != out.ConfigHash || v.Mode != "paper" ||
 		v.DataSource.Kind != "bybit_testnet_public" || v.DataSource.Environment != "testnet" || v.StrategyID != scope.StrategyID {
-		return PaperCommandState{}, controlFailure(ctx, nil)
+		return PaperCommandState{}, controlFailure(ctx, errPaperCommandSemantic)
 	}
 	out.CreatedAt = created.Time.UTC()
 	if out.Actor == "OPERATOR" || out.Actor == "SYSTEM" && (out.CommandID != "" || strings.HasPrefix(strings.TrimSpace(out.Reason), "{")) {
 		var audit paperCommandAudit
 		if err := json.Unmarshal([]byte(out.Reason), &audit); err != nil {
-			return PaperCommandState{}, controlFailure(ctx, nil)
+			return PaperCommandState{}, controlFailure(ctx, errPaperCommandSemantic)
 		}
 		encoded, _ := json.Marshal(audit)
 		mode := paperCommandMode(out.Action, audit.Kind, out.Actor)
 		if audit.Format != "momentum/paper-control-audit/v1" || audit.CommandID != out.CommandID ||
 			!paperControlText(audit.ActorID, audit.CommandID, audit.Reason) || !bytes.Equal(encoded, []byte(out.Reason)) || mode != out.State.Mode ||
 			(out.Action == "RESUME" && !paperControlText(out.RecoveryID)) || (out.Action != "RESUME" && out.RecoveryID != "") {
-			return PaperCommandState{}, controlFailure(ctx, nil)
+			return PaperCommandState{}, controlFailure(ctx, errPaperCommandSemantic)
 		}
 		out.ActorID, out.Kind, out.Reason = audit.ActorID, audit.Kind, audit.Reason
 	}
