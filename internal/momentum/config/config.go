@@ -43,6 +43,8 @@ type Values struct {
 	PositionMode   string     `json:"position_mode"`
 	InitialEquity  string     `json:"initial_equity_usdt"`
 	DataSource     DataSource `json:"data_source"`
+	// Testnet задан только для mode=testnet; omitempty сохраняет hash прочих режимов.
+	Testnet *Testnet `json:"testnet,omitempty"`
 }
 
 // DataSource описывает происхождение данных без чтения или сетевого доступа.
@@ -54,20 +56,21 @@ type DataSource struct {
 }
 
 type rawConfig struct {
-	SchemaVersion  *int      `yaml:"schema_version"`
-	StrategyID     string    `yaml:"strategy_id"`
-	Profile        *string   `yaml:"profile"`
-	ProfileVersion string    `yaml:"profile_version"`
-	ModelID        string    `yaml:"model_id"`
-	Mode           *string   `yaml:"mode"`
-	StartPolicy    string    `yaml:"start_policy"`
-	Symbols        []string  `yaml:"symbols"`
-	Leverage       *int      `yaml:"leverage"`
-	MarginMode     string    `yaml:"margin_mode"`
-	AutoAddMargin  *bool     `yaml:"auto_add_margin"`
-	PositionMode   string    `yaml:"position_mode"`
-	InitialEquity  *string   `yaml:"initial_equity_usdt"`
-	DataSource     rawSource `yaml:"data_source"`
+	SchemaVersion  *int        `yaml:"schema_version"`
+	StrategyID     string      `yaml:"strategy_id"`
+	Profile        *string     `yaml:"profile"`
+	ProfileVersion string      `yaml:"profile_version"`
+	ModelID        string      `yaml:"model_id"`
+	Mode           *string     `yaml:"mode"`
+	StartPolicy    string      `yaml:"start_policy"`
+	Symbols        []string    `yaml:"symbols"`
+	Leverage       *int        `yaml:"leverage"`
+	MarginMode     string      `yaml:"margin_mode"`
+	AutoAddMargin  *bool       `yaml:"auto_add_margin"`
+	PositionMode   string      `yaml:"position_mode"`
+	InitialEquity  *string     `yaml:"initial_equity_usdt"`
+	DataSource     rawSource   `yaml:"data_source"`
+	Testnet        *rawTestnet `yaml:"testnet"`
 }
 type rawSource struct {
 	Kind           string `yaml:"kind"`
@@ -123,13 +126,10 @@ func Parse(data []byte) (Config, error) {
 	if profile != "baseline_delta_1x" && profile != "isolated_weekly_reset" {
 		return Config{}, errors.New("unsupported profile")
 	}
-	if mode == "testnet" {
-		return Config{}, errors.New("testnet mode is disabled")
-	}
 	if mode == "live" {
 		return Config{}, errors.New("live mode is disabled")
 	}
-	if mode != "paper" && mode != "backtest" {
+	if mode != "paper" && mode != "backtest" && mode != "testnet" {
 		return Config{}, errors.New("unsupported mode")
 	}
 	if profile == "baseline_delta_1x" && *r.Leverage != 1 || profile == "isolated_weekly_reset" && !oneOf(*r.Leverage, 1, 2, 3, 5) {
@@ -143,13 +143,17 @@ func Parse(data []byte) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	testnet, err := parseTestnet(r.Testnet, mode, profile)
+	if err != nil {
+		return Config{}, err
+	}
 	s := r.DataSource
-	if s.Kind == "bybit_testnet_public" && s.Environment == "testnet" && mode == "paper" && s.DatasetID == "" && s.ManifestSHA256 == "" && !hasDatasetFields(doc.Content[0]) {
+	if s.Kind == "bybit_testnet_public" && s.Environment == "testnet" && (mode == "paper" || mode == "testnet") && s.DatasetID == "" && s.ManifestSHA256 == "" && !hasDatasetFields(doc.Content[0]) {
 	} else if s.Kind == "frozen_dataset" && (s.Environment == "testnet" || s.Environment == "mainnet") && mode == "backtest" && validID(s.DatasetID) && digest.MatchString(s.ManifestSHA256) {
 	} else {
 		return Config{}, errors.New("invalid data source")
 	}
-	return Config{Values{1, r.StrategyID, profile, r.ProfileVersion, r.ModelID, mode, r.StartPolicy, symbols, *r.Leverage, r.MarginMode, *r.AutoAddMargin, r.PositionMode, equity, DataSource(s)}}, nil
+	return Config{Values{1, r.StrategyID, profile, r.ProfileVersion, r.ModelID, mode, r.StartPolicy, symbols, *r.Leverage, r.MarginMode, *r.AutoAddMargin, r.PositionMode, equity, DataSource(s), testnet}}, nil
 }
 
 // CanonicalSymbols проверяет три уникальных USDT-символа и возвращает отсортированную копию.
@@ -181,6 +185,10 @@ func CanonicalSymbols(symbols []string) ([]string, error) {
 func (c Config) Values() Values {
 	v := c.values
 	v.Symbols = append([]string(nil), v.Symbols...)
+	if v.Testnet != nil {
+		t := *v.Testnet
+		v.Testnet = &t
+	}
 	return v
 }
 
