@@ -18,8 +18,8 @@ func privateData(t *testing.T, items ...map[string]string) json.RawMessage {
 	return raw
 }
 
-// executionItem возвращает корректное поле execution.linear с заданными execId и execType.
-func executionItem(id, execType string) map[string]string {
+// privateExecutionEventItem возвращает корректное поле execution.linear с заданными execId и execType.
+func privateExecutionEventItem(id, execType string) map[string]string {
 	return map[string]string{"category": "linear", "symbol": "BTCUSDT", "side": "Buy", "orderId": "o1",
 		"orderLinkId": "l1", "execId": id, "execType": execType, "execPrice": "90000.5", "execQty": "0.004",
 		"execFee": "-0.01", "execTime": "1700000002000"}
@@ -28,7 +28,7 @@ func executionItem(id, execType string) map[string]string {
 // TestParsePrivateEvents проверяет типизированные события, повторы, пропуск Funding и неизвестных топиков.
 func TestParsePrivateEvents(t *testing.T) {
 	events, err := parsePrivateEvents("execution.linear", privateData(t,
-		executionItem("e2", "Trade"), executionItem("e2", "Trade"), executionItem("e1", "AdlTrade"), executionItem("f1", "Funding")))
+		privateExecutionEventItem("e2", "Trade"), privateExecutionEventItem("e2", "Trade"), privateExecutionEventItem("e1", "AdlTrade"), privateExecutionEventItem("f1", "Funding")))
 	if err != nil || len(events) != 3 {
 		t.Fatalf("events=%+v err=%v", events, err)
 	}
@@ -70,9 +70,9 @@ func TestParsePrivateEventsMalformed(t *testing.T) {
 		"spot":        func(m map[string]string) { m["category"] = "spot" },
 		"no order id": func(m map[string]string) { m["orderId"] = "" },
 	} {
-		item := executionItem("e1", "Trade")
+		item := privateExecutionEventItem("e1", "Trade")
 		mutate(item)
-		if _, err := parsePrivateEvents("execution.linear", privateData(t, executionItem("ok", "Trade"), item)); !errors.Is(err, ErrPrivateStreamData) || !errors.Is(err, ErrPrivateStream) {
+		if _, err := parsePrivateEvents("execution.linear", privateData(t, privateExecutionEventItem("ok", "Trade"), item)); !errors.Is(err, ErrPrivateStreamData) || !errors.Is(err, ErrPrivateStream) {
 			t.Errorf("%s: err=%v", name, err)
 		}
 	}
