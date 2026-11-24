@@ -15,6 +15,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f
+        env:
+          POSTGRES_USER: momentum_test_admin
+          POSTGRES_PASSWORD: synthetic_ci_password
+          POSTGRES_DB: momentum_test_admin
+        options: >-
+          --tmpfs /var/lib/postgresql/data
+          --health-cmd "pg_isready -U momentum_test_admin -d momentum_test_admin"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+        ports:
+          - 127.0.0.1::5432
 
     steps:
       - name: Check out repository
@@ -33,9 +48,12 @@ jobs:
         run: go test ./...
 
       - name: Check test coverage
+        env:
+          MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
         run: |
           go test -coverprofile=coverage.out ./...
           total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
+          printf 'Total coverage: %s%%\n' "$total"
           awk -v total="$total" 'BEGIN { if (total < 70) exit 1 }'
 
       - name: Run vulnerability check
