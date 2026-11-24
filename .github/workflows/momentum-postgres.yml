@@ -8,9 +8,14 @@ permissions:
   contents: read
 
 jobs:
-  postgres-smoke:
+  postgres-suites:
+    name: postgres-suites (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [core, paper-lifecycle]
     services:
       postgres:
         image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f
@@ -37,6 +42,7 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: Direct pinned driver smoke and vulnerability check
+        if: matrix.suite == 'core'
         env:
           PG_PORT: ${{ job.services.postgres.ports[5432] }}
           MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
@@ -103,6 +109,42 @@ jobs:
           GOTOOLCHAIN=local go run .
           GOTOOLCHAIN=local go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
       - name: Run Momentum suites with disposable PostgreSQL opt-in
+        shell: bash
         env:
           MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
-        run: go test -race -count=1 -v -timeout=18m ./cmd/momentum ./internal/momentum/...
+          POSTGRES_SUITE: ${{ matrix.suite }}
+          PAPER_LIFECYCLE_TESTS: '^Test(Recovery|PaperOwnerStartup|Resume)'
+        run: |
+          test_flags=(-race -count=1 -v -timeout=18m)
+          case "$POSTGRES_SUITE" in
+            core)
+              packages=$(go list ./cmd/momentum ./internal/momentum/...)
+              paper_package=$(go list ./internal/momentum/paper)
+              core_packages=()
+              while IFS= read -r package; do
+                if [[ "$package" != "$paper_package" ]]; then
+                  core_packages+=("$package")
+                fi
+              done <<< "$packages"
+              test "${#core_packages[@]}" -gt 0
+              go test "${test_flags[@]}" "${core_packages[@]}"
+              go test "${test_flags[@]}" -skip "$PAPER_LIFECYCLE_TESTS" "$paper_package"
+              ;;
+            paper-lifecycle)
+              go test "${test_flags[@]}" -run "$PAPER_LIFECYCLE_TESTS" ./internal/momentum/paper
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    needs: postgres-suites
+    if: always()
+    steps:
+      - name: Require both PostgreSQL suites
+        env:
+          SUITES_RESULT: ${{ needs.postgres-suites.result }}
+        run: test "$SUITES_RESULT" = success
