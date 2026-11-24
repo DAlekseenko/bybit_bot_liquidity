@@ -78,8 +78,12 @@ func NewLifecycle(orderLinkID string, quantity model.Decimal) (Lifecycle, error)
 		exchangeCum: model.Zero(), fills: map[string]model.ConfirmedFill{}}, nil
 }
 
-// State выводит состояние из фазы и подтверждённых fills.
+// State выводит состояние из фазы и подтверждённых fills. Lifecycle, созданный не
+// через NewLifecycle (например, нулевое значение), всегда UNKNOWN.
 func (l Lifecycle) State() OrderState {
+	if !l.valid() {
+		return StateUnknown
+	}
 	full, _ := l.filled.Cmp(l.quantity)
 	some, _ := l.filled.Cmp(model.Zero())
 	switch {
@@ -93,6 +97,14 @@ func (l Lifecycle) State() OrderState {
 		return StatePartiallyFilled
 	}
 	return l.phase
+}
+
+// valid проверяет, что Lifecycle создан NewLifecycle: link задан, объёмы сравнимы.
+func (l Lifecycle) valid() bool {
+	qty, qErr := l.quantity.Cmp(model.Zero())
+	_, fErr := l.filled.Cmp(model.Zero())
+	_, cErr := l.exchangeCum.Cmp(model.Zero())
+	return l.orderLinkID != "" && qErr == nil && qty > 0 && fErr == nil && cErr == nil
 }
 
 // Filled возвращает сумму подтверждённых fills.
@@ -116,6 +128,9 @@ func (l Lifecycle) Settled() bool {
 // Apply применяет свидетельство и возвращает новое состояние; changed=false — no-op.
 func (l Lifecycle) Apply(e Evidence) (next Lifecycle, changed bool, err error) {
 	next = l
+	if !l.valid() {
+		return l, false, errors.Join(ErrLifecycle, ErrInvalidIntentInput)
+	}
 	switch e.Kind {
 	case EvidenceSent:
 		if l.phase == StatePending {
