@@ -11,8 +11,7 @@ type StoredIntent struct {
 	OrderLinkID, Symbol, PlanHash string
 	Side                          model.FillSide
 	State                         OrderState
-	Quantity                      model.Decimal
-	Filled                        model.Decimal // сумма fills в хранилище
+	Quantity, Filled              model.Decimal // Filled — сумма fills в хранилище
 	FillIDs                       map[string]bool
 }
 
@@ -40,10 +39,11 @@ type StartupInput struct {
 	Positions      map[string]model.Decimal // позиции по ledger до починки
 }
 
-// RepairKind — действие, восстанавливающее хранилище по доказательствам биржи.
+// RepairKind — действие, восстанавливающее хранилище по доказательствам биржи:
+// запись пропущенного fill или состояние заявки, найденной на бирже.
 type RepairKind string
 
-// Виды починки: запись пропущенного fill и состояние заявки, найденной на бирже.
+// Виды починки.
 const (
 	RepairRecordFill RepairKind = "RECORD_FILL"
 	RepairMarkState  RepairKind = "MARK_STATE"
@@ -87,11 +87,8 @@ type StartupReport struct {
 	EntriesAllowed bool
 }
 
-// ReconcileStartup сверяет хранилище с биржей без I/O. Пропущенные fills и
-// найденные на бирже заявки чинятся идемпотентно (сначала MARK_STATE, затем
-// RECORD_FILL — в этом порядке их применять); всё остальное попадает в
-// Findings, и новые входы запрещены, пока Findings не пусты. Fill не выводится
-// из отсутствия заявки.
+// ReconcileStartup сверяет хранилище с биржей без I/O: идемпотентные Repairs (применять по
+// порядку: MARK_STATE, затем RECORD_FILL) и Findings, запрещающие входы. Fill не выводится из отсутствия заявки.
 func ReconcileStartup(in StartupInput) StartupReport {
 	var r StartupReport
 	intents := make(map[string]StoredIntent, len(in.Intents))
@@ -120,8 +117,7 @@ func ReconcileStartup(in StartupInput) StartupReport {
 	for _, it := range in.Intents {
 		r.intent(in, it, recovered[it.OrderLinkID])
 	}
-	// Состояния применяются до fills: RecordFill сам выводит PARTIALLY_FILLED/FILLED
-	// и сохраняет CANCELLED, а SetOrderIntentState после FILLED невозможен.
+	// Состояния до fills: RecordFill сам выводит PARTIALLY_FILLED/FILLED, а SetOrderIntentState после FILLED невозможен.
 	r.Repairs = append(r.Repairs, fills...)
 	for _, o := range in.Inventory.Orders {
 		_, known := intents[o.OrderLinkID]
@@ -189,11 +185,7 @@ func (r *StartupReport) positions(in StartupInput, delta map[string]model.Decima
 		want[symbol] = qty
 	}
 	for symbol, d := range delta {
-		base, ok := want[symbol]
-		if !ok {
-			base = model.Zero()
-		}
-		sum, err := base.Add(d)
+		sum, err := addQty(want[symbol], d)
 		if err != nil {
 			r.find(FindingInvalidInput, symbol)
 			continue
@@ -242,23 +234,16 @@ func addQty(a, b model.Decimal) (model.Decimal, error) {
 
 // addSigned прибавляет к позиции символа количество fill со знаком стороны.
 func addSigned(delta map[string]model.Decimal, f model.ConfirmedFill) bool {
-	qty := f.Quantity
+	qty, err := f.Quantity, error(nil)
 	if f.Side == model.FillSell {
-		var err error
-		if qty, err = model.Zero().Sub(f.Quantity); err != nil {
-			return false
-		}
+		qty, err = model.Zero().Sub(f.Quantity)
 	} else if f.Side != model.FillBuy {
 		return false
 	}
-	base, ok := delta[f.Symbol]
-	if !ok {
-		base = model.Zero()
-	}
-	sum, err := base.Add(qty)
 	if err != nil {
 		return false
 	}
+	sum, err := addQty(delta[f.Symbol], qty)
 	delta[f.Symbol] = sum
-	return true
+	return err == nil
 }

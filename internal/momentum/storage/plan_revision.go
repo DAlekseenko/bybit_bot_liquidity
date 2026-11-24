@@ -89,6 +89,9 @@ func StorePlanRevision(ctx context.Context, db *sql.DB, plan model.TradePlan) (S
 		if errors.As(err, &failure) && failure.Code == "23503" {
 			return StoredPlanRevision{}, planRevisionFailure(ctx, ErrPlanRevisionMismatch)
 		}
+		if errors.As(err, &failure) && failure.Code == "55000" {
+			return StoredPlanRevision{}, planRevisionFailure(ctx, ErrRunCompleted)
+		}
 		return StoredPlanRevision{}, planRevisionFailure(ctx, nil)
 	}
 	stored, err := readPlanRevision(ctx, tx, meta.RunID, meta.Revision)
