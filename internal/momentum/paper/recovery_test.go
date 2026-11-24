@@ -167,8 +167,7 @@ func TestRecoveryErrors(t *testing.T) {
 	req.DB = pgtest.Existing(t, x.Name(), s.OpenMomentumPostgres)
 	requireCycleSuccess(t, req.DB.Close())
 	x.rejectRecovery(t.Context(), req, ErrPaperRecoveryUnavailable)
-	req.Admission = nil
-	x.rejectRecovery(t.Context(), req, ErrPaperRecoveryArgument)
+	x.rejectRecovery(t.Context(), RecoveryRequest{DB: req.DB, Scope: req.Scope, PlanBuilder: req.PlanBuilder}, ErrPaperRecoveryArgument)
 }
 
 // TestRecoveryProof фиксирует формат ID и по явным именам сравнивает фактический dump/restore.
@@ -178,10 +177,15 @@ func TestRecoveryProof(t *testing.T) {
 	f.Scope = s.ControlScope{Environment: "paper", AccountID: "account", StrategyID: "strategy"}
 	check.Require((RecoveryProof{facts: f}).digest("r") == "90c28c21117025305de164be3549b89775a9525dda437819af9a1a0355c1ae76" && errors.Is((RecoveryProof{}).CheckData(f), ErrPaperRecoveryArgument), "golden/zero")
 	source, target := os.Getenv("PAPER_A16_SOURCE"), os.Getenv("PAPER_A16_TARGET")
+	in := cycleFixture(t)
 	if source == "" && target == "" {
+		input := preparedFixture(t, in).input
+		facts := s.PaperRunFacts{Input: input, InputFound: true, Head: input.Header(), HeadFound: true}
+		proof := RecoveryProof{facts: facts, id: (RecoveryProof{facts: facts}).digest(""), builder: in.PlanBuilder, admission: in.Admission}
+		facts.Control.State.Revision++
+		requireCycleSuccess(t, proof.CheckData(facts))
 		return
 	}
-	in := cycleFixture(t)
 	scope := s.ControlScope{Environment: "paper", AccountID: in.Run.AccountID, StrategyID: in.Run.StrategyID}
 	thirds := os.Getenv("PAPER_A16_CASE") == "thirds"
 	if thirds {
