@@ -19,6 +19,7 @@ var ErrPaperProgress = errors.New("invalid paper progress")
 
 // Progress хранит проверенную фактическую проекцию.
 type Progress struct {
+	indices   []int
 	state     paperwire.PortfolioState
 	fills     []model.ConfirmedFill
 	remaining []paperwire.IntentRemainder
@@ -165,6 +166,7 @@ func projectProgress(p PreparedCycle, fills []model.ConfirmedFill) (Progress, er
 				return Progress{}, err
 			}
 			result.state.Positions[matched.Symbol] = posting.Position
+			result.indices = append(result.indices, index)
 			result.fills = append(result.fills, matched)
 			confirmed, err = confirmed.Add(matched.Quantity)
 			if err != nil {
