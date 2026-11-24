@@ -1,0 +1,52 @@
+# Opt-in Compose для Momentum + PostgreSQL (CM-057). Отдельный проект "momentum":
+# legacy docker-compose.yml, его volumes и mounts не используются и не запускаются.
+# Запуск: docker compose -f ops/docker-compose.momentum.yml --env-file ops/momentum.env up
+name: momentum
+
+services:
+  postgres:
+    image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f
+    environment:
+      POSTGRES_USER: momentum
+      POSTGRES_DB: momentum
+      POSTGRES_PASSWORD: ${MOMENTUM_POSTGRES_PASSWORD:?set MOMENTUM_POSTGRES_PASSWORD in ops/momentum.env}
+    # Только loopback: storage принимает лишь loopback DSN, база не видна даже из
+    # сети Docker. Порты наружу не публикуются.
+    command: ["postgres", "-c", "listen_addresses=127.0.0.1"]
+    volumes:
+      - momentum-pgdata:/var/lib/postgresql/data
+    networks: [momentum-egress]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "momentum", "-d", "momentum"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
+  momentum:
+    build:
+      context: ..
+      dockerfile: Dockerfile.momentum
+    image: momentum:local
+    # Только публичный сбор Testnet-данных в журнал; торговых вызовов нет.
+    command: ["collect-once", "-config", "/etc/momentum/momentum.paper.yaml", "-timeout", "2m"]
+    environment:
+      MOMENTUM_POSTGRES_DSN: postgres://momentum:${MOMENTUM_POSTGRES_PASSWORD:?set MOMENTUM_POSTGRES_PASSWORD}@127.0.0.1:5432/momentum?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Общий сетевой namespace с postgres: база на 127.0.0.1, выход наружу через
+    # сеть momentum-egress (публичный API Bybit Testnet).
+    network_mode: "service:postgres"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+
+networks:
+  # Единственная сеть проекта; входящих портов нет.
+  momentum-egress: {}
+
+volumes:
+  momentum-pgdata:

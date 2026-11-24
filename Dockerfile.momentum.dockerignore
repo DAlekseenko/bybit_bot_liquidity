@@ -1,0 +1,10 @@
+# Контекст сборки Momentum: только исходники и конфиги. data/, dist/, .env и
+# прочие локальные файлы в образ и в контекст не попадают.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!configs/
+**/*_test.go
+**/testdata/
