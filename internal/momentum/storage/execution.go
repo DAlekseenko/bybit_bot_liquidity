@@ -105,6 +105,17 @@ func RecordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLi
 // recordFill реализует RecordFill; beforeCommit позволяет тестам внедрить сбой перед COMMIT.
 func recordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLinkID string, fill model.ConfirmedFill,
 	beforeCommit func(*sql.Tx) error) (FillResult, error) {
+	return recordFillCore(ctx, db, environment, accountID, orderLinkID, fill, func(tx *sql.Tx, _ string, _ bool) error {
+		if beforeCommit != nil {
+			return beforeCommit(tx)
+		}
+		return nil
+	})
+}
+
+// recordFillCore передаёт исходное состояние заблокированного намерения проверке до фиксации.
+func recordFillCore(ctx context.Context, db *sql.DB, environment, accountID, orderLinkID string, fill model.ConfirmedFill,
+	beforeCommit func(*sql.Tx, string, bool) error) (FillResult, error) {
 	values, valErr := wireValues(fill.Quantity, fill.ExecutionPrice, fill.FeeUSDT)
 	if ctx == nil || db == nil || valErr != nil || fill.ExecutedAt.IsZero() ||
 		(fill.Side != model.FillBuy && fill.Side != model.FillSell) ||
@@ -164,7 +175,7 @@ func recordFill(ctx context.Context, db *sql.DB, environment, accountID, orderLi
 		return FillResult{}, executionFailure(ctx, nil)
 	}
 	if beforeCommit != nil {
-		if err := beforeCommit(tx); err != nil {
+		if err := beforeCommit(tx, storedState, inserted); err != nil {
 			return FillResult{}, executionFailure(ctx, nil)
 		}
 	}
