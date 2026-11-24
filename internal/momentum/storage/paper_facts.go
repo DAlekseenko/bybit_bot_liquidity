@@ -89,13 +89,7 @@ func (f *PaperRunFacts) readSnapshot(ctx context.Context, tx *sql.Tx, scope Cont
 		return err
 	}
 	c := f.Control
-	if c.ActorID == "" {
-		legacy := c.Actor == "SYSTEM" && c.Action == "INITIALIZE" && c.State.Mode == "ACTIVE" ||
-			c.Actor == "RISK_CONTROLLER" && (c.Action == "PAUSE_ENTRIES" && c.State.Mode == "PAUSED_ENTRIES" || c.Action == "HALT" && c.State.Mode == "HALTED")
-		if !legacy || c.CommandID != "" || c.RecoveryID != "" {
-			return ErrPaperFactsCorrupt
-		}
-	} else if paperCommandMode(c.Action, c.Kind, c.Actor) == "" {
+	if !legalPaperControl(c) {
 		return ErrPaperFactsCorrupt
 	}
 	var unjournaled bool

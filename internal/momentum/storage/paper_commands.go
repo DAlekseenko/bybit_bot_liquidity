@@ -57,14 +57,18 @@ func readPaperCommand(ctx context.Context, q interface {
 	var revision string
 	var payload []byte
 	var created sql.NullTime
+	var duplicate bool
 	err := q.QueryRowContext(ctx, `SELECT r.revision::text,r.mode,r.action,r.actor,r.reason,
  encode(r.config_hash,'hex'),COALESCE(r.confirmation_id,''),COALESCE(r.reconciliation_id,''),
- CASE WHEN isfinite(r.created_at) THEN r.created_at END,c.payload
+ CASE WHEN isfinite(r.created_at) THEN r.created_at END,c.payload,
+ CASE WHEN $4='' THEN false ELSE EXISTS(SELECT 1 FROM momentum.control_revisions other
+ WHERE other.environment=r.environment AND other.account_id=r.account_id AND other.strategy_id=r.strategy_id
+ AND other.confirmation_id=r.confirmation_id AND other.revision<>r.revision) END
  FROM momentum.control_revisions r LEFT JOIN momentum.config_snapshots c ON c.config_hash=r.config_hash
  WHERE r.environment=$1 AND r.account_id=$2 AND r.strategy_id=$3
  AND ($4='' OR r.confirmation_id=$4) ORDER BY r.revision DESC LIMIT 1`,
 		scope.Environment, scope.AccountID, scope.StrategyID, commandID).Scan(&revision, &out.State.Mode,
-		&out.Action, &out.Actor, &out.Reason, &out.ConfigHash, &out.CommandID, &out.RecoveryID, &created, &payload)
+		&out.Action, &out.Actor, &out.Reason, &out.ConfigHash, &out.CommandID, &out.RecoveryID, &created, &payload, &duplicate)
 	if errors.Is(err, sql.ErrNoRows) {
 		return PaperCommandState{}, controlFailure(ctx, ErrControlAbsent)
 	}
@@ -75,7 +79,7 @@ func readPaperCommand(ctx context.Context, q interface {
 	cfg, parseErr := config.Parse(payload)
 	canonical, hash, snapshotErr := cfg.Snapshot()
 	v := cfg.Values()
-	if err != nil || out.State.Revision == 0 || !created.Valid || parseErr != nil || snapshotErr != nil ||
+	if duplicate || err != nil || out.State.Revision == 0 || !created.Valid || parseErr != nil || snapshotErr != nil ||
 		!bytes.Equal(canonical, payload) || hash != out.ConfigHash || v.Mode != "paper" ||
 		v.DataSource.Kind != "bybit_testnet_public" || v.DataSource.Environment != "testnet" || v.StrategyID != scope.StrategyID {
 		return PaperCommandState{}, controlFailure(ctx, errPaperCommandSemantic)
