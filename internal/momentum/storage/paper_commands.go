@@ -109,10 +109,27 @@ func ApplyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequ
 
 // applyPaperCommandState позволяет проверить rollback до commit без внешних эффектов.
 func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequest, beforeCommit func(*sql.Tx) error) (PaperCommandState, error) {
+	if db == nil {
+		return PaperCommandState{}, controlFailure(ctx, ErrControlArgument)
+	}
+	return applyPaperCommandOn(ctx, db, in, func(tx *sql.Tx, _ PaperCommandState) error {
+		if beforeCommit != nil {
+			return beforeCommit(tx)
+		}
+		return nil
+	}, (*sql.Tx).Commit)
+}
+
+type paperCommandOpener interface {
+	BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+}
+
+// applyPaperCommandOn применяет подтверждённый запрос на выбранном backend.
+func applyPaperCommandOn(ctx context.Context, opener paperCommandOpener, in PaperCommandRequest, beforeCommit func(*sql.Tx, PaperCommandState) error, finish func(*sql.Tx) error) (PaperCommandState, error) {
 	mode := paperCommandMode(in.Action, in.Kind, in.Actor)
 	key, keyErr := hex.DecodeString(in.ConfigHash)
 	init := in.Action == "INITIALIZE"
-	if ctx == nil || db == nil || !paperControlScope(in.Scope) || mode == "" ||
+	if ctx == nil || opener == nil || !paperControlScope(in.Scope) || mode == "" ||
 		!paperControlText(in.ActorID, in.CommandID, in.Reason) || keyErr != nil || len(key) != 32 ||
 		hex.EncodeToString(key) != in.ConfigHash || in.ExpectedRevision >= math.MaxInt64 ||
 		init != (in.ExpectedRevision == 0) || init != (in.Config != nil) ||
@@ -131,7 +148,7 @@ func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequ
 			return PaperCommandState{}, controlFailure(ctx, ErrControlArgument)
 		}
 	}
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	tx, err := opener.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return PaperCommandState{}, controlFailure(ctx, nil)
 	}
@@ -188,12 +205,10 @@ func applyPaperCommandState(ctx context.Context, db *sql.DB, in PaperCommandRequ
 	if saved != want {
 		return PaperCommandState{}, controlFailure(ctx, ErrControlConflict)
 	}
-	if beforeCommit != nil {
-		if err := beforeCommit(tx); err != nil {
-			return PaperCommandState{}, controlFailure(ctx, nil)
-		}
+	if err := beforeCommit(tx, latest); err != nil {
+		return PaperCommandState{}, controlFailure(ctx, nil)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := finish(tx); err != nil {
 		return PaperCommandState{}, controlFailure(ctx, nil)
 	}
 	return saved, nil
@@ -237,4 +252,104 @@ func paperCommandMode(action, kind, actor string) string {
 		return "PAUSED_ENTRIES"
 	}
 	return ""
+}
+
+// PaperResumeResult различает сохранённую команду, текущую ревизию и наблюдаемый путь записи.
+type PaperResumeResult struct {
+	Applied, Current                            PaperCommandState
+	AppliedConfirmed, AlreadyApplied, PathKnown bool
+}
+
+// resumeResult проверяет исходную команду и отмечает только наблюдавшийся путь исполнения.
+func resumeResult(in PaperCommandRequest, o PaperCommandOutcome, historical, known bool, err error) (PaperResumeResult, error) {
+	if !o.Matches(in) {
+		return PaperResumeResult{}, ErrPaperFenceConflict
+	}
+	return PaperResumeResult{Applied: o.Applied, Current: o.Current, AppliedConfirmed: true, AlreadyApplied: historical, PathKnown: known}, err
+}
+
+// ResumePaperCommand исполняет новую команду на backend владельца или подтверждает историческую.
+func ResumePaperCommand(ctx context.Context, db *sql.DB, in PaperCommandRequest, owner *ExecutionOwner, stamp PaperRecoveryStamp, check func(PaperRunFacts) error) (PaperResumeResult, error) {
+	return resumePaperCommand(ctx, db, in, owner, stamp, check, (*sql.Tx).Commit, db)
+}
+
+// resumePaperCommand проверяет ответы TX и независимого наблюдения после попытки записи.
+func resumePaperCommand(ctx context.Context, db *sql.DB, in PaperCommandRequest, owner *ExecutionOwner, stamp PaperRecoveryStamp, check func(PaperRunFacts) error, finish func(*sql.Tx) error, reader paperInputReader) (PaperResumeResult, error) {
+	_, hErr := datasetArtifactKey(in.ConfigHash)
+	if ctx == nil || db == nil || !paperControlScope(in.Scope) || in.Action != "RESUME" || in.Kind != "resume" || in.Actor != "OPERATOR" ||
+		!in.Confirmed || in.Config != nil || in.ExpectedRevision == 0 || in.ExpectedRevision >= math.MaxInt64 || hErr != nil || !paperControlText(in.CommandID, in.ActorID, in.Reason, in.RecoveryID) {
+		return PaperResumeResult{}, ErrPaperFenceArgument
+	}
+	evidence, found, err := ReadPaperCommandOutcome(ctx, db, in.Scope, in.CommandID)
+	if found {
+		return resumeResult(in, evidence, true, true, err)
+	}
+	if err != nil {
+		return PaperResumeResult{}, paperFenceError(ctx, err)
+	}
+	if owner == nil || owner.conn == nil {
+		return PaperResumeResult{}, ErrPaperFenceDenied
+	}
+	id := owner.id
+	if owner.db != db || in.Scope != (ControlScope{id.Environment, id.AccountID, id.StrategyID}) {
+		return PaperResumeResult{}, ErrPaperFenceDenied
+	}
+	var called bool
+	var veto error
+	applied, err := func() (PaperCommandState, error) {
+		owner.mu.Lock()
+		defer owner.mu.Unlock()
+		if err := owner.checkLocked(ctx); err != nil {
+			return PaperCommandState{}, errors.Join(ErrPaperFenceDenied, err, ctx.Err())
+		}
+		if owner.reconcile {
+			return PaperCommandState{}, errors.Join(ErrPaperFenceDenied, ErrOwnerReconciliationRequired)
+		}
+		return applyPaperCommandOn(ctx, owner.conn, in, func(tx *sql.Tx, previous PaperCommandState) error {
+			called = true
+			if !legalPaperControl(previous) {
+				veto = ErrPaperFenceConflict
+				return veto
+			}
+			if check == nil || stamp.RecoveryID != in.RecoveryID || stamp.Scope != in.Scope || stamp.ConfigHash != in.ConfigHash || stamp.ControlRevision != in.ExpectedRevision {
+				veto = ErrPaperFenceStale
+				return veto
+			}
+			veto = verifyPaperFence(ctx, tx, owner.id.SessionID, stamp, in.ExpectedRevision+1, func(f PaperRunFacts) error {
+				if !(PaperCommandOutcome{Scope: f.Scope, Applied: f.Control}).Matches(in) {
+					return ErrPaperFenceConflict
+				}
+				return check(f)
+			})
+			return veto
+		}, finish)
+	}()
+	if err == nil {
+		current, found, e := readPaperCommandOutcome(ctx, reader, in.Scope, in.CommandID)
+		if !found || current.Applied != applied {
+			current = PaperCommandOutcome{Scope: in.Scope, Applied: applied}
+			e = errors.Join(ErrPaperCommandCurrentUnavailable, e, ctx.Err())
+		}
+		return resumeResult(in, current, !called, true, e)
+	}
+	if veto != nil {
+		return PaperResumeResult{}, veto
+	}
+	if errors.Is(err, ErrControlConflict) || errors.Is(err, errPaperCommandSemantic) {
+		return PaperResumeResult{}, ErrPaperFenceConflict
+	}
+	if errors.Is(err, ErrPaperFenceDenied) {
+		return PaperResumeResult{}, err
+	}
+	if ctx.Err() != nil {
+		return PaperResumeResult{}, errors.Join(ErrPaperFenceUnknown, ctx.Err())
+	}
+	evidence, found, readErr := readPaperCommandOutcome(ctx, reader, in.Scope, in.CommandID)
+	if found {
+		return resumeResult(in, evidence, false, false, readErr)
+	}
+	if readErr != nil {
+		return PaperResumeResult{}, paperFenceError(ctx, readErr)
+	}
+	return PaperResumeResult{}, ErrPaperFenceUnknown
 }
