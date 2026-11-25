@@ -34,6 +34,9 @@ const (
 // SkipDeadlineMissed — причина пропуска: общий закрытый срез не готов к дедлайну.
 const SkipDeadlineMissed = "data_deadline_missed"
 
+// SkipFinancialHistory означает, что слот уже перекрыт сохранённой финансовой историей.
+const SkipFinancialHistory = "superseded_by_financial_history"
+
 // Decision — результат Tick.
 type Decision struct {
 	Action Action
@@ -69,11 +72,28 @@ type Scheduler struct {
 	Poll         time.Duration // интервал повторной проверки данных
 }
 
+// TickRecovered выбирает слот после проверки состояния под владельцем paper runtime.
+func (s Scheduler) TickRecovered(ctx context.Context, now time.Time, recovered RecoveredPaper) (Decision, error) {
+	proof := recovered.Proof()
+	scope := storage.ControlScope{Environment: "paper", AccountID: s.AccountID, StrategyID: s.Config.Values().StrategyID}
+	_, hash, err := s.Config.Snapshot()
+	if _, open := recovered.Current(); open || err != nil || proof.ID() == "" || proof.Scope() != scope || proof.ConfigHash() != hash {
+		return Decision{}, errors.Join(ErrScheduler, ErrSchedulerConfig)
+	}
+	head, _ := proof.Head()
+	return s.tick(ctx, now, head.ScheduledAt)
+}
+
 // Tick принимает одно решение для момента now. Повторные пробуждения
 // идемпотентны: ключ run детерминирован, поэтому на слот создаётся одна запись.
 // Run с сохранённым планом и без итога (в том числе из прошлой недели)
 // продолжается раньше выбора нового слота и без проверки готовности данных.
 func (s Scheduler) Tick(ctx context.Context, now time.Time) (Decision, error) {
+	return s.tick(ctx, now, time.Time{})
+}
+
+// tick учитывает последний завершённый финансовый слот при выборе нового запуска.
+func (s Scheduler) tick(ctx context.Context, now, resolvedThrough time.Time) (Decision, error) {
 	values := s.Config.Values()
 	now = now.UTC()
 	if ctx == nil || s.Store == nil || s.Data == nil || s.AccountID == "" || s.Deadline <= 0 || s.Poll <= 0 ||
@@ -95,7 +115,7 @@ func (s Scheduler) Tick(ctx context.Context, now time.Time) (Decision, error) {
 		if _, done, err := s.Store.ReadRunCompletion(ctx, onboard.RunID); err != nil {
 			return Decision{}, errors.Join(ErrScheduler, err)
 		} else if !done {
-			return s.runWhenReady(ctx, now, onboard, dayOf(onboard.ScheduledAt), now.Add(s.Poll))
+			return s.onboarding(ctx, now, onboard, resolvedThrough)
 		}
 		if !monday.After(onboard.ScheduledAt) {
 			return Decision{Action: ActionWait, WakeAt: next}, nil
@@ -108,7 +128,8 @@ func (s Scheduler) Tick(ctx context.Context, now time.Time) (Decision, error) {
 		return Decision{Action: ActionWait, WakeAt: next}, nil
 	}
 	deadline := monday.Add(s.Deadline)
-	if now.Before(deadline) {
+	superseded := !resolvedThrough.IsZero() && !weekly.ScheduledAt.After(resolvedThrough)
+	if !superseded && now.Before(deadline) {
 		ready, err := s.ready(ctx, monday)
 		if err != nil || !ready {
 			return Decision{Action: ActionWait, WakeAt: minTime(now.Add(s.Poll), deadline)}, err
@@ -122,26 +143,40 @@ func (s Scheduler) Tick(ctx context.Context, now time.Time) (Decision, error) {
 	if err != nil {
 		return Decision{}, errors.Join(ErrScheduler, err)
 	}
-	if now.Before(deadline) || planned {
+	if planned || (!superseded && now.Before(deadline)) {
 		return Decision{Action: ActionRun, Run: run, Resume: planned}, nil
 	}
-	if _, err := s.Store.CompleteRebalanceRun(ctx, storage.RunCompletion{RunID: run.RunID, Outcome: storage.RunSkipped,
-		Reason: SkipDeadlineMissed}); err != nil {
-		return Decision{}, errors.Join(ErrScheduler, err)
+	if superseded {
+		return s.skip(ctx, run, SkipFinancialHistory, next)
 	}
-	return Decision{Action: ActionSkipped, Run: run, WakeAt: next, Reason: SkipDeadlineMissed}, nil
+	return s.skip(ctx, run, SkipDeadlineMissed, next)
 }
 
-// runWhenReady запускает onboarding run, когда закрыт срез до его дня.
-func (s Scheduler) runWhenReady(ctx context.Context, now time.Time, run storage.StoredRebalanceRun, through, wake time.Time) (Decision, error) {
+// skip фиксирует отсутствие плана и сверяет возвращённую запись до подтверждения решения.
+func (s Scheduler) skip(ctx context.Context, run storage.StoredRebalanceRun, reason string, wake time.Time) (Decision, error) {
+	row, err := s.Store.CompleteRebalanceRun(ctx, storage.RunCompletion{RunID: run.RunID, Outcome: storage.RunSkipped, Reason: reason})
+	if err != nil {
+		return Decision{}, errors.Join(ErrScheduler, err)
+	}
+	if row.RunID != run.RunID || row.Outcome != storage.RunSkipped || row.Reason != reason || row.PlanRevision != 0 || row.PlanHash != "" {
+		return Decision{}, errors.Join(ErrScheduler, storage.ErrRunCompletionConflict)
+	}
+	return Decision{Action: ActionSkipped, Run: run, WakeAt: wake, Reason: reason}, nil
+}
+
+// onboarding возобновляет план, пропускает устаревший слот или ждёт закрытых данных.
+func (s Scheduler) onboarding(ctx context.Context, now time.Time, run storage.StoredRebalanceRun, resolvedThrough time.Time) (Decision, error) {
 	_, planned, err := s.Store.ReadLatestPlanRevision(ctx, run.RunID)
 	if err != nil {
 		return Decision{}, errors.Join(ErrScheduler, err)
 	}
 	if !planned {
-		ready, err := s.ready(ctx, through)
+		if !resolvedThrough.IsZero() && !run.ScheduledAt.After(resolvedThrough) {
+			return s.skip(ctx, run, SkipFinancialHistory, now)
+		}
+		ready, err := s.ready(ctx, dayOf(run.ScheduledAt))
 		if err != nil || !ready {
-			return Decision{Action: ActionWait, WakeAt: wake}, err
+			return Decision{Action: ActionWait, WakeAt: now.Add(s.Poll)}, err
 		}
 	}
 	return Decision{Action: ActionRun, Run: run, Resume: planned}, nil

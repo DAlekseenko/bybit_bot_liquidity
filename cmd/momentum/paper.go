@@ -204,7 +204,7 @@ func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Schedul
 		_, err = r.AdvanceCycle(ctx, run, p.Purpose(), p.Profile())
 		return next, err
 	}
-	dec, err := scheduler.Tick(ctx, now)
+	dec, err := scheduler.TickRecovered(ctx, now, recovered)
 	if err != nil {
 		return next, err
 	}
