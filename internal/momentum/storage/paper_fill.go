@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"bybit_bot_liquidity/internal/momentum/model"
+	"bybit_bot_liquidity/internal/momentum/paperwire"
 )
 
 var (
@@ -158,10 +159,17 @@ func lockPaperRunWrite(ctx context.Context, tx *sql.Tx, key PaperWriteKey, owner
 
 // paperFillAllowed проверяет текущий режим и точную команду закрытия.
 func paperFillAllowed(f PaperRunFacts, side model.FillSide) bool {
-	p, c := f.Input.Values().Purpose, f.Control
+	return MayAttemptPaperFill(f.Input.Values().Purpose, f.Control, side)
+}
+
+// MayAttemptPaperFill отбирает направление по снимку режима до окончательной проверки в транзакции.
+func MayAttemptPaperFill(p paperwire.Purpose, c PaperCommandState, side model.FillSide) bool {
+	if side != model.FillBuy && side != model.FillSell {
+		return false
+	}
 	if p.Kind == "close-all" {
-		return side == model.FillSell && c.State.Mode == "HALTED" && c.Actor == "OPERATOR" && c.Action == "HALT" &&
+		return p.CommandID != "" && p.ControlRevision > 0 && side == model.FillSell && c.State.Mode == "HALTED" && c.Actor == "OPERATOR" && c.Action == "HALT" &&
 			c.Kind == "close-all" && c.CommandID == p.CommandID && c.State.Revision == p.ControlRevision
 	}
-	return p.Kind == "rebalance" && (c.State.Mode == "ACTIVE" || c.State.Mode == "PAUSED_ENTRIES" && side == model.FillSell)
+	return p.Kind == "rebalance" && p.CommandID == "" && p.ControlRevision == 0 && (c.State.Mode == "ACTIVE" || c.State.Mode == "PAUSED_ENTRIES" && side == model.FillSell)
 }
