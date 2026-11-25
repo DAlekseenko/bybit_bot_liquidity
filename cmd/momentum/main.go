@@ -43,6 +43,12 @@ func dispatch(parent context.Context, args []string, stdout io.Writer, rt paperR
 	if len(args) > 0 && args[0] == "paper" {
 		ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 		defer stop()
+		if len(args) > 1 {
+			switch args[1] {
+			case "status", "pause", "resume", "close-all":
+				return runOperator(ctx, args[1:], stdout)
+			}
+		}
 		err := rt.serve(ctx, args[1:])
 		if err == context.Canceled && parent.Err() == nil && ctx.Err() != nil {
 			return nil
