@@ -216,3 +216,81 @@ func TestCloseOwnerDenied(t *testing.T) {
 	got, err = runner.AdvanceCloseAll(t.Context(), x.in.Run.Config, x.in.Profile)
 	x.Require(errors.Is(err, s.ErrOwnerLost) && got.State == "" && before == x.ReadHistoryAudit(x.Pool()).Financial && market.calls == calls, "потерян владелец", err)
 }
+
+// TestCloseSupersession завершает прежний partial SELL и закрывает только подтверждённый остаток.
+func TestCloseSupersession(t *testing.T) {
+	for _, phase := range []string{"replace", "replace-after-abort", "risk-then-replace"} {
+		t.Run(phase, func(t *testing.T) {
+			ctx := t.Context()
+			x, r, market, _ := closeFixture(t, "2")
+			market.edit = func(q *http.Request, data map[string]any) {
+				if q.URL.Path == "/v5/market/mark-price-kline" {
+					data["list"] = []any{}
+				}
+			}
+			first, err := r.AdvanceCloseAll(ctx, x.in.Run.Config, x.in.Profile)
+			x.Require(errors.Is(err, ErrPaperCloseBlocked) && first.Revision == 2, "первый close зарегистрирован", err)
+			prior, ok := x.named(x.in.Run.RunID, nil).Resolution()
+			x.Require(ok && prior.Kind() == "ABORTED", "прежний rebalance")
+			market.edit = nil
+			run, err := s.CreateOrReadRebalanceRun(ctx, r.DB, s.RebalanceRunInput{RunID: first.RunID, OnboardingID: first.RunID, AccountID: r.Scope.AccountID, StrategyID: r.Scope.StrategyID, Config: x.in.Run.Config, ScheduledAt: market.now})
+			requireCycleSuccess(t, err)
+			x.p, err = r.observeCycle(ctx, paperwire.RunBinding(run.RebalanceRunInput), paperwire.Purpose{Kind: "close-all", CommandID: first.CommandID, ControlRevision: 2}, x.in.Profile, &prior)
+			requireCycleSuccess(t, err)
+			x.r.Key.RunID, x.r.Key.InputHash = first.RunID, x.p.Hash()
+			x.Done(s.StorePaperInput(ctx, r.DB, x.p.input))
+			x.Done(s.StorePlanRevision(ctx, r.DB, x.p.Plan()))
+			intent := x.named(first.RunID, &prior).OrderIntents()[0]
+			requireCycleSuccess(t, s.RecordOrderIntent(ctx, r.DB, intent))
+			one := cycleAmount(t, "1")
+			sell := x.request(x.slice(0, model.Zero(), one))
+			x.Done(s.RecordPaperFill(ctx, r.DB, sell, CheckPaperFill(x.p)))
+			secondRevision := uint64(3)
+			if phase == "risk-then-replace" {
+				requireCycleSuccess(t, x.transition(ctx, 2, "risk", "risk-stop"))
+				risk := x.attempt("ABORTED", "second", 3)
+				risk.reject(ctx, risk.build, s.ErrPaperWriteDenied)
+				secondRevision++
+			}
+			requireCycleSuccess(t, x.transition(ctx, secondRevision-1, "close-all", "second"))
+			complete := x.attempt("COMPLETED", "", 0)
+			complete.reject(ctx, complete.build, s.ErrPaperWriteDenied)
+			x.reject(x.request(x.slice(0, one, one)), CheckPaperFill(x.p), s.ErrPaperWriteDenied)
+			stale := x.attempt("ABORTED", first.CommandID, 2)
+			stale.reject(ctx, stale.build, s.ErrPaperWriteDenied)
+			wrongID := x.attempt("ABORTED", first.CommandID, secondRevision)
+			wrongID.reject(ctx, wrongID.build, s.ErrPaperWriteDenied)
+			wrongRevision := x.attempt("ABORTED", "second", secondRevision-1)
+			wrongRevision.reject(ctx, wrongRevision.build, s.ErrPaperWriteDenied)
+			currentID, revision := "second", secondRevision
+			if phase == "replace-after-abort" {
+				abort := x.attempt("ABORTED", currentID, revision)
+				abort.d.ResolvedAt = x.facts().Control.CreatedAt
+				sealed, err := abort.run(ctx, BuildPaperResolution(x.p, abort.d))
+				x.Require(err == nil && sealed.Confirmed && x.facts().Intents()[intent.OrderLinkID].State == "PARTIALLY_FILLED", "ABORTED перед третьей командой", err)
+				requireCycleSuccess(t, x.transition(ctx, revision, "close-all", "third"))
+				currentID, revision = "third", secondRevision+1
+				requireCycleSuccess(t, r.Owner.Release(ctx, market.now))
+				r.DB = pgtest.Existing(t, x.Name(), s.OpenMomentumPostgres)
+				id := s.OwnerIdentity{Environment: r.Scope.Environment, AccountID: r.Scope.AccountID, StrategyID: r.Scope.StrategyID, SessionID: "third-owner", Host: "test", ProcessID: 3}
+				r.Owner, err = s.AcquireExecutionOwner(ctx, r.DB, id, market.now)
+				requireCycleSuccess(t, err)
+				t.Cleanup(func() { x.Done(nil, r.Owner.Release(context.Background(), market.now)) })
+			}
+			market.now = time.Now().UTC().Add(time.Second).Truncate(time.Millisecond)
+			out, err := r.AdvanceCloseAll(ctx, x.in.Run.Config, x.in.Profile)
+			requireCycleSuccess(t, err)
+			old := x.named(first.RunID, &prior)
+			aborted, ok := old.Resolution()
+			x.Require(ok && aborted.Kind() == "ABORTED" && aborted.CommandID() == "second" && aborted.ControlRevision() == secondRevision && old.facts.Completion.Outcome == s.RunFailed, "неверное завершение первого close")
+			x.Require(len(aborted.Fills()) == 1 && aborted.Fills()[0].ExecutionID == sell.Fill.ExecutionID && old.facts.Plan.Hash() == x.p.Plan().Hash() && old.facts.Intents()[intent.OrderLinkID].State == "CANCELLED", "потерян префикс старого SELL")
+			terminal, ok := x.named(out.RunID, &aborted).Resolution()
+			x.Require(ok && out.CommandID == currentID && out.Revision == revision && out.State == "CLOSED" && out.ReceiptHash == terminal.Hash() && terminal.Binding().PreviousResolutionHash == aborted.Hash(), "неверный исход замены", out)
+			fills := terminal.Fills()
+			x.Require(len(fills) == 1 && fills[0].Side == model.FillSell && decimalEqual(fills[0].Quantity, one) && isZero(terminal.ActualAfter().Positions[intent.Symbol].Quantity), "повторно продано больше остатка")
+			before, calls := x.ReadHistoryAudit(r.DB), market.calls
+			repeat, err := r.AdvanceCloseAll(ctx, x.in.Run.Config, x.in.Profile)
+			x.Require(err == nil && repeat.ReceiptHash == out.ReceiptHash && before == x.ReadHistoryAudit(r.DB) && calls == market.calls, "повтор изменил подтверждённый итог", err)
+		})
+	}
+}

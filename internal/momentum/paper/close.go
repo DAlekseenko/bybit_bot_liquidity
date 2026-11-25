@@ -73,11 +73,11 @@ func PaperCloseState(rec RecoveredPaper) (PaperCloseResult, error) {
 }
 
 // outcome возвращает причину известного отказа для вызывающего обработчика.
-func (out PaperCloseResult) outcome() (PaperCloseResult, error) {
-	if out.State == "BLOCKED" {
+func (out PaperCloseResult) outcome(err error) (PaperCloseResult, error) {
+	if err == nil && out.State == "BLOCKED" {
 		return out, ErrPaperCloseBlocked
 	}
-	return out, nil
+	return out, err
 }
 
 // AdvanceCloseAll под живым владельцем обрабатывает текущую подтверждённую команду закрытия.
@@ -86,11 +86,8 @@ func (r CycleRunner) AdvanceCloseAll(ctx context.Context, cfg config.Config, pro
 		return PaperCloseResult{}, err
 	}
 	rec, out, err := r.closeView(ctx)
-	if err != nil {
-		return out, err
-	}
-	if out.State != "PENDING" {
-		return out.outcome()
+	if err != nil || out.State != "PENDING" {
+		return out.outcome(err)
 	}
 	c := rec.proof.facts.Control
 	_, hash, err := cfg.Snapshot()
@@ -100,9 +97,8 @@ func (r CycleRunner) AdvanceCloseAll(ctx context.Context, cfg config.Config, pro
 	}
 	purpose := paperwire.Purpose{Kind: "close-all", CommandID: c.CommandID, ControlRevision: c.State.Revision}
 	if old, ok := rec.Current(); ok && old.Binding().RunID != out.RunID {
-		if old.Purpose().Kind != "rebalance" {
-			out.State = "BLOCKED"
-			return out, ErrPaperCloseBlocked
+		if p := old.Purpose(); p.Kind == "close-all" && old.Binding().RunID != closeRunID(r.Scope, p.CommandID) {
+			return out, ErrCycleAdvance
 		}
 		if !rec.proof.facts.PlanFound {
 			if _, err = s.StorePlanRevision(ctx, r.DB, old.Plan()); err != nil {
@@ -132,14 +128,14 @@ func (r CycleRunner) AdvanceCloseAll(ctx context.Context, cfg config.Config, pro
 		}
 		out = fresh
 		if out.State != "PENDING" {
-			return out.outcome()
+			return out.outcome(nil)
 		}
 	}
 	if err = r.Owner.Permit(ctx); err != nil {
 		return out, err
 	}
 	last, closed := rec.Last()
-	if closed && last.Kind() == "ABORTED" && last.CommandID() == purpose.CommandID && last.ControlRevision() == purpose.ControlRevision {
+	if closed && last.Kind() == "ABORTED" {
 		facts, err := s.ReadPaperRunFacts(ctx, r.DB, r.Scope, last.Binding().RunID)
 		if err != nil {
 			return out, err
@@ -186,7 +182,7 @@ func (r CycleRunner) AdvanceCloseAll(ctx context.Context, cfg config.Config, pro
 	if result.CommandID != out.CommandID || result.Revision != out.Revision {
 		return out, ErrPaperCloseBlocked
 	}
-	return result.outcome()
+	return result.outcome(nil)
 }
 
 // closeView читает подтверждённую историю и состояние команды из одного proof.
