@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"bybit_bot_liquidity/internal/momentum/collect"
@@ -33,10 +35,24 @@ func main() {
 
 // run запускает выбранную команду, сохраняя существующий путь сбора.
 func run(args []string, stdout io.Writer, transport http.RoundTripper) error {
-	if len(args) > 0 && args[0] == "backtest" {
-		return runBacktest(context.Background(), args[1:], stdout)
+	return dispatch(context.Background(), args, stdout, paperRuntime{now: func() time.Time { return time.Now().UTC() }, wait: waitPaper, transport: transport})
+}
+
+// dispatch сохраняет независимые маршруты публичного сбора, backtest и виртуального цикла.
+func dispatch(parent context.Context, args []string, stdout io.Writer, rt paperRuntime) error {
+	if len(args) > 0 && args[0] == "paper" {
+		ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		err := rt.serve(ctx, args[1:])
+		if err == context.Canceled && parent.Err() == nil && ctx.Err() != nil {
+			return nil
+		}
+		return err
 	}
-	return runWithJournal(args, stdout, transport, storage.OpenMomentumPostgres)
+	if len(args) > 0 && args[0] == "backtest" {
+		return runBacktest(parent, args[1:], stdout)
+	}
+	return runWithJournal(args, stdout, rt.transport, storage.OpenMomentumPostgres)
 }
 
 // runWithJournal проверяет аргументы, собирает снимок и только затем открывает журнал.
