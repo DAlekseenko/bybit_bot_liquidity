@@ -139,6 +139,22 @@ func (rt paperRuntime) serve(ctx context.Context, args []string) (result error) 
 	scheduler := paper.Scheduler{Store: paper.DBRunStore{DB: db}, Data: ready, Config: cfg, AccountID: *account, OnboardingID: *onboarding, Deadline: profile.DataDeadline, Poll: profile.Poll}
 	for {
 		wake, err := paperWake(ctx, r, scheduler, profile, rt.before)
+		// Команда могла зафиксировать HALT между чтением цикла и финальным guard попытки BUY.
+		if errors.Is(err, errRebalanceDenied) && owner.PermitPaperScope(ctx, db, scope) == nil {
+			fresh, e := paper.Recover(ctx, r.RecoveryRequest)
+			if e != nil {
+				return safeJournalError(ctx, "cannot verify paper denial", e)
+			}
+			progress, e := paper.PaperCloseState(fresh)
+			if e != nil {
+				return safeJournalError(ctx, "cannot verify close request", e)
+			}
+			current, open := fresh.Current()
+			if open && current.Purpose().Kind == "rebalance" && progress.State == "PENDING" &&
+				fresh.Proof().OwnerSessionID() == id.SessionID {
+				continue
+			}
+		}
 		if err != nil {
 			return safeJournalError(ctx, "paper step failed", err)
 		}
@@ -163,6 +179,8 @@ func paperControl(ctx context.Context, db *sql.DB, scope s.ControlScope, cfg con
 	}
 	return err
 }
+
+var errRebalanceDenied = errors.New("paper rebalance write denied")
 
 // paperWake возобновляет сохранённый финансовый вход до выбора новой недели.
 func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Scheduler, profile paperwire.Profile, before func(context.Context, paper.RecoveredPaper) error) (time.Time, error) {
@@ -192,6 +210,27 @@ func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Schedul
 		return time.Time{}, err
 	}
 	next := now.Add(profile.Poll)
+	closeState, err := paper.PaperCloseState(recovered)
+	if err != nil {
+		return next, err
+	}
+	switch closeState.State {
+	case "PENDING":
+		_, err := r.AdvanceCloseAll(ctx, scheduler.Config, profile)
+		if errors.Is(err, paper.ErrPaperCloseBlocked) {
+			return next, nil
+		}
+		return next, err
+	case "BLOCKED", "CLOSED":
+		return next, nil
+	}
+	advance := func(run s.StoredRebalanceRun, purpose paperwire.Purpose, saved paperwire.Profile) error {
+		_, err := r.AdvanceCycle(ctx, run, purpose, saved)
+		if purpose.Kind == "rebalance" && errors.Is(err, s.ErrPaperWriteDenied) {
+			return errors.Join(errRebalanceDenied, err)
+		}
+		return err
+	}
 	if p, open := recovered.Current(); open {
 		saved, err := paperwire.DecodeInputRecord(p.Payload())
 		if err != nil {
@@ -201,8 +240,7 @@ func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Schedul
 		if err != nil {
 			return time.Time{}, err
 		}
-		_, err = r.AdvanceCycle(ctx, run, p.Purpose(), p.Profile())
-		return next, err
+		return next, advance(run, p.Purpose(), p.Profile())
 	}
 	dec, err := scheduler.TickRecovered(ctx, now, recovered)
 	if err != nil {
@@ -210,7 +248,7 @@ func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Schedul
 	}
 	switch dec.Action {
 	case paper.ActionRun:
-		_, err = r.AdvanceCycle(ctx, dec.Run, paperwire.Purpose{Kind: "rebalance"}, profile)
+		err = advance(dec.Run, paperwire.Purpose{Kind: "rebalance"}, profile)
 	case paper.ActionSkipped:
 		row, found, e := s.ReadRunCompletion(ctx, r.DB, dec.Run.RunID)
 		if e != nil {

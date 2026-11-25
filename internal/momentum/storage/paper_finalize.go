@@ -105,7 +105,9 @@ func (r PaperFinalizeRequest) insert(ctx context.Context, db *sql.DB, build Pape
 	}
 	p, c := f.Input.Values().Purpose, f.Control
 	closeCommand := c.State.Mode == "HALTED" && c.Actor == "OPERATOR" && c.Action == "HALT" && c.Kind == "close-all"
-	if p.Kind == "close-all" && (!closeCommand || p.CommandID != c.CommandID || p.ControlRevision != c.State.Revision) ||
+	matches := p.CommandID == c.CommandID && p.ControlRevision == c.State.Revision
+	superseded := r.Kind == "ABORTED" && p.CommandID != c.CommandID && p.ControlRevision < c.State.Revision
+	if p.Kind == "close-all" && (!closeCommand || !matches && !superseded) ||
 		r.Kind == "ABORTED" && (!closeCommand || r.CommandID != c.CommandID || r.ControlRevision != c.State.Revision) {
 		return RunCompletion{}, ErrPaperWriteDenied
 	}
