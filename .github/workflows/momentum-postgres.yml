@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [core, paper-lifecycle]
+        suite: [core, paper-lifecycle, paper-close]
     services:
       postgres:
         image: postgres:17@sha256:31ba9c94a03ada9988f2bb493a22a75eef3a185884533e5cdbcd498ea835b08f
@@ -114,6 +114,7 @@ jobs:
           MOMENTUM_TEST_POSTGRES_DSN: postgres://momentum_test_admin:synthetic_ci_password@127.0.0.1:${{ job.services.postgres.ports[5432] }}/momentum_test_admin?sslmode=disable
           POSTGRES_SUITE: ${{ matrix.suite }}
           PAPER_LIFECYCLE_TESTS: '^Test(Recovery|PaperOwnerStartup|Resume)'
+          PAPER_CLOSE_TESTS: '^Test(OperatorClosePhases$|Close|RunnerClose|GuardedPaperCommands$|FinalizeAbort|CycleControlAdmission$)'
         run: |
           test_flags=(-race -count=1 -v -timeout=18m)
           case "$POSTGRES_SUITE" in
@@ -128,10 +129,13 @@ jobs:
               done <<< "$packages"
               test "${#core_packages[@]}" -gt 0
               go test "${test_flags[@]}" "${core_packages[@]}"
-              go test "${test_flags[@]}" -skip "$PAPER_LIFECYCLE_TESTS" "$paper_package"
+              go test "${test_flags[@]}" -skip "$PAPER_LIFECYCLE_TESTS|$PAPER_CLOSE_TESTS" "$paper_package"
               ;;
             paper-lifecycle)
               go test "${test_flags[@]}" -run "$PAPER_LIFECYCLE_TESTS" ./internal/momentum/paper
+              ;;
+            paper-close)
+              go test "${test_flags[@]}" -run "$PAPER_CLOSE_TESTS" ./internal/momentum/paper
               ;;
             *)
               exit 1
@@ -144,7 +148,7 @@ jobs:
     needs: postgres-suites
     if: always()
     steps:
-      - name: Require both PostgreSQL suites
+      - name: Require all PostgreSQL suites
         env:
           SUITES_RESULT: ${{ needs.postgres-suites.result }}
         run: test "$SUITES_RESULT" = success
