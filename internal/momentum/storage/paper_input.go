@@ -7,14 +7,16 @@ import (
 	"errors"
 	"strconv"
 
+	"bybit_bot_liquidity/internal/momentum/model"
 	"bybit_bot_liquidity/internal/momentum/paperwire"
 )
 
 // ErrPaperInputConflict означает несовместимый вход или отсутствующую предпосылку записи.
 var ErrPaperInputConflict = errors.New("paper input conflict")
 
-// paperInputStoreHooks проверяет стадии чтения и подтверждения текущей транзакции.
+// paperInputStoreHooks передаёт политику новой записи и точки наблюдения текущей транзакции.
 type paperInputStoreHooks struct {
+	authorizeNew   func(context.Context, *sql.Tx, paperwire.InputRecord) error
 	beforeReadback func(*sql.Tx) error
 	beforeCommit   func(*sql.Tx) error
 }
@@ -22,6 +24,28 @@ type paperInputStoreHooks struct {
 // StorePaperInput удерживает controls SHARE до подтверждённого commit.
 func StorePaperInput(ctx context.Context, db *sql.DB, input paperwire.InputRecord) (StoredPaperInput, error) {
 	return storePaperInput(ctx, db, input, paperInputStoreHooks{})
+}
+
+// StoreRunnerPaperInput допускает новый operator close только при актуальном HALT в транзакции записи.
+func StoreRunnerPaperInput(ctx context.Context, db *sql.DB, input paperwire.InputRecord) (StoredPaperInput, error) {
+	return storePaperInput(ctx, db, input, paperInputStoreHooks{authorizeNew: authorizeRunnerInput})
+}
+
+// authorizeRunnerInput связывает первый append close с уже ограждённым текущим операторским запросом.
+func authorizeRunnerInput(ctx context.Context, tx *sql.Tx, input paperwire.InputRecord) error {
+	purpose := input.Values().Purpose
+	if purpose.Kind != "close-all" {
+		return nil
+	}
+	h := input.Header()
+	current, err := readPaperCommand(ctx, tx, ControlScope(h.Scope), "")
+	if err != nil {
+		return errors.Join(ErrPaperInputUnavailable, err)
+	}
+	if current.ConfigHash != h.ConfigHash || !MayAttemptPaperFill(purpose, current, model.FillSell) {
+		return paperInputFailure(ctx, ErrPaperInputConflict)
+	}
+	return nil
 }
 
 // storePaperInput позволяет проверить неизвестный commit без transport effects.
@@ -51,6 +75,11 @@ func storePaperInput(ctx context.Context, db *sql.DB, input paperwire.InputRecor
 			return saved, nil
 		}
 		return StoredPaperInput{}, paperInputFailure(ctx, ErrPaperInputConflict)
+	}
+	if hooks.authorizeNew != nil {
+		if err = hooks.authorizeNew(ctx, tx, input); err != nil {
+			return StoredPaperInput{}, err
+		}
 	}
 	if (!found && h.Sequence != 1) || found && (head.Input.Header().Sequence != h.Sequence-1 || head.Input.Hash() != h.PreviousInputHash) {
 		return StoredPaperInput{}, paperInputFailure(ctx, ErrPaperInputConflict)
