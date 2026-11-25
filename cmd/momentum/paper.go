@@ -242,7 +242,7 @@ func paperWake(ctx context.Context, r paper.CycleRunner, scheduler paper.Schedul
 		}
 		return next, advance(run, p.Purpose(), p.Profile())
 	}
-	dec, err := scheduler.Tick(ctx, now)
+	dec, err := scheduler.TickRecovered(ctx, now, recovered)
 	if err != nil {
 		return next, err
 	}

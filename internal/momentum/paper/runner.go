@@ -118,7 +118,7 @@ func (r CycleRunner) AdvanceCycle(ctx context.Context, run s.StoredRebalanceRun,
 		if err = r.Owner.Permit(ctx); err != nil {
 			return zero, err
 		}
-		if _, err = s.StorePaperInput(ctx, r.DB, p.input); err != nil {
+		if _, err = s.StoreRunnerPaperInput(ctx, r.DB, p.input); err != nil {
 			return zero, err
 		}
 		view, err = read()
