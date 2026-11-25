@@ -90,16 +90,13 @@ func cliPaperArgs(t *testing.T, policy string, anchor time.Time) []string {
 	t.Helper()
 	unit, oneErr := model.ParseAmount("1")
 	max, maxErr := model.ParseAmount("100000")
-	if err := errors.Join(oneErr, maxErr); err != nil {
-		t.Fatal(err)
-	}
 	profile := paperwire.Profile{Parameters: backtest.SimulationParameters{FeeRate: model.Zero(), SlippageRate: model.Zero(), MarkMaxAge: time.Hour, Rules: map[string]planner.MarketDeltaRules{}}, SourceMaxAge: time.Minute, DataDeadline: time.Hour, Poll: time.Second, RPCTimeout: time.Second, ExecutionReference: "closed-hourly-trade-close/v1", FundingSchedules: map[string]paperwire.FundingSchedule{}}
 	for _, sym := range []string{"BTCUSDT", "ETHUSDT", "HYPEUSDT"} {
 		profile.Parameters.Rules[sym] = planner.MarketDeltaRules{QtyStep: unit, MinQty: unit, MaxMarketQty: max, MinIncreaseNotional: model.Zero()}
 		profile.FundingSchedules[sym] = paperwire.FundingSchedule{Anchor: anchor, Interval: 7 * 24 * time.Hour}
 	}
 	profileRaw, hash, err := paperwire.EncodeProfile(profile)
-	if err != nil {
+	if err = errors.Join(oneErr, maxErr, err); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(paperConfig)
@@ -168,13 +165,23 @@ func TestPaperCLIWeeks(t *testing.T) {
 	monday := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
 	m := &cliMarket{T: t, now: monday.Add(-72*time.Hour + 13*time.Minute), funding: monday, rising: "BTCUSDT"}
 	args := cliPaperArgs(t, "now", monday)
+	j.Require(s.MigrateMomentumPostgres(t.Context(), j.Pool()) == nil, "миграции первого процесса")
+	scope := s.ControlScope{Environment: "paper", AccountID: "paper/cli", StrategyID: "momentum-v1"}
+	id := s.OwnerIdentity{Environment: scope.Environment, AccountID: scope.AccountID, StrategyID: scope.StrategyID, SessionID: "crashed", Host: "local", ProcessID: 1}
+	stale, err := s.AcquireExecutionOwner(t.Context(), j.Pool(), id, m.now)
+	j.Require(err == nil && !stale.NeedsReconciliation(), "первый владелец", err)
+	_, err = s.ReadPaperCommandState(t.Context(), j.Pool(), scope)
+	j.Require(errors.Is(err, s.ErrControlAbsent), "до остановки отсутствует control", err)
+	j.KillOwner(s.ExecutionOwnerLockKey(id))
 	j.Require(errors.Is(runPaperCLI(j, m, args, nil), context.Canceled), "остановка genesis")
+	j.Require(errors.Is(stale.Permit(t.Context()), s.ErrOwnerLost) && j.ReadHistoryAudit(j.Pool()).TakenOver == id.SessionID, "потерянный владелец и подтверждённый takeover")
 	first, ok := cliRecovery(j).Last()
 	j.Require(ok && first.Binding().ScheduledAt.Equal(m.now) && len(first.Fills()) == 1 && first.Fills()[0].Symbol == "BTCUSDT" && first.Fills()[0].Side == model.FillBuy, "фактический onboarding", first.Binding())
 	quantity, e := first.Fills()[0].Quantity.WireDecimal()
 	equity, eqErr := first.ActualAfter().EquityUSDT.WireDecimal()
 	j.Require(e == nil && quantity == "333" && eqErr == nil && equity == "10000", "реальные цель и equity", quantity, equity)
-	scope := s.ControlScope(first.Binding().Scope)
+	control, err := s.ReadPaperCommandState(t.Context(), j.Pool(), scope)
+	j.Require(err == nil && control.State.Revision == 1 && control.Action == "INITIALIZE" && control.CommandID == "paper-init", "единственная начальная ревизия", err)
 	j.Done(s.ApplyPaperCommandState(t.Context(), j.Pool(), s.PaperCommandRequest{Scope: scope, ExpectedRevision: 1, ConfigHash: first.Binding().ConfigHash, Action: "PAUSE_ENTRIES", Actor: "OPERATOR", ActorID: "operator/test", CommandID: "pause", Kind: "pause", Reason: "test", Confirmed: true}))
 	m.now, m.rising = monday, "ETHUSDT"
 	j.Require(errors.Is(runPaperCLI(j, m, args, nil), context.Canceled), "остановка Monday")
@@ -183,14 +190,10 @@ func TestPaperCLIWeeks(t *testing.T) {
 	progress, open := current.Progress()
 	j.Require(found && open && p.Binding().ScheduledAt.Equal(monday) && p.Binding().Sequence == 2 && p.Before().FundingThrough.Equal(first.Binding().ScheduledAt) && p.Cutoff().FundingThrough.Equal(monday), "UTC границы недели и funding")
 	j.Require(!progress.Complete() && len(progress.Fills()) == 1 && progress.Fills()[0].Side == model.FillSell && progress.Fills()[0].Symbol == "BTCUSDT", "разрешённая редукция")
-	blocked := false
-	for _, left := range progress.Remaining() {
-		if left.Symbol == "ETHUSDT" && left.Side == model.FillBuy {
-			q, e := left.Remaining.WireDecimal()
-			blocked = e == nil && q == "333"
-		}
-	}
-	j.Require(blocked, "покупка осталась открытой")
+	left := progress.Remaining()
+	j.Require(len(left) == 2 && left[1].Symbol == "ETHUSDT" && left[1].Side == model.FillBuy, "план с отложенным BUY ETH")
+	pending, pendingErr := left[1].Remaining.WireDecimal()
+	j.Require(pendingErr == nil && pending == "333", "покупка осталась открытой", pending)
 	start, startErr := first.ActualAfter().WalletUSDT.WireDecimal()
 	end, endErr := p.Cutoff().WalletUSDT.WireDecimal()
 	sold, sellErr := progress.Fills()[0].Quantity.WireDecimal()
@@ -254,13 +257,9 @@ func TestPaperCLIRoutes(t *testing.T) {
 	t.Setenv("BYBIT_API_SECRET", "synthetic")
 	var output bytes.Buffer
 	f := &fixtureTransport{t: t}
-	if err := run(argsFor("2s"), &output, f); err != nil {
-		t.Fatal(err)
-	}
+	j.Require(run(argsFor("2s"), &output, f) == nil, "сбор сигналов")
 	var batch success
-	if err := json.Unmarshal(output.Bytes(), &batch); err != nil {
-		t.Fatal(err)
-	}
+	j.Require(json.Unmarshal(output.Bytes(), &batch) == nil, "прочитать результат collect")
 	j.Done(s.ReadSignalBatch(t.Context(), j.Pool(), batch.BatchHash))
 	before := j.ReadHistoryAudit(j.Pool())
 	j.Require(before.Runs == 0 && before.Inputs == 0 && before.Fills == 0 && before.Sessions == 0, "collect записал paper")

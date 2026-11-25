@@ -130,7 +130,7 @@ func (rt paperRuntime) serve(ctx context.Context, args []string) (result error) 
 			result = errors.Join(result, errors.New("cannot release paper owner"))
 		}
 	}()
-	if err = paperControl(ctx, db, scope, cfg, !owner.NeedsReconciliation()); err != nil {
+	if err = paperControl(ctx, db, scope, cfg, owner); err != nil {
 		return safeJournalError(ctx, "cannot verify paper control", err)
 	}
 	source := publicPaperTransport{rt.transport}
@@ -149,14 +149,14 @@ func (rt paperRuntime) serve(ctx context.Context, args []string) (result error) 
 }
 
 // paperControl инициализирует только отсутствующую область и сверяет сохранённый config.
-func paperControl(ctx context.Context, db *sql.DB, scope s.ControlScope, cfg config.Config, initialize bool) error {
+func paperControl(ctx context.Context, db *sql.DB, scope s.ControlScope, cfg config.Config, owner *s.ExecutionOwner) error {
 	_, hash, err := cfg.Snapshot()
 	if err != nil {
 		return err
 	}
 	c, err := s.ReadPaperCommandState(ctx, db, scope)
-	if initialize && errors.Is(err, s.ErrControlAbsent) {
-		c, err = s.ApplyPaperCommandState(ctx, db, s.PaperCommandRequest{Scope: scope, Config: &cfg, ConfigHash: hash, Action: "INITIALIZE", Actor: "SYSTEM", ActorID: "system/paper", CommandID: "paper-init", Kind: "initialize", Reason: "paper startup"})
+	if errors.Is(err, s.ErrControlAbsent) {
+		c, err = s.InitializeEmptyPaperControl(ctx, db, owner, s.PaperCommandRequest{Scope: scope, Config: &cfg, ConfigHash: hash, Action: "INITIALIZE", Actor: "SYSTEM", ActorID: "system/paper", CommandID: "paper-init", Kind: "initialize", Reason: "paper startup"})
 	}
 	if err == nil && c.ConfigHash != hash {
 		return errors.New("paper config differs")
